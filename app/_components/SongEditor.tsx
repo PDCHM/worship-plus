@@ -20,6 +20,12 @@ import {
 
 type ViewMode = "standard" | "split-2" | "split-3";
 
+const FONT_FAMILY_CSS: Record<Settings["fontFamily"], string> = {
+  system: "ui-sans-serif, system-ui, sans-serif",
+  mono: "ui-monospace, Menlo, Consolas, monospace",
+  serif: "ui-serif, Georgia, serif",
+};
+
 type Props = {
   song: Song;
   onChange: (song: Song) => void;
@@ -178,6 +184,8 @@ export default function SongEditor({
 
   const colors = isDark ? settings.sectionColorsDark : settings.sectionColorsLight;
   const readOnly = viewMode !== "standard";
+  const lyricFontFamily = FONT_FAMILY_CSS[settings.fontFamily ?? "system"];
+  const showChords = settings.showChords ?? true;
   const baseFontSize = settings.fontSize;
   const effectiveFontSize =
     viewMode === "split-3"
@@ -775,8 +783,9 @@ export default function SongEditor({
                       <div
                         key={line.id}
                         className="relative"
-                        style={{ paddingTop: chordRowHeight }}
+                        style={{ paddingTop: showChords ? chordRowHeight : 0 }}
                       >
+                        {showChords && (
                         <div
                           className="absolute left-0 right-0 top-0"
                           style={{ height: chordRowHeight }}
@@ -874,6 +883,7 @@ export default function SongEditor({
                             </div>
                           ))}
                         </div>
+                        )}
 
                         {editingLine === line.id && !readOnly ? (
                           <input
@@ -891,7 +901,7 @@ export default function SongEditor({
                             onBlur={(e) => commitLine(line.id, e.target.value)}
                             className="font-mono bg-slate-50 dark:bg-slate-800/60 outline-none rounded px-1 py-0.5 ring-2 ring-indigo-500 w-full"
                             spellCheck={false}
-                            style={{ fontSize: `${effectiveFontSize}px` }}
+                            style={{ fontSize: `${effectiveFontSize}px`, fontFamily: lyricFontFamily }}
                           />
                         ) : (
                           <div
@@ -905,7 +915,7 @@ export default function SongEditor({
                                 ? "cursor-default"
                                 : "cursor-text hover:bg-slate-50 dark:hover:bg-slate-800/40"
                             }`}
-                            style={{ fontSize: `${effectiveFontSize}px` }}
+                            style={{ fontSize: `${effectiveFontSize}px`, fontFamily: lyricFontFamily }}
                           >
                             {line.lyric || " "}
                           </div>

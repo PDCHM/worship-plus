@@ -128,6 +128,9 @@ export type Settings = {
   defaultInstrument: "Guitar" | "Piano" | "Ukulele";
   capoByDefault: boolean;
   printLayout: "A4" | "Letter";
+  fontFamily: "system" | "mono" | "serif";
+  printColumns: 1 | 2;
+  showChords: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -138,6 +141,9 @@ export const DEFAULT_SETTINGS: Settings = {
   defaultInstrument: "Guitar",
   capoByDefault: false,
   printLayout: "A4",
+  fontFamily: "system",
+  printColumns: 1,
+  showChords: true,
 };
 
 export function uid(): string {
