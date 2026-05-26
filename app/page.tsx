@@ -113,8 +113,21 @@ async function saveSongToDb(
   song: Song,
   userId: string,
 ) {
+  console.log("[saveSongToDb] start", {
+    songId: song.id,
+    title: song.title,
+    userId,
+    sections: song.sections.length,
+    lines: song.sections.reduce((n, s) => n + s.lines.length, 0),
+    chords: song.sections.reduce(
+      (n, s) => n + s.lines.reduce((m, l) => m + l.chords.length, 0),
+      0,
+    ),
+  });
+  console.log("[saveSongToDb] full song payload:", song);
+
   // 1. Upsert song header (insert or update by primary key)
-  const { error: songError } = await supabase.from("songs").upsert({
+  const songRow = {
     id: song.id,
     user_id: userId,
     title: song.title,
@@ -124,6 +137,15 @@ async function saveSongToDb(
     capo: song.capo,
     favorite: song.favorite,
     updated_at: new Date(song.updatedAt).toISOString(),
+  };
+  console.log("[saveSongToDb] upserting songs row:", songRow);
+  const { data: songData, error: songError } = await supabase
+    .from("songs")
+    .upsert(songRow)
+    .select();
+  console.log("[saveSongToDb] upsert songs response:", {
+    data: songData,
+    error: songError,
   });
   if (songError) {
     logErr("save song failed", songError);
@@ -131,10 +153,16 @@ async function saveSongToDb(
   }
 
   // 2. Wipe existing sections — CASCADE removes child lines and chords
-  const { error: delError } = await supabase
+  console.log("[saveSongToDb] deleting old sections for song", song.id);
+  const { data: delData, error: delError } = await supabase
     .from("sections")
     .delete()
-    .eq("song_id", song.id);
+    .eq("song_id", song.id)
+    .select();
+  console.log("[saveSongToDb] delete sections response:", {
+    data: delData,
+    error: delError,
+  });
   if (delError) {
     logErr("delete old sections failed", delError);
     return;
@@ -187,26 +215,49 @@ async function saveSongToDb(
     });
   });
 
+  console.log("[saveSongToDb] prepared batches", {
+    sectionRows: sectionRows.length,
+    lineRows: lineRows.length,
+    chordRows: chordRows.length,
+  });
+
   if (sectionRows.length) {
-    const { error } = await supabase.from("sections").insert(sectionRows);
+    console.log("[saveSongToDb] inserting sections:", sectionRows);
+    const { data, error } = await supabase
+      .from("sections")
+      .insert(sectionRows)
+      .select();
+    console.log("[saveSongToDb] insert sections response:", { data, error });
     if (error) {
       logErr("insert sections failed", error);
       return;
     }
   }
   if (lineRows.length) {
-    const { error } = await supabase.from("lines").insert(lineRows);
+    console.log("[saveSongToDb] inserting lines:", lineRows);
+    const { data, error } = await supabase
+      .from("lines")
+      .insert(lineRows)
+      .select();
+    console.log("[saveSongToDb] insert lines response:", { data, error });
     if (error) {
       logErr("insert lines failed", error);
       return;
     }
   }
   if (chordRows.length) {
-    const { error } = await supabase.from("chords").insert(chordRows);
+    console.log("[saveSongToDb] inserting chords:", chordRows);
+    const { data, error } = await supabase
+      .from("chords")
+      .insert(chordRows)
+      .select();
+    console.log("[saveSongToDb] insert chords response:", { data, error });
     if (error) {
       logErr("insert chords failed", error);
+      return;
     }
   }
+  console.log("[saveSongToDb] DONE", song.id);
 }
 
 export default function Home() {
@@ -238,8 +289,13 @@ export default function Home() {
       const {
         data: { user: u },
       } = await supabase.auth.getUser();
+      console.log("[init] supabase.auth.getUser():", {
+        id: u?.id,
+        email: u?.email,
+      });
       if (cancelled) return;
       if (!u) {
+        console.warn("[init] no user — redirecting to /login");
         setAuthChecked(true);
         router.replace("/login");
         return;
@@ -371,16 +427,28 @@ export default function Home() {
   };
 
   const flushPendingSaves = () => {
-    if (!user) return;
+    console.log("[flushPendingSaves] called", {
+      currentUser: user?.id,
+      queued: pendingSavesRef.current.size,
+    });
+    if (!user) {
+      console.warn("[flushPendingSaves] no user — skipping (NOT logged in)");
+      return;
+    }
     const queued = Array.from(pendingSavesRef.current.values());
     pendingSavesRef.current.clear();
     queued.forEach((song) => {
+      console.log("[flushPendingSaves] dispatching save for", song.id, song.title);
       void saveSongToDb(supabase, song, user.id);
     });
   };
 
   const scheduleSave = (song: Song) => {
-    if (!user) return;
+    console.log("[scheduleSave] queueing", song.id, song.title, "user:", user?.id);
+    if (!user) {
+      console.warn("[scheduleSave] no user — save will not be queued");
+      return;
+    }
     pendingSavesRef.current.set(song.id, song);
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(flushPendingSaves, 700);
@@ -400,6 +468,7 @@ export default function Home() {
   }, [user, supabase]);
 
   const upsertSong = (updated: Song) => {
+    console.log("[upsertSong] in-memory update", updated.id, updated.title);
     setSongs((prev) => {
       const idx = prev.findIndex((s) => s.id === updated.id);
       if (idx === -1) return [updated, ...prev];
@@ -463,11 +532,17 @@ export default function Home() {
   };
 
   const handleImportPasted = (song: Song) => {
+    console.log("[handleImportPasted] start", { id: song.id, title: song.title, user: user?.id });
     setSongs((prev) => [song, ...prev]);
     setView({ kind: "editor", songId: song.id });
     setPasteOpen(false);
     showToast(`Imported "${song.title}"`);
-    if (user) void saveSongToDb(supabase, song, user.id);
+    if (user) {
+      console.log("[handleImportPasted] firing immediate save");
+      void saveSongToDb(supabase, song, user.id);
+    } else {
+      console.warn("[handleImportPasted] no user — skipping save");
+    }
   };
 
   const handleImport = async (file: File) => {
@@ -581,6 +656,13 @@ export default function Home() {
               onExport={handleExport}
               onPasteSong={() => setPasteOpen(true)}
               onSave={() => {
+                console.log("[Save button] clicked");
+                console.log("[Save button] current user:", user?.id);
+                console.log(
+                  "[Save button] pending saves:",
+                  pendingSavesRef.current.size,
+                );
+                console.log("[Save button] active song:", activeSong);
                 flushPendingSaves();
                 showToast("Song saved");
               }}
