@@ -9,6 +9,7 @@ import PasteSongModal from "@/app/_components/PasteSongModal";
 import SettingsView from "@/app/_components/SettingsView";
 import SongEditor from "@/app/_components/SongEditor";
 import FoldersView, { type Folder, type FolderSong } from "@/app/_components/FoldersView";
+import PrintLayout from "@/app/_components/PrintLayout";
 import {
   DEFAULT_SETTINGS,
   DEFAULT_SECTION_COLORS_DARK,
@@ -399,11 +400,12 @@ export default function Home() {
   };
 
   const handlePrint = () => {
-    const existing = document.getElementById("wp-print-layout");
+    if (!activeSong) return;
+    const existing = document.getElementById("wp-print-styles");
     if (existing) existing.remove();
     const style = document.createElement("style");
-    style.id = "wp-print-layout";
-    style.textContent = `@page { size: ${settings.printLayout === "A4" ? "A4" : "letter"}; margin: 0.6in; }`;
+    style.id = "wp-print-styles";
+    style.textContent = `@page { size: ${settings.printLayout === "A4" ? "A4" : "letter"}; margin: 0.6in; } @media print { body > * { display: none !important; } #wp-print-root { display: block !important; } }`;
     document.head.appendChild(style);
     window.print();
   };
@@ -596,6 +598,8 @@ export default function Home() {
       </div>
 
       <BottomTabs view={view} onNavigate={setView} />
+
+      {activeSong && <PrintLayout song={activeSong} settings={settings} />}
 
       <PasteSongModal
         open={pasteOpen}
