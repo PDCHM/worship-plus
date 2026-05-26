@@ -18,6 +18,8 @@ import {
   type Song,
 } from "@/lib/song";
 
+type ViewMode = "standard" | "split-2" | "split-3";
+
 type Props = {
   song: Song;
   onChange: (song: Song) => void;
@@ -61,6 +63,67 @@ function ToolBtn({
   );
 }
 
+function ViewToggle({
+  viewMode,
+  onChange,
+}: {
+  viewMode: ViewMode;
+  onChange: (m: ViewMode) => void;
+}) {
+  const btn = (mode: ViewMode, label: string, icon: React.ReactNode) => {
+    const active = viewMode === mode;
+    return (
+      <button
+        key={mode}
+        type="button"
+        onClick={() => onChange(mode)}
+        title={label}
+        aria-label={label}
+        aria-pressed={active}
+        className={`w-10 h-9 flex items-center justify-center transition-colors ${
+          active
+            ? "bg-indigo-600 text-white"
+            : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+        }`}
+      >
+        {icon}
+      </button>
+    );
+  };
+  return (
+    <div
+      className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden"
+      role="group"
+      aria-label="View mode"
+    >
+      {btn(
+        "standard",
+        "Standard view (1 column)",
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="5" y="3" width="14" height="18" rx="1.5" />
+        </svg>,
+      )}
+      {btn(
+        "split-2",
+        "Split 2 columns",
+        <svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="8" height="18" rx="1.5" />
+          <rect x="13" y="3" width="8" height="18" rx="1.5" />
+        </svg>,
+      )}
+      {btn(
+        "split-3",
+        "Split 3 columns",
+        <svg width="18" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="2" y="3" width="5.5" height="18" rx="1.5" />
+          <rect x="9.25" y="3" width="5.5" height="18" rx="1.5" />
+          <rect x="16.5" y="3" width="5.5" height="18" rx="1.5" />
+        </svg>,
+      )}
+    </div>
+  );
+}
+
 export default function SongEditor({
   song,
   onChange,
@@ -81,10 +144,18 @@ export default function SongEditor({
     x: number;
     y: number;
   } | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>("standard");
   const [charWidth, setCharWidth] = useState(9.6);
   const rulerRef = useRef<HTMLSpanElement>(null);
 
   const colors = isDark ? settings.sectionColorsDark : settings.sectionColorsLight;
+  const readOnly = viewMode !== "standard";
+  const baseFontSize = settings.fontSize;
+  const effectiveFontSize =
+    viewMode === "split-3"
+      ? Math.max(11, Math.round(baseFontSize * 0.78))
+      : baseFontSize;
+  const chordFontSize = Math.round(effectiveFontSize * 0.85);
 
   useEffect(() => {
     const measure = () => {
@@ -99,7 +170,7 @@ export default function SongEditor({
     }
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
-  }, [settings.fontSize]);
+  }, [effectiveFontSize]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -116,6 +187,15 @@ export default function SongEditor({
       window.removeEventListener("blur", close);
     };
   }, [contextMenu]);
+
+  const switchView = (mode: ViewMode) => {
+    setEditingChord(null);
+    setEditingLine(null);
+    setEditingSection(null);
+    setEditingTitle(false);
+    setContextMenu(null);
+    setViewMode(mode);
+  };
 
   const update = (updater: (s: Song) => Song) =>
     onChange({ ...updater(song), updatedAt: Date.now() });
@@ -148,6 +228,7 @@ export default function SongEditor({
 
   const handleChordPointerDown =
     (lineId: string, chordId: string) => (e: React.PointerEvent) => {
+      if (readOnly) return;
       if (editingChord === chordId) return;
       if (e.button !== 0) return;
       const line = findLine(song, lineId);
@@ -341,21 +422,12 @@ export default function SongEditor({
     setEditingSection(newId);
   };
 
-  const moveSectionUpFirst = () => {
-    if (song.sections.length === 0) return;
-    moveSection(song.sections[song.sections.length - 1].id, -1);
-  };
-  const moveSectionDownFirst = () => {
-    if (song.sections.length === 0) return;
-    moveSection(song.sections[0].id, 1);
-  };
-  const copyFirstSection = () => {
-    if (song.sections.length === 0) return;
-    copySection(song.sections[0].id);
-  };
-
-  const fontSize = settings.fontSize;
-  const chordFontSize = Math.round(fontSize * 0.85);
+  const sectionsContainerStyle: React.CSSProperties = readOnly
+    ? {
+        columnCount: viewMode === "split-2" ? 2 : 3,
+        columnGap: viewMode === "split-2" ? "2rem" : "1.5rem",
+      }
+    : {};
 
   return (
     <div className="max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 md:py-8">
@@ -370,7 +442,7 @@ export default function SongEditor({
           opacity: 0,
           pointerEvents: "none",
           whiteSpace: "pre",
-          fontSize: `${fontSize}px`,
+          fontSize: `${effectiveFontSize}px`,
         }}
       >
         0000000000
@@ -383,7 +455,7 @@ export default function SongEditor({
       </datalist>
 
       <div className="mb-5">
-        {editingTitle ? (
+        {editingTitle && !readOnly ? (
           <input
             autoFocus
             defaultValue={song.title}
@@ -395,7 +467,8 @@ export default function SongEditor({
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
-                const v = (e.target as HTMLInputElement).value.trim() || "Untitled Song";
+                const v =
+                  (e.target as HTMLInputElement).value.trim() || "Untitled Song";
                 update((s) => ({ ...s, title: v }));
                 setEditingTitle(false);
               } else if (e.key === "Escape") {
@@ -407,20 +480,25 @@ export default function SongEditor({
         ) : (
           <button
             type="button"
-            onClick={() => setEditingTitle(true)}
-            className="text-2xl md:text-3xl font-bold tracking-tight w-full text-left rounded-lg px-2 -mx-2 py-1 hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors"
-            title="Click to rename song"
+            onClick={() => !readOnly && setEditingTitle(true)}
+            disabled={readOnly}
+            className="text-2xl md:text-3xl font-bold tracking-tight w-full text-left rounded-lg px-2 -mx-2 py-1 enabled:hover:bg-slate-50 dark:enabled:hover:bg-slate-900 transition-colors disabled:cursor-default"
+            title={readOnly ? undefined : "Click to rename song"}
           >
             {song.title}
           </button>
         )}
         <div className="text-sm text-slate-500 dark:text-slate-400 mt-1 px-0.5 flex items-center gap-2 flex-wrap">
-          <input
-            value={song.artist}
-            onChange={(e) => update((s) => ({ ...s, artist: e.target.value }))}
-            placeholder="Artist"
-            className="bg-transparent outline-none focus:bg-slate-50 dark:focus:bg-slate-900 rounded px-1.5 py-0.5"
-          />
+          {readOnly ? (
+            <span className="px-1.5 py-0.5">{song.artist || "Unknown artist"}</span>
+          ) : (
+            <input
+              value={song.artist}
+              onChange={(e) => update((s) => ({ ...s, artist: e.target.value }))}
+              placeholder="Artist"
+              className="bg-transparent outline-none focus:bg-slate-50 dark:focus:bg-slate-900 rounded px-1.5 py-0.5"
+            />
+          )}
           <span className="text-slate-300 dark:text-slate-600">·</span>
           <span>
             Key{" "}
@@ -439,7 +517,7 @@ export default function SongEditor({
               </span>
             </>
           ) : null}
-          {clipboard && (
+          {clipboard && !readOnly && (
             <span className="inline-flex items-center gap-2 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-xs border border-amber-200 dark:border-amber-900 print:hidden">
               <span className="font-medium">{clipboard.label}</span> copied
               <button
@@ -454,25 +532,8 @@ export default function SongEditor({
         </div>
       </div>
 
-      <div className="mb-5 flex items-center justify-between gap-2 flex-wrap print:hidden">
-        <div className="flex items-center gap-0.5">
-          <ToolBtn onClick={moveSectionUpFirst} title="Move last section up">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="18 15 12 9 6 15" />
-            </svg>
-          </ToolBtn>
-          <ToolBtn onClick={moveSectionDownFirst} title="Move first section down">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </ToolBtn>
-          <ToolBtn onClick={copyFirstSection} title="Copy first section">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="9" y="9" width="13" height="13" rx="2" />
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-            </svg>
-          </ToolBtn>
-        </div>
+      <div className="mb-5 flex items-center justify-between gap-3 flex-wrap print:hidden">
+        <ViewToggle viewMode={viewMode} onChange={switchView} />
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -558,14 +619,20 @@ export default function SongEditor({
       </div>
 
       <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-4 sm:p-6 md:p-8 overflow-x-auto print:border-0 print:shadow-none print:p-0">
-        <div className="space-y-8 min-w-fit">
+        <div
+          className={readOnly ? "" : "space-y-8 min-w-fit"}
+          style={sectionsContainerStyle}
+        >
           {song.sections.map((section, sIdx) => {
             const colorKey = getSectionColorKey(section.label);
             const c = colors[colorKey];
+            const sectionClassName = readOnly
+              ? "group/section break-inside-avoid mb-6 last:mb-0"
+              : "group/section";
             return (
-              <section key={section.id} className="group/section">
+              <section key={section.id} className={sectionClassName}>
                 <div className="flex items-center gap-2 mb-3 flex-wrap">
-                  {editingSection === section.id ? (
+                  {editingSection === section.id && !readOnly ? (
                     <input
                       autoFocus
                       list="section-presets"
@@ -586,6 +653,13 @@ export default function SongEditor({
                       className="font-semibold text-xs uppercase tracking-wider outline-none rounded-md px-2.5 py-1 ring-2 ring-indigo-500"
                       style={{ background: c.bg, color: c.fg }}
                     />
+                  ) : readOnly ? (
+                    <span
+                      className="px-2.5 py-1 rounded-md text-xs font-semibold uppercase tracking-wider"
+                      style={{ background: c.bg, color: c.fg }}
+                    >
+                      {section.label}
+                    </span>
                   ) : (
                     <button
                       type="button"
@@ -598,80 +672,84 @@ export default function SongEditor({
                     </button>
                   )}
 
-                  <div className="flex items-center gap-0.5 ml-1 print:hidden">
-                    <ToolBtn
-                      onClick={() => moveSection(section.id, -1)}
-                      disabled={sIdx === 0}
-                      title="Move section up"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="18 15 12 9 6 15" />
-                      </svg>
-                    </ToolBtn>
-                    <ToolBtn
-                      onClick={() => moveSection(section.id, 1)}
-                      disabled={sIdx === song.sections.length - 1}
-                      title="Move section down"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="6 9 12 15 18 9" />
-                      </svg>
-                    </ToolBtn>
-                    <span className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1" />
-                    <ToolBtn
-                      onClick={() => copySection(section.id)}
-                      title="Copy section"
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                        <rect x="9" y="9" width="13" height="13" rx="2" />
-                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-                      </svg>
-                    </ToolBtn>
-                    {clipboard && (
-                      <>
-                        <ToolBtn
-                          onClick={() => pasteSection(section.id, "above")}
-                          title={`Paste "${clipboard.label}" above`}
-                          tone="accent"
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                            <line x1="4" y1="4" x2="20" y2="4" />
-                            <polyline points="6 14 12 8 18 14" />
-                            <line x1="12" y1="8" x2="12" y2="20" />
-                          </svg>
-                        </ToolBtn>
-                        <ToolBtn
-                          onClick={() => pasteSection(section.id, "below")}
-                          title={`Paste "${clipboard.label}" below`}
-                          tone="accent"
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                            <line x1="12" y1="4" x2="12" y2="16" />
-                            <polyline points="6 10 12 16 18 10" />
-                            <line x1="4" y1="20" x2="20" y2="20" />
-                          </svg>
-                        </ToolBtn>
-                      </>
-                    )}
-                    <span className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1" />
-                    <ToolBtn
-                      onClick={() => deleteSection(section.id)}
-                      disabled={song.sections.length <= 1}
-                      title="Delete section"
-                      tone="danger"
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="3 6 5 6 21 6" />
-                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                        <path d="M10 11v6M14 11v6" />
-                        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
-                      </svg>
-                    </ToolBtn>
-                  </div>
+                  {!readOnly && (
+                    <div className="flex items-center gap-0.5 ml-1 print:hidden">
+                      <ToolBtn
+                        onClick={() => moveSection(section.id, -1)}
+                        disabled={sIdx === 0}
+                        title="Move section up"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="18 15 12 9 6 15" />
+                        </svg>
+                      </ToolBtn>
+                      <ToolBtn
+                        onClick={() => moveSection(section.id, 1)}
+                        disabled={sIdx === song.sections.length - 1}
+                        title="Move section down"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="6 9 12 15 18 9" />
+                        </svg>
+                      </ToolBtn>
+                      <span className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1" />
+                      <ToolBtn
+                        onClick={() => copySection(section.id)}
+                        title="Copy section"
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="9" y="9" width="13" height="13" rx="2" />
+                          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                        </svg>
+                      </ToolBtn>
+                      {clipboard && (
+                        <>
+                          <ToolBtn
+                            onClick={() => pasteSection(section.id, "above")}
+                            title={`Paste "${clipboard.label}" above`}
+                            tone="accent"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                              <line x1="4" y1="4" x2="20" y2="4" />
+                              <polyline points="6 14 12 8 18 14" />
+                              <line x1="12" y1="8" x2="12" y2="20" />
+                            </svg>
+                          </ToolBtn>
+                          <ToolBtn
+                            onClick={() => pasteSection(section.id, "below")}
+                            title={`Paste "${clipboard.label}" below`}
+                            tone="accent"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                              <line x1="12" y1="4" x2="12" y2="16" />
+                              <polyline points="6 10 12 16 18 10" />
+                              <line x1="4" y1="20" x2="20" y2="20" />
+                            </svg>
+                          </ToolBtn>
+                        </>
+                      )}
+                      <span className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1" />
+                      <ToolBtn
+                        onClick={() => deleteSection(section.id)}
+                        disabled={song.sections.length <= 1}
+                        title="Delete section"
+                        tone="danger"
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6" />
+                          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                          <path d="M10 11v6M14 11v6" />
+                          <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                        </svg>
+                      </ToolBtn>
+                    </div>
+                  )}
                 </div>
 
                 <div
-                  className="pl-4 space-y-3"
+                  className={
+                    readOnly ? "pl-3 space-y-2" : "pl-4 space-y-3"
+                  }
                   style={{ borderLeft: `3px solid ${c.bg}` }}
                 >
                   {section.lines.map((line) => {
@@ -686,6 +764,7 @@ export default function SongEditor({
                           className="absolute left-0 right-0 top-0"
                           style={{ height: chordRowHeight }}
                           onClick={(e) => {
+                            if (readOnly) return;
                             if (e.target !== e.currentTarget) return;
                             const rect = e.currentTarget.getBoundingClientRect();
                             const pos = Math.max(
@@ -694,7 +773,7 @@ export default function SongEditor({
                             );
                             addChordAt(line.id, pos);
                           }}
-                          title="Click to add a chord"
+                          title={readOnly ? undefined : "Click to add a chord"}
                         >
                           {line.chords.map((ch) => (
                             <div
@@ -702,7 +781,7 @@ export default function SongEditor({
                               style={{ left: ch.pos * charWidth, top: 0 }}
                               className="absolute"
                             >
-                              {editingChord === ch.id ? (
+                              {editingChord === ch.id && !readOnly ? (
                                 <input
                                   autoFocus
                                   defaultValue={ch.chord}
@@ -726,29 +805,40 @@ export default function SongEditor({
                                 />
                               ) : (
                                 <span
-                                  onPointerDown={handleChordPointerDown(
-                                    line.id,
-                                    ch.id,
-                                  )}
-                                  onDoubleClick={() => setEditingChord(ch.id)}
-                                  onContextMenu={(e) => {
-                                    e.preventDefault();
-                                    setContextMenu({
-                                      chordId: ch.id,
-                                      x: Math.min(
-                                        e.clientX,
-                                        window.innerWidth - 160,
-                                      ),
-                                      y: Math.min(
-                                        e.clientY,
-                                        window.innerHeight - 96,
-                                      ),
-                                    });
-                                  }}
+                                  onPointerDown={
+                                    readOnly
+                                      ? undefined
+                                      : handleChordPointerDown(line.id, ch.id)
+                                  }
+                                  onDoubleClick={
+                                    readOnly
+                                      ? undefined
+                                      : () => setEditingChord(ch.id)
+                                  }
+                                  onContextMenu={
+                                    readOnly
+                                      ? undefined
+                                      : (e) => {
+                                          e.preventDefault();
+                                          setContextMenu({
+                                            chordId: ch.id,
+                                            x: Math.min(
+                                              e.clientX,
+                                              window.innerWidth - 160,
+                                            ),
+                                            y: Math.min(
+                                              e.clientY,
+                                              window.innerHeight - 96,
+                                            ),
+                                          });
+                                        }
+                                  }
                                   className={`inline-block font-mono font-bold select-none px-1 py-0.5 rounded text-indigo-600 dark:text-indigo-300 transition-colors ${
-                                    draggingId === ch.id
-                                      ? "cursor-grabbing bg-indigo-100 dark:bg-indigo-900/70 scale-110 z-20"
-                                      : "cursor-grab hover:bg-indigo-50 dark:hover:bg-indigo-950/60"
+                                    readOnly
+                                      ? "cursor-default"
+                                      : draggingId === ch.id
+                                        ? "cursor-grabbing bg-indigo-100 dark:bg-indigo-900/70 scale-110 z-20"
+                                        : "cursor-grab hover:bg-indigo-50 dark:hover:bg-indigo-950/60"
                                   }`}
                                   style={{
                                     touchAction: "none",
@@ -762,7 +852,7 @@ export default function SongEditor({
                           ))}
                         </div>
 
-                        {editingLine === line.id ? (
+                        {editingLine === line.id && !readOnly ? (
                           <input
                             autoFocus
                             defaultValue={line.lyric}
@@ -778,13 +868,21 @@ export default function SongEditor({
                             onBlur={(e) => commitLine(line.id, e.target.value)}
                             className="font-mono bg-slate-50 dark:bg-slate-800/60 outline-none rounded px-1 py-0.5 ring-2 ring-indigo-500 w-full"
                             spellCheck={false}
-                            style={{ fontSize: `${fontSize}px` }}
+                            style={{ fontSize: `${effectiveFontSize}px` }}
                           />
                         ) : (
                           <div
-                            onDoubleClick={() => setEditingLine(line.id)}
-                            className="font-mono whitespace-pre cursor-text leading-relaxed hover:bg-slate-50 dark:hover:bg-slate-800/40 rounded px-1 py-0.5 -mx-1 transition-colors"
-                            style={{ fontSize: `${fontSize}px` }}
+                            onDoubleClick={
+                              readOnly
+                                ? undefined
+                                : () => setEditingLine(line.id)
+                            }
+                            className={`font-mono whitespace-pre leading-relaxed rounded px-1 py-0.5 -mx-1 transition-colors ${
+                              readOnly
+                                ? "cursor-default"
+                                : "cursor-text hover:bg-slate-50 dark:hover:bg-slate-800/40"
+                            }`}
+                            style={{ fontSize: `${effectiveFontSize}px` }}
                           >
                             {line.lyric || " "}
                           </div>
@@ -793,56 +891,70 @@ export default function SongEditor({
                     );
                   })}
 
-                  <button
-                    type="button"
-                    onClick={() => addLineToSection(section.id)}
-                    className="text-xs text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center gap-1 mt-1 print:hidden"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="12" y1="5" x2="12" y2="19" />
-                      <line x1="5" y1="12" x2="19" y2="12" />
-                    </svg>
-                    Add line
-                  </button>
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      onClick={() => addLineToSection(section.id)}
+                      className="text-xs text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center gap-1 mt-1 print:hidden"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19" />
+                        <line x1="5" y1="12" x2="19" y2="12" />
+                      </svg>
+                      Add line
+                    </button>
+                  )}
                 </div>
               </section>
             );
           })}
         </div>
 
-        <button
-          type="button"
-          onClick={addSection}
-          className="mt-8 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center gap-1.5 border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-600 rounded-xl px-4 py-2.5 w-full justify-center print:hidden"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          Add section
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={addSection}
+            className="mt-8 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center gap-1.5 border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-600 rounded-xl px-4 py-2.5 w-full justify-center print:hidden"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Add section
+          </button>
+        )}
       </div>
 
       <div className="mt-5 text-xs text-slate-500 dark:text-slate-400 px-1 leading-relaxed space-y-1 print:hidden">
-        <p>
-          <span className="font-semibold text-slate-700 dark:text-slate-300">Drag</span>{" "}
-          a chord to reposition ·{" "}
-          <span className="font-semibold text-slate-700 dark:text-slate-300">
-            Double-click
-          </span>{" "}
-          to edit ·{" "}
-          <span className="font-semibold text-slate-700 dark:text-slate-300">
-            Right-click
-          </span>{" "}
-          a chord for Edit/Delete · clear & press{" "}
-          <kbd className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-[11px]">
-            Enter
-          </kbd>{" "}
-          to delete
-        </p>
+        {readOnly ? (
+          <p>
+            Read-only{" "}
+            <span className="font-semibold text-slate-700 dark:text-slate-300">
+              {viewMode === "split-2" ? "Split 2" : "Split 3"}
+            </span>{" "}
+            view. Switch to Standard to edit.
+          </p>
+        ) : (
+          <p>
+            <span className="font-semibold text-slate-700 dark:text-slate-300">Drag</span>{" "}
+            a chord to reposition ·{" "}
+            <span className="font-semibold text-slate-700 dark:text-slate-300">
+              Double-click
+            </span>{" "}
+            to edit ·{" "}
+            <span className="font-semibold text-slate-700 dark:text-slate-300">
+              Right-click
+            </span>{" "}
+            a chord for Edit/Delete · clear & press{" "}
+            <kbd className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-[11px]">
+              Enter
+            </kbd>{" "}
+            to delete
+          </p>
+        )}
       </div>
 
-      {contextMenu && (
+      {contextMenu && !readOnly && (
         <div
           role="menu"
           style={{ left: contextMenu.x, top: contextMenu.y }}

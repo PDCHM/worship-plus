@@ -386,7 +386,7 @@ export function makeSampleSongs(): Song[] {
     id: "sample-way-maker",
     title: "Way Maker",
     artist: "Sinach",
-    key: "F",
+    key: "A",
     capo: null,
     bpm: 65,
     favorite: true,
@@ -395,37 +395,42 @@ export function makeSampleSongs(): Song[] {
     sections: [
       {
         id: uid(),
+        label: "Intro",
+        lines: [{ id: uid(), lyric: "", chords: [] }],
+      },
+      {
+        id: uid(),
         label: "Verse 1",
         lines: [
           {
             id: uid(),
             lyric: "You are here moving in our midst",
             chords: [
-              { id: uid(), pos: 0, chord: "F" },
-              { id: uid(), pos: 13, chord: "Bb" },
-              { id: uid(), pos: 23, chord: "C" },
-              { id: uid(), pos: 28, chord: "F" },
+              { id: uid(), pos: 0, chord: "A" },
+              { id: uid(), pos: 13, chord: "D" },
+              { id: uid(), pos: 23, chord: "E" },
+              { id: uid(), pos: 28, chord: "A" },
             ],
           },
           {
             id: uid(),
             lyric: "I worship You, I worship You",
-            chords: [{ id: uid(), pos: 0, chord: "F" }],
+            chords: [{ id: uid(), pos: 0, chord: "A" }],
           },
           {
             id: uid(),
             lyric: "You are here working in this place",
             chords: [
-              { id: uid(), pos: 0, chord: "F" },
-              { id: uid(), pos: 13, chord: "Bb" },
-              { id: uid(), pos: 24, chord: "C" },
-              { id: uid(), pos: 29, chord: "F" },
+              { id: uid(), pos: 0, chord: "A" },
+              { id: uid(), pos: 13, chord: "D" },
+              { id: uid(), pos: 24, chord: "E" },
+              { id: uid(), pos: 29, chord: "A" },
             ],
           },
           {
             id: uid(),
             lyric: "I worship You, I worship You",
-            chords: [{ id: uid(), pos: 0, chord: "F" }],
+            chords: [{ id: uid(), pos: 0, chord: "A" }],
           },
         ],
       },
@@ -437,24 +442,44 @@ export function makeSampleSongs(): Song[] {
             id: uid(),
             lyric: "Way Maker, Miracle Worker, Promise Keeper",
             chords: [
-              { id: uid(), pos: 0, chord: "Bb" },
-              { id: uid(), pos: 28, chord: "F" },
+              { id: uid(), pos: 0, chord: "D" },
+              { id: uid(), pos: 28, chord: "A" },
             ],
           },
           {
             id: uid(),
             lyric: "Light in the darkness, my God",
             chords: [
-              { id: uid(), pos: 0, chord: "C" },
-              { id: uid(), pos: 22, chord: "F" },
+              { id: uid(), pos: 0, chord: "E" },
+              { id: uid(), pos: 22, chord: "A" },
             ],
           },
           {
             id: uid(),
             lyric: "That is who You are",
-            chords: [{ id: uid(), pos: 0, chord: "F" }],
+            chords: [{ id: uid(), pos: 0, chord: "A" }],
           },
         ],
+      },
+      {
+        id: uid(),
+        label: "Verse 2",
+        lines: [{ id: uid(), lyric: "", chords: [] }],
+      },
+      {
+        id: uid(),
+        label: "Verse 3",
+        lines: [{ id: uid(), lyric: "", chords: [] }],
+      },
+      {
+        id: uid(),
+        label: "Tag",
+        lines: [{ id: uid(), lyric: "", chords: [] }],
+      },
+      {
+        id: uid(),
+        label: "Bridge",
+        lines: [{ id: uid(), lyric: "", chords: [] }],
       },
     ],
   };
