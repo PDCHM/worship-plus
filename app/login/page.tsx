@@ -63,10 +63,10 @@ export default function LoginPage() {
             W<span className="text-blue-200">+</span>
           </div>
           <h1 className="text-2xl font-bold tracking-tight mb-1">
-            Welcome to Worship<span className="text-blue-500">+</span>
+            Worship<span className="text-blue-500">+</span>
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Sign in to sync your chord library
+            Your praise and worship companion
           </p>
         </div>
 
@@ -102,9 +102,9 @@ export default function LoginPage() {
               type="button"
               onClick={handleGoogle}
               disabled={loading !== null}
-              className="w-full h-11 rounded-lg bg-white border border-slate-300 dark:bg-slate-800 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-sm font-medium text-slate-700 dark:text-slate-200 flex items-center justify-center gap-3 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full h-11 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white text-sm font-medium flex items-center justify-center gap-3 transition-colors shadow-sm shadow-blue-600/30"
             >
-              <svg width="18" height="18" viewBox="0 0 18 18">
+              <svg width="18" height="18" viewBox="0 0 18 18" className="bg-white rounded-sm p-0.5">
                 <path
                   fill="#4285F4"
                   d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844a4.14 4.14 0 0 1-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"
@@ -154,9 +154,9 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading !== null || !email.trim()}
-                className="w-full h-11 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:text-slate-400 disabled:cursor-not-allowed text-white text-sm font-medium transition-colors shadow-sm shadow-indigo-600/30"
+                className="w-full h-11 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-60 disabled:cursor-not-allowed text-slate-700 dark:text-slate-200 text-sm font-medium border border-slate-200 dark:border-slate-700 transition-colors"
               >
-                {loading === "email" ? "Sending link…" : "Continue with Email"}
+                {loading === "email" ? "Sending link…" : "Sign in with Email"}
               </button>
             </form>
 
