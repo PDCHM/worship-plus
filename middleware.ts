@@ -1,64 +1,46 @@
-import { createServerClient } from "@supabase/ssr";
-import { NextResponse, type NextRequest } from "next/server";
+import { createServerClient } from '@supabase/ssr'
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const path = request.nextUrl.pathname;
+  let supabaseResponse = NextResponse.next({ request })
 
-  // If env vars aren't set (e.g., Vercel project misconfigured),
-  // don't block the request — let the page render so the user can
-  // see something instead of a 500. Auth simply won't work.
-  if (!url || !anon) {
-    console.warn(
-      "[middleware] Supabase env vars missing — skipping auth gate",
-    );
-    return NextResponse.next({ request });
-  }
-
-  let response = NextResponse.next({ request });
-
-  const supabase = createServerClient(url, anon, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() { return request.cookies.getAll() },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            request.cookies.set(name, value)
+            supabaseResponse.cookies.set(name, value, options)
+          })
+        },
       },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) =>
-          request.cookies.set(name, value),
-        );
-        response = NextResponse.next({ request });
-        cookiesToSet.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options),
-        );
-      },
-    },
-  });
+    }
+  )
 
-  // IMPORTANT: getUser() refreshes the auth token if needed.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser()
 
-  const isAuthPath = path === "/login" || path.startsWith("/auth/");
+  const isLoginPage = request.nextUrl.pathname.startsWith('/login')
+  const isAuthCallback = request.nextUrl.pathname.startsWith('/auth')
 
-  if (!user && !isAuthPath) {
-    const redirect = request.nextUrl.clone();
-    redirect.pathname = "/login";
-    return NextResponse.redirect(redirect);
+  if (!user && !isLoginPage && !isAuthCallback) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/login'
+    return NextResponse.redirect(url)
   }
 
-  if (user && path === "/login") {
-    const redirect = request.nextUrl.clone();
-    redirect.pathname = "/";
-    return NextResponse.redirect(redirect);
+  if (user && isLoginPage) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/'
+    return NextResponse.redirect(url)
   }
 
-  return response;
+  return supabaseResponse
 }
 
 export const config = {
-  matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
-  ],
-};
+  matcher: ['/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)'],
+}
