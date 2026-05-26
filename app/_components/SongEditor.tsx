@@ -1,0 +1,887 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import {
+  CAPO_OPTIONS,
+  KEYS,
+  PREFER_FLAT_KEYS,
+  SECTION_PRESETS,
+  cloneSection,
+  findLine,
+  getSectionColorKey,
+  mapLine,
+  noteToIndex,
+  transposeChord,
+  uid,
+  type Section,
+  type Settings,
+  type Song,
+} from "@/lib/song";
+
+type Props = {
+  song: Song;
+  onChange: (song: Song) => void;
+  settings: Settings;
+  isDark: boolean;
+  onPrint: () => void;
+  onExport: () => void;
+  showToast: (msg: string) => void;
+};
+
+function ToolBtn({
+  onClick,
+  disabled,
+  title,
+  children,
+  tone = "neutral",
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  title: string;
+  children: React.ReactNode;
+  tone?: "neutral" | "accent" | "danger";
+}) {
+  const toneClasses =
+    tone === "accent"
+      ? "text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/60"
+      : tone === "danger"
+        ? "text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+        : "text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      aria-label={title}
+      className={`w-8 h-8 rounded-md flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed transition-colors ${toneClasses}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+export default function SongEditor({
+  song,
+  onChange,
+  settings,
+  isDark,
+  onPrint,
+  onExport,
+  showToast,
+}: Props) {
+  const [editingChord, setEditingChord] = useState<string | null>(null);
+  const [editingLine, setEditingLine] = useState<string | null>(null);
+  const [editingSection, setEditingSection] = useState<string | null>(null);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [clipboard, setClipboard] = useState<Section | null>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    chordId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [charWidth, setCharWidth] = useState(9.6);
+  const rulerRef = useRef<HTMLSpanElement>(null);
+
+  const colors = isDark ? settings.sectionColorsDark : settings.sectionColorsLight;
+
+  useEffect(() => {
+    const measure = () => {
+      if (rulerRef.current) {
+        const w = rulerRef.current.getBoundingClientRect().width;
+        if (w > 0) setCharWidth(w / 10);
+      }
+    };
+    measure();
+    if ("fonts" in document) {
+      document.fonts.ready.then(measure);
+    }
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [settings.fontSize]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setContextMenu(null);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("blur", close);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("blur", close);
+    };
+  }, [contextMenu]);
+
+  const update = (updater: (s: Song) => Song) =>
+    onChange({ ...updater(song), updatedAt: Date.now() });
+
+  const handleTranspose = (target: string) => {
+    const delta = noteToIndex(target) - noteToIndex(song.key);
+    if (delta === 0) return;
+    setEditingChord(null);
+    setEditingLine(null);
+    const preferFlat = PREFER_FLAT_KEYS.has(target);
+    update((s) => ({
+      ...s,
+      key: target,
+      sections: s.sections.map((sec) => ({
+        ...sec,
+        lines: sec.lines.map((line) => ({
+          ...line,
+          chords: line.chords.map((c) => ({
+            ...c,
+            chord: transposeChord(c.chord, delta, preferFlat),
+          })),
+        })),
+      })),
+    }));
+  };
+
+  const handleCapoChange = (value: number | null) => {
+    update((s) => ({ ...s, capo: value }));
+  };
+
+  const handleChordPointerDown =
+    (lineId: string, chordId: string) => (e: React.PointerEvent) => {
+      if (editingChord === chordId) return;
+      if (e.button !== 0) return;
+      const line = findLine(song, lineId);
+      if (!line) return;
+      const chord = line.chords.find((c) => c.id === chordId);
+      if (!chord) return;
+      const startX = e.clientX;
+      const startPos = chord.pos;
+      const maxPos = Math.max(line.lyric.length, 0);
+      let moved = false;
+      const onMove = (ev: PointerEvent) => {
+        if (!moved && Math.abs(ev.clientX - startX) > 2) {
+          moved = true;
+          setDraggingId(chordId);
+        }
+        if (moved) {
+          const delta = Math.round((ev.clientX - startX) / charWidth);
+          const newPos = Math.max(0, Math.min(maxPos, startPos + delta));
+          update((s) =>
+            mapLine(s, lineId, (l) => ({
+              ...l,
+              chords: l.chords.map((c) =>
+                c.id !== chordId ? c : { ...c, pos: newPos },
+              ),
+            })),
+          );
+        }
+      };
+      const onUp = () => {
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        setDraggingId(null);
+      };
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+    };
+
+  const commitChord = (lineId: string, chordId: string, value: string) => {
+    const trimmed = value.trim();
+    update((s) =>
+      mapLine(s, lineId, (line) => ({
+        ...line,
+        chords: trimmed
+          ? line.chords.map((c) =>
+              c.id !== chordId ? c : { ...c, chord: trimmed },
+            )
+          : line.chords.filter((c) => c.id !== chordId),
+      })),
+    );
+    setEditingChord(null);
+  };
+
+  const deleteChord = (chordId: string) => {
+    update((s) => ({
+      ...s,
+      sections: s.sections.map((sec) => ({
+        ...sec,
+        lines: sec.lines.map((l) => ({
+          ...l,
+          chords: l.chords.filter((c) => c.id !== chordId),
+        })),
+      })),
+    }));
+    setEditingChord((cur) => (cur === chordId ? null : cur));
+  };
+
+  const commitLine = (lineId: string, value: string) => {
+    update((s) =>
+      mapLine(s, lineId, (line) => {
+        const len = value.length;
+        return {
+          ...line,
+          lyric: value,
+          chords: line.chords.map((c) => ({ ...c, pos: Math.min(c.pos, len) })),
+        };
+      }),
+    );
+    setEditingLine(null);
+  };
+
+  const addChordAt = (lineId: string, pos: number) => {
+    const newId = uid();
+    update((s) =>
+      mapLine(s, lineId, (line) => ({
+        ...line,
+        chords: [
+          ...line.chords,
+          {
+            id: newId,
+            pos: Math.max(0, Math.min(line.lyric.length, pos)),
+            chord: "C",
+          },
+        ],
+      })),
+    );
+    setEditingChord(newId);
+  };
+
+  const addLineToSection = (sectionId: string) => {
+    const newLineId = uid();
+    update((s) => ({
+      ...s,
+      sections: s.sections.map((sec) =>
+        sec.id !== sectionId
+          ? sec
+          : {
+              ...sec,
+              lines: [
+                ...sec.lines,
+                { id: newLineId, lyric: "", chords: [] },
+              ],
+            },
+      ),
+    }));
+    setEditingLine(newLineId);
+  };
+
+  const commitSectionLabel = (sectionId: string, label: string) => {
+    const trimmed = label.trim() || "Section";
+    update((s) => ({
+      ...s,
+      sections: s.sections.map((sec) =>
+        sec.id !== sectionId ? sec : { ...sec, label: trimmed },
+      ),
+    }));
+    setEditingSection(null);
+  };
+
+  const moveSection = (sectionId: string, dir: -1 | 1) => {
+    update((s) => {
+      const idx = s.sections.findIndex((sec) => sec.id === sectionId);
+      if (idx === -1) return s;
+      const target = idx + dir;
+      if (target < 0 || target >= s.sections.length) return s;
+      const next = [...s.sections];
+      [next[idx], next[target]] = [next[target], next[idx]];
+      return { ...s, sections: next };
+    });
+  };
+
+  const copySection = (sectionId: string) => {
+    const sec = song.sections.find((x) => x.id === sectionId);
+    if (!sec) return;
+    setClipboard(cloneSection(sec));
+    showToast(`Copied "${sec.label}"`);
+  };
+
+  const pasteSection = (
+    targetSectionId: string,
+    where: "above" | "below",
+  ) => {
+    if (!clipboard) return;
+    const fresh = cloneSection(clipboard);
+    update((s) => {
+      const idx = s.sections.findIndex((sec) => sec.id === targetSectionId);
+      if (idx === -1) return s;
+      const insertAt = where === "above" ? idx : idx + 1;
+      const next = [...s.sections];
+      next.splice(insertAt, 0, fresh);
+      return { ...s, sections: next };
+    });
+    showToast(`Pasted "${fresh.label}"`);
+  };
+
+  const deleteSection = (sectionId: string) => {
+    update((s) => {
+      if (s.sections.length <= 1) return s;
+      return {
+        ...s,
+        sections: s.sections.filter((sec) => sec.id !== sectionId),
+      };
+    });
+  };
+
+  const addSection = () => {
+    const verseCount = song.sections.filter((s) =>
+      /^verse/i.test(s.label),
+    ).length;
+    const newId = uid();
+    update((s) => ({
+      ...s,
+      sections: [
+        ...s.sections,
+        {
+          id: newId,
+          label: `Verse ${verseCount + 1}`,
+          lines: [{ id: uid(), lyric: "", chords: [] }],
+        },
+      ],
+    }));
+    setEditingSection(newId);
+  };
+
+  const moveSectionUpFirst = () => {
+    if (song.sections.length === 0) return;
+    moveSection(song.sections[song.sections.length - 1].id, -1);
+  };
+  const moveSectionDownFirst = () => {
+    if (song.sections.length === 0) return;
+    moveSection(song.sections[0].id, 1);
+  };
+  const copyFirstSection = () => {
+    if (song.sections.length === 0) return;
+    copySection(song.sections[0].id);
+  };
+
+  const fontSize = settings.fontSize;
+  const chordFontSize = Math.round(fontSize * 0.85);
+
+  return (
+    <div className="max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 md:py-8">
+      <span
+        ref={rulerRef}
+        aria-hidden
+        className="font-mono"
+        style={{
+          position: "fixed",
+          top: -1000,
+          left: -1000,
+          opacity: 0,
+          pointerEvents: "none",
+          whiteSpace: "pre",
+          fontSize: `${fontSize}px`,
+        }}
+      >
+        0000000000
+      </span>
+
+      <datalist id="section-presets">
+        {SECTION_PRESETS.map((p) => (
+          <option key={p} value={p} />
+        ))}
+      </datalist>
+
+      <div className="mb-5">
+        {editingTitle ? (
+          <input
+            autoFocus
+            defaultValue={song.title}
+            onFocus={(e) => e.target.select()}
+            onBlur={(e) => {
+              const v = e.target.value.trim() || "Untitled Song";
+              update((s) => ({ ...s, title: v }));
+              setEditingTitle(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                const v = (e.target as HTMLInputElement).value.trim() || "Untitled Song";
+                update((s) => ({ ...s, title: v }));
+                setEditingTitle(false);
+              } else if (e.key === "Escape") {
+                setEditingTitle(false);
+              }
+            }}
+            className="text-2xl md:text-3xl font-bold tracking-tight bg-transparent outline-none w-full ring-2 ring-indigo-500 rounded-lg px-2 -mx-2 py-1"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditingTitle(true)}
+            className="text-2xl md:text-3xl font-bold tracking-tight w-full text-left rounded-lg px-2 -mx-2 py-1 hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors"
+            title="Click to rename song"
+          >
+            {song.title}
+          </button>
+        )}
+        <div className="text-sm text-slate-500 dark:text-slate-400 mt-1 px-0.5 flex items-center gap-2 flex-wrap">
+          <input
+            value={song.artist}
+            onChange={(e) => update((s) => ({ ...s, artist: e.target.value }))}
+            placeholder="Artist"
+            className="bg-transparent outline-none focus:bg-slate-50 dark:focus:bg-slate-900 rounded px-1.5 py-0.5"
+          />
+          <span className="text-slate-300 dark:text-slate-600">·</span>
+          <span>
+            Key{" "}
+            <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+              {song.key}
+            </span>
+          </span>
+          {song.capo ? (
+            <>
+              <span className="text-slate-300 dark:text-slate-600">·</span>
+              <span>
+                Capo{" "}
+                <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                  {song.capo}
+                </span>
+              </span>
+            </>
+          ) : null}
+          {clipboard && (
+            <span className="inline-flex items-center gap-2 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-xs border border-amber-200 dark:border-amber-900 print:hidden">
+              <span className="font-medium">{clipboard.label}</span> copied
+              <button
+                onClick={() => setClipboard(null)}
+                className="text-amber-700/70 dark:text-amber-300/70 hover:text-amber-900 dark:hover:text-amber-100 text-sm leading-none"
+                aria-label="Clear clipboard"
+              >
+                ×
+              </button>
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="mb-5 flex items-center justify-between gap-2 flex-wrap print:hidden">
+        <div className="flex items-center gap-0.5">
+          <ToolBtn onClick={moveSectionUpFirst} title="Move last section up">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="18 15 12 9 6 15" />
+            </svg>
+          </ToolBtn>
+          <ToolBtn onClick={moveSectionDownFirst} title="Move first section down">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </ToolBtn>
+          <ToolBtn onClick={copyFirstSection} title="Copy first section">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+            </svg>
+          </ToolBtn>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onPrint}
+            className="h-9 px-3 rounded-lg text-sm font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 6 2 18 2 18 9" />
+              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+              <rect x="6" y="14" width="12" height="8" />
+            </svg>
+            <span className="hidden sm:inline">Print</span>
+          </button>
+          <button
+            type="button"
+            onClick={onExport}
+            className="h-9 px-3 rounded-lg text-sm font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            <span className="hidden sm:inline">Export</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => showToast("Song saved")}
+            className="h-9 px-3 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center gap-1.5 shadow-sm shadow-indigo-600/30"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+              <polyline points="17 21 17 13 7 13 7 21" />
+              <polyline points="7 3 7 8 15 8" />
+            </svg>
+            <span className="hidden sm:inline">Save</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="mb-5 p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm print:hidden">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400 pl-1 shrink-0">
+            Key
+          </span>
+          <div className="flex gap-1 flex-wrap">
+            {KEYS.map((k) => {
+              const active = song.key === k;
+              return (
+                <button
+                  key={k}
+                  onClick={() => handleTranspose(k)}
+                  className={`min-w-9 h-9 px-2 rounded-lg text-sm font-semibold transition-all ${
+                    active
+                      ? "bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/40 scale-105"
+                      : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300"
+                  }`}
+                >
+                  {k}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400 pl-1 shrink-0">
+            Capo
+          </span>
+          <select
+            value={song.capo ?? ""}
+            onChange={(e) =>
+              handleCapoChange(e.target.value === "" ? null : Number(e.target.value))
+            }
+            className="h-9 px-3 rounded-lg text-sm font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors outline-none border-0"
+          >
+            {CAPO_OPTIONS.map((c) => (
+              <option key={c ?? "none"} value={c ?? ""}>
+                {c === null ? "None" : `Capo ${c}`}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-4 sm:p-6 md:p-8 overflow-x-auto print:border-0 print:shadow-none print:p-0">
+        <div className="space-y-8 min-w-fit">
+          {song.sections.map((section, sIdx) => {
+            const colorKey = getSectionColorKey(section.label);
+            const c = colors[colorKey];
+            return (
+              <section key={section.id} className="group/section">
+                <div className="flex items-center gap-2 mb-3 flex-wrap">
+                  {editingSection === section.id ? (
+                    <input
+                      autoFocus
+                      list="section-presets"
+                      defaultValue={section.label}
+                      size={Math.max(10, section.label.length + 2)}
+                      onFocus={(e) => e.target.select()}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter")
+                          commitSectionLabel(
+                            section.id,
+                            (e.target as HTMLInputElement).value,
+                          );
+                        else if (e.key === "Escape") setEditingSection(null);
+                      }}
+                      onBlur={(e) =>
+                        commitSectionLabel(section.id, e.target.value)
+                      }
+                      className="font-semibold text-xs uppercase tracking-wider outline-none rounded-md px-2.5 py-1 ring-2 ring-indigo-500"
+                      style={{ background: c.bg, color: c.fg }}
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setEditingSection(section.id)}
+                      className="px-2.5 py-1 rounded-md text-xs font-semibold uppercase tracking-wider transition-opacity hover:opacity-80"
+                      style={{ background: c.bg, color: c.fg }}
+                      title="Click to rename section"
+                    >
+                      {section.label}
+                    </button>
+                  )}
+
+                  <div className="flex items-center gap-0.5 ml-1 print:hidden">
+                    <ToolBtn
+                      onClick={() => moveSection(section.id, -1)}
+                      disabled={sIdx === 0}
+                      title="Move section up"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="18 15 12 9 6 15" />
+                      </svg>
+                    </ToolBtn>
+                    <ToolBtn
+                      onClick={() => moveSection(section.id, 1)}
+                      disabled={sIdx === song.sections.length - 1}
+                      title="Move section down"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="6 9 12 15 18 9" />
+                      </svg>
+                    </ToolBtn>
+                    <span className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1" />
+                    <ToolBtn
+                      onClick={() => copySection(section.id)}
+                      title="Copy section"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="9" y="9" width="13" height="13" rx="2" />
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                      </svg>
+                    </ToolBtn>
+                    {clipboard && (
+                      <>
+                        <ToolBtn
+                          onClick={() => pasteSection(section.id, "above")}
+                          title={`Paste "${clipboard.label}" above`}
+                          tone="accent"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="4" y1="4" x2="20" y2="4" />
+                            <polyline points="6 14 12 8 18 14" />
+                            <line x1="12" y1="8" x2="12" y2="20" />
+                          </svg>
+                        </ToolBtn>
+                        <ToolBtn
+                          onClick={() => pasteSection(section.id, "below")}
+                          title={`Paste "${clipboard.label}" below`}
+                          tone="accent"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="12" y1="4" x2="12" y2="16" />
+                            <polyline points="6 10 12 16 18 10" />
+                            <line x1="4" y1="20" x2="20" y2="20" />
+                          </svg>
+                        </ToolBtn>
+                      </>
+                    )}
+                    <span className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1" />
+                    <ToolBtn
+                      onClick={() => deleteSection(section.id)}
+                      disabled={song.sections.length <= 1}
+                      title="Delete section"
+                      tone="danger"
+                    >
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="3 6 5 6 21 6" />
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                        <path d="M10 11v6M14 11v6" />
+                        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                      </svg>
+                    </ToolBtn>
+                  </div>
+                </div>
+
+                <div
+                  className="pl-4 space-y-3"
+                  style={{ borderLeft: `3px solid ${c.bg}` }}
+                >
+                  {section.lines.map((line) => {
+                    const chordRowHeight = chordFontSize + 12;
+                    return (
+                      <div
+                        key={line.id}
+                        className="relative"
+                        style={{ paddingTop: chordRowHeight }}
+                      >
+                        <div
+                          className="absolute left-0 right-0 top-0"
+                          style={{ height: chordRowHeight }}
+                          onClick={(e) => {
+                            if (e.target !== e.currentTarget) return;
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const pos = Math.max(
+                              0,
+                              Math.round((e.clientX - rect.left) / charWidth),
+                            );
+                            addChordAt(line.id, pos);
+                          }}
+                          title="Click to add a chord"
+                        >
+                          {line.chords.map((ch) => (
+                            <div
+                              key={ch.id}
+                              style={{ left: ch.pos * charWidth, top: 0 }}
+                              className="absolute"
+                            >
+                              {editingChord === ch.id ? (
+                                <input
+                                  autoFocus
+                                  defaultValue={ch.chord}
+                                  size={Math.max(3, ch.chord.length + 1)}
+                                  onFocus={(e) => e.target.select()}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter")
+                                      commitChord(
+                                        line.id,
+                                        ch.id,
+                                        (e.target as HTMLInputElement).value,
+                                      );
+                                    else if (e.key === "Escape")
+                                      setEditingChord(null);
+                                  }}
+                                  onBlur={(e) =>
+                                    commitChord(line.id, ch.id, e.target.value)
+                                  }
+                                  className="font-mono font-bold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-200 outline-none rounded px-1 py-0.5 ring-2 ring-indigo-500"
+                                  style={{ fontSize: `${chordFontSize}px` }}
+                                />
+                              ) : (
+                                <span
+                                  onPointerDown={handleChordPointerDown(
+                                    line.id,
+                                    ch.id,
+                                  )}
+                                  onDoubleClick={() => setEditingChord(ch.id)}
+                                  onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    setContextMenu({
+                                      chordId: ch.id,
+                                      x: Math.min(
+                                        e.clientX,
+                                        window.innerWidth - 160,
+                                      ),
+                                      y: Math.min(
+                                        e.clientY,
+                                        window.innerHeight - 96,
+                                      ),
+                                    });
+                                  }}
+                                  className={`inline-block font-mono font-bold select-none px-1 py-0.5 rounded text-indigo-600 dark:text-indigo-300 transition-colors ${
+                                    draggingId === ch.id
+                                      ? "cursor-grabbing bg-indigo-100 dark:bg-indigo-900/70 scale-110 z-20"
+                                      : "cursor-grab hover:bg-indigo-50 dark:hover:bg-indigo-950/60"
+                                  }`}
+                                  style={{
+                                    touchAction: "none",
+                                    fontSize: `${chordFontSize}px`,
+                                  }}
+                                >
+                                  {ch.chord}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+
+                        {editingLine === line.id ? (
+                          <input
+                            autoFocus
+                            defaultValue={line.lyric}
+                            onFocus={(e) => e.target.select()}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter")
+                                commitLine(
+                                  line.id,
+                                  (e.target as HTMLInputElement).value,
+                                );
+                              else if (e.key === "Escape") setEditingLine(null);
+                            }}
+                            onBlur={(e) => commitLine(line.id, e.target.value)}
+                            className="font-mono bg-slate-50 dark:bg-slate-800/60 outline-none rounded px-1 py-0.5 ring-2 ring-indigo-500 w-full"
+                            spellCheck={false}
+                            style={{ fontSize: `${fontSize}px` }}
+                          />
+                        ) : (
+                          <div
+                            onDoubleClick={() => setEditingLine(line.id)}
+                            className="font-mono whitespace-pre cursor-text leading-relaxed hover:bg-slate-50 dark:hover:bg-slate-800/40 rounded px-1 py-0.5 -mx-1 transition-colors"
+                            style={{ fontSize: `${fontSize}px` }}
+                          >
+                            {line.lyric || " "}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+
+                  <button
+                    type="button"
+                    onClick={() => addLineToSection(section.id)}
+                    className="text-xs text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center gap-1 mt-1 print:hidden"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                    Add line
+                  </button>
+                </div>
+              </section>
+            );
+          })}
+        </div>
+
+        <button
+          type="button"
+          onClick={addSection}
+          className="mt-8 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center gap-1.5 border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-600 rounded-xl px-4 py-2.5 w-full justify-center print:hidden"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          Add section
+        </button>
+      </div>
+
+      <div className="mt-5 text-xs text-slate-500 dark:text-slate-400 px-1 leading-relaxed space-y-1 print:hidden">
+        <p>
+          <span className="font-semibold text-slate-700 dark:text-slate-300">Drag</span>{" "}
+          a chord to reposition ·{" "}
+          <span className="font-semibold text-slate-700 dark:text-slate-300">
+            Double-click
+          </span>{" "}
+          to edit ·{" "}
+          <span className="font-semibold text-slate-700 dark:text-slate-300">
+            Right-click
+          </span>{" "}
+          a chord for Edit/Delete · clear & press{" "}
+          <kbd className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-[11px]">
+            Enter
+          </kbd>{" "}
+          to delete
+        </p>
+      </div>
+
+      {contextMenu && (
+        <div
+          role="menu"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+          className="fixed z-50 min-w-[150px] py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/20"
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setEditingChord(contextMenu.chordId);
+              setContextMenu(null);
+            }}
+            className="w-full text-left px-3 py-1.5 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-2"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4z" />
+            </svg>
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              deleteChord(contextMenu.chordId);
+              setContextMenu(null);
+            }}
+            className="w-full text-left px-3 py-1.5 text-sm hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center gap-2"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              <path d="M10 11v6M14 11v6" />
+              <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+            </svg>
+            Delete
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
