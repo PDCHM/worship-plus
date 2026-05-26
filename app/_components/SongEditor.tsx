@@ -292,21 +292,6 @@ export default function SongEditor({
       document.addEventListener("pointerup", onUp);
     };
 
-  const commitChord = (lineId: string, chordId: string, value: string) => {
-    const trimmed = value.trim();
-    update((s) =>
-      mapLine(s, lineId, (line) => ({
-        ...line,
-        chords: trimmed
-          ? line.chords.map((c) =>
-              c.id !== chordId ? c : { ...c, chord: trimmed },
-            )
-          : line.chords.filter((c) => c.id !== chordId),
-      })),
-    );
-    setEditingChord(null);
-  };
-
   const deleteChord = (chordId: string) => {
     update((s) => ({
       ...s,
@@ -319,6 +304,23 @@ export default function SongEditor({
       })),
     }));
     setEditingChord((cur) => (cur === chordId ? null : cur));
+  };
+
+  const commitChord = (lineId: string, chordId: string, value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      deleteChord(chordId);
+      return;
+    }
+    update((s) =>
+      mapLine(s, lineId, (line) => ({
+        ...line,
+        chords: line.chords.map((c) =>
+          c.id !== chordId ? c : { ...c, chord: trimmed },
+        ),
+      })),
+    );
+    setEditingChord(null);
   };
 
   const commitLine = (lineId: string, value: string) => {
@@ -416,6 +418,7 @@ export default function SongEditor({
       next.splice(insertAt, 0, fresh);
       return { ...s, sections: next };
     });
+    setClipboard(null);
     showToast(`Pasted "${fresh.label}"`);
   };
 
@@ -787,7 +790,13 @@ export default function SongEditor({
                           }}
                           title={readOnly ? undefined : "Click to add a chord"}
                         >
-                          {line.chords.map((ch) => (
+                          {line.chords
+                            .filter(
+                              (c) =>
+                                c.chord.trim() !== "" ||
+                                editingChord === c.id,
+                            )
+                            .map((ch) => (
                             <div
                               key={ch.id}
                               style={{ left: ch.pos * charWidth, top: 0 }}
