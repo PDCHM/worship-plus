@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Library from "@/app/_components/Library";
+import PasteSongModal from "@/app/_components/PasteSongModal";
 import SettingsView from "@/app/_components/SettingsView";
 import SongEditor from "@/app/_components/SongEditor";
 import {
@@ -33,6 +34,7 @@ export default function Home() {
   const [loaded, setLoaded] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(false);
+  const [pasteOpen, setPasteOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -126,6 +128,13 @@ export default function Home() {
     setView({ kind: "editor", songId: id });
   };
 
+  const handleImportPasted = (song: Song) => {
+    setSongs((prev) => [song, ...prev]);
+    setView({ kind: "editor", songId: song.id });
+    setPasteOpen(false);
+    showToast(`Imported "${song.title}"`);
+  };
+
   const handleImport = async (file: File) => {
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
     if (ext !== "txt") {
@@ -201,6 +210,7 @@ export default function Home() {
               songs={songs}
               onOpen={openSong}
               onToggleFavorite={toggleFavorite}
+              onPasteSong={() => setPasteOpen(true)}
               filter={view.filter}
             />
           )}
@@ -212,6 +222,7 @@ export default function Home() {
               isDark={isDark}
               onPrint={handlePrint}
               onExport={handleExport}
+              onPasteSong={() => setPasteOpen(true)}
               showToast={showToast}
             />
           )}
@@ -247,6 +258,12 @@ export default function Home() {
       </div>
 
       <BottomTabs view={view} onNavigate={setView} />
+
+      <PasteSongModal
+        open={pasteOpen}
+        onClose={() => setPasteOpen(false)}
+        onImport={handleImportPasted}
+      />
 
       {toast && (
         <div className="fixed bottom-24 md:bottom-6 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-medium shadow-2xl shadow-slate-900/30 z-50 print:hidden">

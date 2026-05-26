@@ -9,6 +9,7 @@ type Props = {
   songs: Song[];
   onOpen: (songId: string) => void;
   onToggleFavorite: (songId: string) => void;
+  onPasteSong: () => void;
   filter: LibraryFilter;
 };
 
@@ -16,6 +17,7 @@ export default function Library({
   songs,
   onOpen,
   onToggleFavorite,
+  onPasteSong,
   filter,
 }: Props) {
   const [query, setQuery] = useState("");
@@ -56,6 +58,17 @@ export default function Library({
             {filtered.length} {filtered.length === 1 ? "song" : "songs"}
           </p>
         </div>
+        <button
+          type="button"
+          onClick={onPasteSong}
+          className="h-10 px-4 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center gap-2 shadow-sm shadow-indigo-600/30"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+            <rect x="8" y="2" width="8" height="4" rx="1" />
+          </svg>
+          Paste Song
+        </button>
       </div>
 
       <div className="mb-6 relative">

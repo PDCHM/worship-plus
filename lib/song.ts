@@ -514,6 +514,158 @@ export function makeSampleSongs(): Song[] {
   return [wayMaker, ...stubSongs];
 }
 
+const SECTION_LABEL_LINE =
+  /^(intro|outro|verse|chorus|bridge|tag|refrain|interlude|ending|pre[\s-]?chorus)\s*(\d+)?\s*:?\s*$/i;
+
+function normalizeSectionLabel(rawBase: string, num?: string): string {
+  const t = rawBase.toLowerCase().replace(/[\s-]/g, "");
+  let base: string;
+  if (t === "intro") base = "Intro";
+  else if (t === "outro") base = "Outro";
+  else if (t === "verse") base = "Verse";
+  else if (t === "chorus") base = "Chorus";
+  else if (t === "bridge") base = "Bridge";
+  else if (t === "tag") base = "Tag";
+  else if (t === "refrain") base = "Refrain";
+  else if (t === "interlude") base = "Interlude";
+  else if (t === "ending") base = "Ending";
+  else base = "Pre-Chorus";
+  return num ? `${base} ${num}` : base;
+}
+
+function detectSectionLabel(text: string): string | null {
+  const m = text.trim().match(SECTION_LABEL_LINE);
+  if (!m) return null;
+  return normalizeSectionLabel(m[1], m[2]);
+}
+
+function isChordLikeToken(t: string): boolean {
+  return CHORD_TOKEN.test(t);
+}
+
+function isPastedChordLine(text: string): boolean {
+  const tokens = text.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return false;
+  if (!tokens.every(isChordLikeToken)) return false;
+  if (tokens.length === 1) return true;
+  // Multi-token: typical chord-above-lyric spacing has 2+ space gaps,
+  // OR tokens contain distinctly chord-shaped chars (digits / # / b accidental / slash).
+  if (/\S\s{2,}\S/.test(text)) return true;
+  return tokens.some(
+    (t) => /[0-9#/]/.test(t) || /^[A-G]b/.test(t),
+  );
+}
+
+function chordPositionsFromLine(chordLine: string, maxLen?: number): Chord[] {
+  const result: Chord[] = [];
+  const re = /\S+/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(chordLine)) !== null) {
+    if (!isChordLikeToken(m[0])) continue;
+    const pos = maxLen == null ? m.index : Math.min(m.index, maxLen);
+    result.push({ id: uid(), pos, chord: m[0] });
+  }
+  return result;
+}
+
+export function parsePastedChart(text: string): {
+  sections: Section[];
+  key: string;
+} {
+  const rawLines = text.replace(/\r/g, "").split("\n");
+  const sections: Section[] = [];
+  let current: Section | null = null;
+  const startNew = (label: string) => {
+    current = { id: uid(), label, lines: [] };
+    sections.push(current);
+  };
+  const ensure = () => {
+    if (!current) startNew("Verse 1");
+    return current!;
+  };
+
+  for (let i = 0; i < rawLines.length; i++) {
+    const l = rawLines[i];
+    if (l.trim() === "") continue;
+
+    const label = detectSectionLabel(l);
+    if (label) {
+      startNew(label);
+      continue;
+    }
+
+    if (/\[[A-G][^\]]*\]/.test(l)) {
+      ensure().lines.push(parseChordProLine(l));
+      continue;
+    }
+
+    if (isPastedChordLine(l)) {
+      let nextIdx = i + 1;
+      while (
+        nextIdx < rawLines.length &&
+        rawLines[nextIdx].trim() === ""
+      ) {
+        nextIdx++;
+      }
+      const next = nextIdx < rawLines.length ? rawLines[nextIdx] : "";
+      const nextIsLyric =
+        next.trim() !== "" &&
+        !isPastedChordLine(next) &&
+        !detectSectionLabel(next);
+
+      if (nextIsLyric) {
+        const chords = chordPositionsFromLine(l, next.length);
+        ensure().lines.push({ id: uid(), lyric: next, chords });
+        i = nextIdx;
+      } else {
+        const chords = chordPositionsFromLine(l);
+        ensure().lines.push({ id: uid(), lyric: "", chords });
+      }
+      continue;
+    }
+
+    ensure().lines.push({ id: uid(), lyric: l, chords: [] });
+  }
+
+  if (!sections.length) startNew("Verse 1");
+
+  let key = "C";
+  outer: for (const s of sections) {
+    for (const line of s.lines) {
+      if (line.chords.length) {
+        const root = line.chords[0].chord.match(/^([A-G][#b]?)/);
+        if (root) {
+          key = root[1];
+          break outer;
+        }
+      }
+    }
+  }
+
+  return { sections, key };
+}
+
+export function pastedChartToSong(
+  text: string,
+  title: string,
+  artist: string,
+): Song {
+  const { sections, key } = parsePastedChart(text);
+  const now = Date.now();
+  return {
+    id: uid(),
+    title: title.trim() || "Untitled Song",
+    artist: artist.trim(),
+    key,
+    capo: null,
+    bpm: null,
+    sections,
+    favorite: false,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 export function mapLine(
   song: Song,
   lineId: string,
