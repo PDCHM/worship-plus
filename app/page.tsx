@@ -302,6 +302,17 @@ export default function Home() {
     setEditingChord(null);
   };
 
+  const deleteChord = (chordId: string) => {
+    setSong((prev) => ({
+      ...prev,
+      lines: prev.lines.map((l) => ({
+        ...l,
+        chords: l.chords.filter((c) => c.id !== chordId),
+      })),
+    }));
+    setEditingChord((cur) => (cur === chordId ? null : cur));
+  };
+
   const commitLine = (lineId: string, value: string) => {
     setSong((prev) => ({
       ...prev,
@@ -538,7 +549,7 @@ export default function Home() {
                     <div
                       key={c.id}
                       style={{ left: c.pos * charWidth, top: 0 }}
-                      className="absolute"
+                      className="absolute group/chord"
                     >
                       {editingChord === c.id ? (
                         <input
@@ -555,18 +566,32 @@ export default function Home() {
                           className="font-mono font-bold text-sm bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-200 outline-none rounded px-1 py-0.5 ring-2 ring-indigo-500"
                         />
                       ) : (
-                        <span
-                          onPointerDown={handleChordPointerDown(line.id, c.id)}
-                          onDoubleClick={() => setEditingChord(c.id)}
-                          className={`inline-block font-mono font-bold text-sm select-none px-1 py-0.5 rounded text-indigo-600 dark:text-indigo-300 transition-colors ${
-                            draggingId === c.id
-                              ? "cursor-grabbing bg-indigo-100 dark:bg-indigo-900/70 scale-110 z-20"
-                              : "cursor-grab hover:bg-indigo-50 dark:hover:bg-indigo-950/60"
-                          }`}
-                          style={{ touchAction: "none" }}
-                        >
-                          {c.chord}
-                        </span>
+                        <>
+                          <span
+                            onPointerDown={handleChordPointerDown(line.id, c.id)}
+                            onDoubleClick={() => setEditingChord(c.id)}
+                            className={`inline-block font-mono font-bold text-sm select-none px-1 py-0.5 rounded text-indigo-600 dark:text-indigo-300 transition-colors ${
+                              draggingId === c.id
+                                ? "cursor-grabbing bg-indigo-100 dark:bg-indigo-900/70 scale-110 z-20"
+                                : "cursor-grab hover:bg-indigo-50 dark:hover:bg-indigo-950/60"
+                            }`}
+                            style={{ touchAction: "none" }}
+                          >
+                            {c.chord}
+                          </span>
+                          <button
+                            type="button"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteChord(c.id);
+                            }}
+                            aria-label={`Delete chord ${c.chord}`}
+                            className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-200 text-[11px] leading-none font-bold flex items-center justify-center shadow-sm opacity-0 group-hover/chord:opacity-100 focus:opacity-100 hover:bg-rose-500 hover:text-white dark:hover:bg-rose-500 transition-all"
+                          >
+                            ×
+                          </button>
+                        </>
                       )}
                     </div>
                   ))}
