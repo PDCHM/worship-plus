@@ -551,6 +551,7 @@ export default function Home() {
               song={activeSong}
               onChange={upsertSong}
               settings={settings}
+              onSettingsChange={setSettings}
               isDark={isDark}
               onPrint={handlePrint}
               onExport={handleExport}

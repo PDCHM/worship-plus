@@ -30,6 +30,7 @@ type Props = {
   song: Song;
   onChange: (song: Song) => void;
   settings: Settings;
+  onSettingsChange: (s: Settings) => void;
   isDark: boolean;
   onPrint: () => void;
   onExport: () => void;
@@ -160,6 +161,7 @@ export default function SongEditor({
   song,
   onChange,
   settings,
+  onSettingsChange,
   isDark,
   onPrint,
   onExport,
@@ -180,6 +182,7 @@ export default function SongEditor({
   } | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("standard");
   const [charWidth, setCharWidth] = useState(9.6);
+  const [printOpen, setPrintOpen] = useState(false);
   const rulerRef = useRef<HTMLSpanElement>(null);
 
   const colors = isDark ? settings.sectionColorsDark : settings.sectionColorsLight;
@@ -585,18 +588,21 @@ export default function SongEditor({
             </svg>
             <span className="hidden sm:inline">Paste Song</span>
           </button>
-          <button
-            type="button"
-            onClick={onPrint}
-            className="h-9 px-3 rounded-lg text-sm font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="6 9 6 2 18 2 18 9" />
-              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
-              <rect x="6" y="14" width="12" height="8" />
-            </svg>
-            <span className="hidden sm:inline">Print</span>
-          </button>
+          <div className="relative">
+            <button type="button" onClick={() => setPrintOpen((o) => !o)}
+              className="h-9 px-3 rounded-lg text-sm font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+              <span className="hidden sm:inline">Print</span>
+            </button>
+            {printOpen && (
+              <PrintOptionsPanel
+                settings={settings}
+                onSettingsChange={onSettingsChange}
+                onPrint={() => { setPrintOpen(false); onPrint(); }}
+                onClose={() => setPrintOpen(false)}
+              />
+            )}
+          </div>
           <button
             type="button"
             onClick={onExport}
@@ -1034,6 +1040,53 @@ export default function SongEditor({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+function PrintOptionsPanel({ settings, onSettingsChange, onPrint, onClose }: {
+  settings: Settings;
+  onSettingsChange: (s: Settings) => void;
+  onPrint: () => void;
+  onClose: () => void;
+}) {
+  const update = (patch: Partial<Settings>) => onSettingsChange({ ...settings, ...patch });
+  return (
+    <div className="absolute right-0 top-full mt-2 z-30 w-56 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium">Columns</span>
+        <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-600 overflow-hidden text-xs">
+          {([1, 2] as const).map((c) => (
+            <button key={c} type="button" onClick={() => update({ printColumns: c })}
+              className={`h-7 px-2.5 font-medium transition-colors ${(settings.printColumns ?? 1) === c ? "bg-indigo-600 text-white" : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"}`}>
+              {c === 1 ? "1 col" : "2 col"}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium">Chords</span>
+        <button type="button" onClick={() => update({ showChords: !(settings.showChords ?? true) })}
+          className={`relative w-10 h-6 rounded-full transition-colors ${(settings.showChords ?? true) ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-600"}`}>
+          <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${(settings.showChords ?? true) ? "translate-x-4" : "translate-x-0"}`} />
+        </button>
+      </div>
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium">Page</span>
+        <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-600 overflow-hidden text-xs">
+          {(["A4", "Letter"] as const).map((p) => (
+            <button key={p} type="button" onClick={() => update({ printLayout: p })}
+              className={`h-7 px-2.5 font-medium transition-colors ${settings.printLayout === p ? "bg-indigo-600 text-white" : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"}`}>
+              {p}
+            </button>
+          ))}
+        </div>
+      </div>
+      <button type="button" onClick={onPrint}
+        className="w-full h-9 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 flex items-center justify-center gap-2">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+        Print Now
+      </button>
     </div>
   );
 }
