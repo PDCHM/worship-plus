@@ -35,9 +35,12 @@ create table if not exists public.sections (
   id          uuid primary key default gen_random_uuid(),
   song_id     uuid not null references public.songs(id) on delete cascade,
   label       text not null,
+  type        text,
   position    integer not null default 0,
   created_at  timestamptz not null default now()
 );
+
+alter table public.sections add column if not exists type text;
 
 create table if not exists public.lines (
   id          uuid primary key default gen_random_uuid(),

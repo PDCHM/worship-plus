@@ -141,10 +141,6 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 export function uid(): string {
-  return Math.random().toString(36).slice(2, 10);
-}
-
-export function songUid(): string {
   if (
     typeof crypto !== "undefined" &&
     typeof crypto.randomUUID === "function"
@@ -158,6 +154,9 @@ export function songUid(): string {
     return v.toString(16);
   });
 }
+
+// Alias kept for any older callers; uid() is now UUID for every entity.
+export const songUid = uid;
 
 export function noteToIndex(note: string): number {
   const head =

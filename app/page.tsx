@@ -12,6 +12,7 @@ import {
   DEFAULT_SETTINGS,
   DEFAULT_SECTION_COLORS_DARK,
   DEFAULT_SECTION_COLORS_LIGHT,
+  getSectionColorKey,
   makeNewSong,
   parseSongText,
   serializeSong,
@@ -38,21 +39,6 @@ type Profile = {
   avatar_url: string | null;
 };
 
-function songToRow(song: Song, userId: string) {
-  return {
-    id: song.id,
-    user_id: userId,
-    title: song.title,
-    artist: song.artist || null,
-    key: song.key,
-    bpm: song.bpm,
-    capo: song.capo,
-    favorite: song.favorite,
-    data: { sections: song.sections },
-    updated_at: new Date(song.updatedAt).toISOString(),
-  };
-}
-
 type SongRow = {
   id: string;
   title: string;
@@ -61,12 +47,48 @@ type SongRow = {
   bpm: number | null;
   capo: number | null;
   favorite: boolean;
-  data: { sections?: Song["sections"] } | null;
   created_at: string;
   updated_at: string;
+  sections?: Array<{
+    id: string;
+    label: string;
+    position: number;
+    lines?: Array<{
+      id: string;
+      lyric: string;
+      position: number;
+      chords?: Array<{
+        id: string;
+        chord_name: string;
+        position_px: number;
+      }> | null;
+    }> | null;
+  }> | null;
 };
 
 function rowToSong(row: SongRow): Song {
+  const sections = (row.sections ?? [])
+    .slice()
+    .sort((a, b) => a.position - b.position)
+    .map((s) => ({
+      id: s.id,
+      label: s.label,
+      lines: (s.lines ?? [])
+        .slice()
+        .sort((a, b) => a.position - b.position)
+        .map((l) => ({
+          id: l.id,
+          lyric: l.lyric,
+          chords: (l.chords ?? [])
+            .slice()
+            .sort((a, b) => a.position_px - b.position_px)
+            .map((c) => ({
+              id: c.id,
+              pos: c.position_px,
+              chord: c.chord_name,
+            })),
+        })),
+    }));
   return {
     id: row.id,
     title: row.title,
@@ -75,10 +97,15 @@ function rowToSong(row: SongRow): Song {
     bpm: row.bpm,
     capo: row.capo,
     favorite: !!row.favorite,
-    sections: row.data?.sections ?? [],
+    sections,
     createdAt: new Date(row.created_at).getTime(),
     updatedAt: new Date(row.updated_at).getTime(),
   };
+}
+
+function logErr(label: string, err: { message?: string; details?: string; hint?: string } | null) {
+  if (!err) return;
+  console.error(label, err.message, err.details, err.hint);
 }
 
 async function saveSongToDb(
@@ -86,8 +113,100 @@ async function saveSongToDb(
   song: Song,
   userId: string,
 ) {
-  const { error } = await supabase.from("songs").upsert(songToRow(song, userId));
-  if (error) console.error("save song failed", error);
+  // 1. Upsert song header (insert or update by primary key)
+  const { error: songError } = await supabase.from("songs").upsert({
+    id: song.id,
+    user_id: userId,
+    title: song.title,
+    artist: song.artist || null,
+    key: song.key,
+    bpm: song.bpm,
+    capo: song.capo,
+    favorite: song.favorite,
+    updated_at: new Date(song.updatedAt).toISOString(),
+  });
+  if (songError) {
+    logErr("save song failed", songError);
+    return;
+  }
+
+  // 2. Wipe existing sections — CASCADE removes child lines and chords
+  const { error: delError } = await supabase
+    .from("sections")
+    .delete()
+    .eq("song_id", song.id);
+  if (delError) {
+    logErr("delete old sections failed", delError);
+    return;
+  }
+
+  // 3. Build flat batches in dependency order
+  const sectionRows: Array<{
+    id: string;
+    song_id: string;
+    label: string;
+    type: string;
+    position: number;
+  }> = [];
+  const lineRows: Array<{
+    id: string;
+    section_id: string;
+    lyric: string;
+    position: number;
+  }> = [];
+  const chordRows: Array<{
+    id: string;
+    line_id: string;
+    chord_name: string;
+    position_px: number;
+  }> = [];
+
+  song.sections.forEach((section, sIdx) => {
+    sectionRows.push({
+      id: section.id,
+      song_id: song.id,
+      label: section.label,
+      type: getSectionColorKey(section.label),
+      position: sIdx,
+    });
+    section.lines.forEach((line, lIdx) => {
+      lineRows.push({
+        id: line.id,
+        section_id: section.id,
+        lyric: line.lyric,
+        position: lIdx,
+      });
+      line.chords.forEach((chord) => {
+        chordRows.push({
+          id: chord.id,
+          line_id: line.id,
+          chord_name: chord.chord,
+          position_px: chord.pos,
+        });
+      });
+    });
+  });
+
+  if (sectionRows.length) {
+    const { error } = await supabase.from("sections").insert(sectionRows);
+    if (error) {
+      logErr("insert sections failed", error);
+      return;
+    }
+  }
+  if (lineRows.length) {
+    const { error } = await supabase.from("lines").insert(lineRows);
+    if (error) {
+      logErr("insert lines failed", error);
+      return;
+    }
+  }
+  if (chordRows.length) {
+    const { error } = await supabase.from("chords").insert(chordRows);
+    if (error) {
+      logErr("insert chords failed", error);
+    }
+  }
 }
 
 export default function Home() {
@@ -137,11 +256,9 @@ export default function Home() {
             .maybeSingle(),
           supabase
             .from("songs")
-            .select(
-              "id, title, artist, key, bpm, capo, favorite, data, created_at, updated_at",
-            )
+            .select("*, sections(*, lines(*, chords(*)))")
             .eq("user_id", u.id)
-            .order("updated_at", { ascending: false }),
+            .order("created_at", { ascending: false }),
         ]);
       if (cancelled) return;
 
@@ -161,7 +278,14 @@ export default function Home() {
         });
       }
 
-      if (songsError) console.error("load songs failed", songsError);
+      if (songsError) {
+        console.error(
+          "load songs failed",
+          songsError.message,
+          songsError.details,
+          songsError.hint,
+        );
+      }
       const loaded = (songRows ?? []).map((r) => rowToSong(r as SongRow));
       setSongs(loaded);
       setSongsLoaded(true);
@@ -286,17 +410,26 @@ export default function Home() {
     scheduleSave(updated);
   };
 
-  const toggleFavorite = (songId: string) => {
-    setSongs((prev) => {
-      const next = prev.map((s) =>
-        s.id !== songId
-          ? s
-          : { ...s, favorite: !s.favorite, updatedAt: Date.now() },
-      );
-      const changed = next.find((s) => s.id === songId);
-      if (changed) scheduleSave(changed);
-      return next;
-    });
+  const toggleFavorite = async (songId: string) => {
+    const current = songs.find((s) => s.id === songId);
+    if (!current) return;
+    const newFav = !current.favorite;
+    const now = Date.now();
+    setSongs((prev) =>
+      prev.map((s) =>
+        s.id !== songId ? s : { ...s, favorite: newFav, updatedAt: now },
+      ),
+    );
+    if (!user) return;
+    // Targeted favourite update — no need to re-insert the entire section tree.
+    const { error } = await supabase
+      .from("songs")
+      .update({
+        favorite: newFav,
+        updated_at: new Date(now).toISOString(),
+      })
+      .eq("id", songId);
+    if (error) logErr("toggle favorite failed", error);
   };
 
   const deleteSong = async (songId: string) => {
@@ -447,6 +580,10 @@ export default function Home() {
               onPrint={handlePrint}
               onExport={handleExport}
               onPasteSong={() => setPasteOpen(true)}
+              onSave={() => {
+                flushPendingSaves();
+                showToast("Song saved");
+              }}
               showToast={showToast}
             />
           )}

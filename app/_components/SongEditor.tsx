@@ -28,6 +28,7 @@ type Props = {
   onPrint: () => void;
   onExport: () => void;
   onPasteSong: () => void;
+  onSave: () => void;
   showToast: (msg: string) => void;
 };
 
@@ -157,6 +158,7 @@ export default function SongEditor({
   onPrint,
   onExport,
   onPasteSong,
+  onSave,
   showToast,
 }: Props) {
   const [editingChord, setEditingChord] = useState<string | null>(null);
@@ -601,7 +603,7 @@ export default function SongEditor({
           </button>
           <button
             type="button"
-            onClick={() => showToast("Song saved")}
+            onClick={onSave}
             className="h-9 px-3 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center gap-1.5 shadow-sm shadow-indigo-600/30"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
