@@ -1,15 +1,34 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 type LoadingState = null | "google" | "email";
 
 export default function LoginPage() {
+  const router = useRouter();
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState<LoadingState>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (cancelled) return;
+      if (user) {
+        router.replace("/");
+      } else {
+        setCheckingAuth(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -17,6 +36,39 @@ export default function LoginPage() {
       setError("Sign-in failed. Please try again.");
     }
   }, []);
+
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 flex items-center justify-center text-white font-bold shadow-lg shadow-indigo-500/30">
+            W<span className="text-blue-200">+</span>
+          </div>
+          <svg
+            className="animate-spin h-4 w-4 text-slate-400"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-label="Loading"
+          >
+            <circle
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="3"
+              opacity="0.25"
+            />
+            <path
+              d="M4 12a8 8 0 0 1 8-8"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+            />
+          </svg>
+        </div>
+      </div>
+    );
+  }
 
   const handleGoogle = async () => {
     setLoading("google");

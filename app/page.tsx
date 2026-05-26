@@ -97,6 +97,7 @@ export default function Home() {
   const supabase = supabaseRef.current;
 
   const [user, setUser] = useState<User | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [songs, setSongs] = useState<Song[]>([]);
   const [songsLoaded, setSongsLoaded] = useState(false);
@@ -120,10 +121,12 @@ export default function Home() {
       } = await supabase.auth.getUser();
       if (cancelled) return;
       if (!u) {
+        setAuthChecked(true);
         router.replace("/login");
         return;
       }
       setUser(u);
+      setAuthChecked(true);
 
       const [{ data: profileRow }, { data: songRows, error: songsError }] =
         await Promise.all([
@@ -388,6 +391,10 @@ export default function Home() {
   const activeSong =
     view.kind === "editor" ? songs.find((s) => s.id === view.songId) : null;
 
+  if (!authChecked || !user) {
+    return <LoadingScreen />;
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
       <input
@@ -487,6 +494,39 @@ export default function Home() {
           {toast}
         </div>
       )}
+    </div>
+  );
+}
+
+function LoadingScreen() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 flex items-center justify-center text-white font-bold shadow-lg shadow-indigo-500/30">
+          W<span className="text-blue-200">+</span>
+        </div>
+        <svg
+          className="animate-spin h-4 w-4 text-slate-400"
+          viewBox="0 0 24 24"
+          fill="none"
+          aria-label="Loading"
+        >
+          <circle
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="3"
+            opacity="0.25"
+          />
+          <path
+            d="M4 12a8 8 0 0 1 8-8"
+            stroke="currentColor"
+            strokeWidth="3"
+            strokeLinecap="round"
+          />
+        </svg>
+      </div>
     </div>
   );
 }
