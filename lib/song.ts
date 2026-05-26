@@ -98,6 +98,7 @@ export type SectionColorKey =
   | "chorus"
   | "bridge"
   | "prechorus"
+  | "tag"
   | "default";
 export type SectionColorMap = Record<SectionColorKey, SectionColor>;
 
@@ -106,6 +107,7 @@ export const DEFAULT_SECTION_COLORS_LIGHT: SectionColorMap = {
   chorus: { bg: "#E1F5EE", fg: "#085041" },
   bridge: { bg: "#FAEEDA", fg: "#633806" },
   prechorus: { bg: "#FBEAF0", fg: "#0C447C" },
+  tag: { bg: "#F3E8FF", fg: "#5B21B6" },
   default: { bg: "#F1F5F9", fg: "#334155" },
 };
 
@@ -114,12 +116,13 @@ export const DEFAULT_SECTION_COLORS_DARK: SectionColorMap = {
   chorus: { bg: "#0B3329", fg: "#8FD7BD" },
   bridge: { bg: "#2E1F08", fg: "#E5BB7A" },
   prechorus: { bg: "#2B1521", fg: "#E593B5" },
+  tag: { bg: "#2A1F47", fg: "#C4A5F0" },
   default: { bg: "#1E293B", fg: "#94A3B8" },
 };
 
 export type Settings = {
   fontSize: number;
-  darkMode: "light" | "dark" | "system";
+  darkMode: boolean;
   sectionColorsLight: SectionColorMap;
   sectionColorsDark: SectionColorMap;
   defaultInstrument: "Guitar" | "Piano" | "Ukulele";
@@ -129,7 +132,7 @@ export type Settings = {
 
 export const DEFAULT_SETTINGS: Settings = {
   fontSize: 17,
-  darkMode: "system",
+  darkMode: false,
   sectionColorsLight: DEFAULT_SECTION_COLORS_LIGHT,
   sectionColorsDark: DEFAULT_SECTION_COLORS_DARK,
   defaultInstrument: "Guitar",
@@ -176,6 +179,7 @@ export function getSectionColorKey(label: string): SectionColorKey {
   if (t.includes("verse")) return "verse";
   if (t.includes("chorus")) return "chorus";
   if (t.includes("bridge")) return "bridge";
+  if (t.includes("tag")) return "tag";
   return "default";
 }
 

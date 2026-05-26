@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import {
   CAPO_OPTIONS,
   KEYS,
@@ -60,6 +60,30 @@ function ToolBtn({
       className={`w-8 h-8 rounded-md flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed transition-colors ${toneClasses}`}
     >
       {children}
+    </button>
+  );
+}
+
+function PasteHint({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full py-2.5 rounded-lg border-2 border-dashed border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 text-sm font-medium hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors flex items-center justify-center gap-2 print:hidden"
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="9" y="9" width="13" height="13" rx="2" />
+        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+      </svg>
+      <span>
+        Paste Section <span className="font-semibold">&ldquo;{label}&rdquo;</span> here
+      </span>
     </button>
   );
 }
@@ -375,7 +399,7 @@ export default function SongEditor({
     const sec = song.sections.find((x) => x.id === sectionId);
     if (!sec) return;
     setClipboard(cloneSection(sec));
-    showToast(`Copied "${sec.label}"`);
+    showToast("Section copied!");
   };
 
   const pasteSection = (
@@ -643,7 +667,8 @@ export default function SongEditor({
               ? "group/section break-inside-avoid mb-6 last:mb-0"
               : "group/section";
             return (
-              <section key={section.id} className={sectionClassName}>
+              <Fragment key={section.id}>
+              <section className={sectionClassName}>
                 <div className="flex items-center gap-2 mb-3 flex-wrap">
                   {editingSection === section.id && !readOnly ? (
                     <input
@@ -715,32 +740,6 @@ export default function SongEditor({
                           <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                         </svg>
                       </ToolBtn>
-                      {clipboard && (
-                        <>
-                          <ToolBtn
-                            onClick={() => pasteSection(section.id, "above")}
-                            title={`Paste "${clipboard.label}" above`}
-                            tone="accent"
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                              <line x1="4" y1="4" x2="20" y2="4" />
-                              <polyline points="6 14 12 8 18 14" />
-                              <line x1="12" y1="8" x2="12" y2="20" />
-                            </svg>
-                          </ToolBtn>
-                          <ToolBtn
-                            onClick={() => pasteSection(section.id, "below")}
-                            title={`Paste "${clipboard.label}" below`}
-                            tone="accent"
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                              <line x1="12" y1="4" x2="12" y2="16" />
-                              <polyline points="6 10 12 16 18 10" />
-                              <line x1="4" y1="20" x2="20" y2="20" />
-                            </svg>
-                          </ToolBtn>
-                        </>
-                      )}
                       <span className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1" />
                       <ToolBtn
                         onClick={() => deleteSection(section.id)}
@@ -919,6 +918,13 @@ export default function SongEditor({
                   )}
                 </div>
               </section>
+              {clipboard && !readOnly && (
+                <PasteHint
+                  label={clipboard.label}
+                  onClick={() => pasteSection(section.id, "below")}
+                />
+              )}
+              </Fragment>
             );
           })}
         </div>

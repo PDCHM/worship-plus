@@ -26,6 +26,9 @@ type View =
 
 const SONGS_KEY = "wp-songs-v2";
 const SETTINGS_KEY = "wp-settings-v1";
+const LIBRARY_VIEW_KEY = "wp-library-view-v1";
+
+type LibraryView = "grid" | "list";
 
 export default function Home() {
   const [songs, setSongs] = useState<Song[]>(() => makeSampleSongs());
@@ -35,9 +38,11 @@ export default function Home() {
   const [toast, setToast] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
+  const [libraryView, setLibraryView] = useState<LibraryView>("grid");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    let sawSettings = false;
     try {
       const savedSongs = localStorage.getItem(SONGS_KEY);
       if (savedSongs) {
@@ -46,7 +51,16 @@ export default function Home() {
       }
       const savedSettings = localStorage.getItem(SETTINGS_KEY);
       if (savedSettings) {
+        sawSettings = true;
         const parsed = JSON.parse(savedSettings);
+        if (typeof parsed.darkMode === "string") {
+          const sysDark =
+            typeof window !== "undefined" &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches;
+          parsed.darkMode =
+            parsed.darkMode === "dark" ||
+            (parsed.darkMode === "system" && sysDark);
+        }
         setSettings({
           ...DEFAULT_SETTINGS,
           ...parsed,
@@ -60,7 +74,15 @@ export default function Home() {
           },
         });
       }
+      const savedView = localStorage.getItem(LIBRARY_VIEW_KEY);
+      if (savedView === "grid" || savedView === "list") {
+        setLibraryView(savedView);
+      }
     } catch {}
+    if (!sawSettings && typeof window !== "undefined") {
+      const sysDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      setSettings((prev) => ({ ...prev, darkMode: sysDark }));
+    }
     setLoaded(true);
   }, []);
 
@@ -79,20 +101,15 @@ export default function Home() {
   }, [settings, loaded]);
 
   useEffect(() => {
-    const apply = () => {
-      const sysDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      const dark =
-        settings.darkMode === "dark" ||
-        (settings.darkMode === "system" && sysDark);
-      setIsDark(dark);
-      document.documentElement.classList.toggle("dark", dark);
-    };
-    apply();
-    if (settings.darkMode === "system") {
-      const mq = window.matchMedia("(prefers-color-scheme: dark)");
-      mq.addEventListener("change", apply);
-      return () => mq.removeEventListener("change", apply);
-    }
+    if (!loaded) return;
+    try {
+      localStorage.setItem(LIBRARY_VIEW_KEY, libraryView);
+    } catch {}
+  }, [libraryView, loaded]);
+
+  useEffect(() => {
+    setIsDark(settings.darkMode);
+    document.documentElement.classList.toggle("dark", settings.darkMode);
   }, [settings.darkMode]);
 
   const showToast = (msg: string) => {
@@ -116,6 +133,17 @@ export default function Home() {
         s.id !== songId ? s : { ...s, favorite: !s.favorite, updatedAt: Date.now() },
       ),
     );
+  };
+
+  const deleteSong = (songId: string) => {
+    setSongs((prev) => prev.filter((s) => s.id !== songId));
+    setView((prev) => {
+      if (prev.kind === "editor" && prev.songId === songId) {
+        return { kind: "library", filter: "all" };
+      }
+      return prev;
+    });
+    showToast("Song deleted");
   };
 
   const newSong = () => {
@@ -211,7 +239,11 @@ export default function Home() {
               onOpen={openSong}
               onToggleFavorite={toggleFavorite}
               onPasteSong={() => setPasteOpen(true)}
+              onDelete={deleteSong}
+              showToast={showToast}
               filter={view.filter}
+              libraryView={libraryView}
+              onLibraryViewChange={setLibraryView}
             />
           )}
           {view.kind === "editor" && activeSong && (

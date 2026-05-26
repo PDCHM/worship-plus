@@ -19,6 +19,7 @@ const SECTION_KEYS: { key: SectionColorKey; label: string }[] = [
   { key: "chorus", label: "Chorus" },
   { key: "bridge", label: "Bridge" },
   { key: "prechorus", label: "Pre-Chorus" },
+  { key: "tag", label: "Tag" },
   { key: "default", label: "Other" },
 ];
 
@@ -96,23 +97,25 @@ export default function SettingsView({ settings, onChange, isDark }: Props) {
             </button>
           </div>
         </Row>
-        <Row label="Theme">
-          <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
-            {(["light", "dark", "system"] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => update({ darkMode: m })}
-                className={`h-10 px-3 text-sm font-medium capitalize transition-colors ${
-                  settings.darkMode === m
-                    ? "bg-indigo-600 text-white"
-                    : "bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-                }`}
-              >
-                {m}
-              </button>
-            ))}
-          </div>
+        <Row label="Dark mode">
+          <button
+            type="button"
+            onClick={() => update({ darkMode: !settings.darkMode })}
+            role="switch"
+            aria-checked={settings.darkMode}
+            aria-label="Toggle dark mode"
+            className={`relative w-12 h-7 rounded-full transition-colors ${
+              settings.darkMode
+                ? "bg-indigo-600"
+                : "bg-slate-200 dark:bg-slate-700"
+            }`}
+          >
+            <span
+              className={`absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-white shadow-md transition-transform ${
+                settings.darkMode ? "translate-x-5" : "translate-x-0"
+              }`}
+            />
+          </button>
         </Row>
       </Section>
 
