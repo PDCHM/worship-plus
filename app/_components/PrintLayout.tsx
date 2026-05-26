@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { getSectionColorKey, type Chord, type Song, type Settings } from "@/lib/song";
 
 const FONT_CSS: Record<string, string> = {
@@ -22,6 +24,9 @@ function buildChordLine(chords: Chord[], pxPerChar: number): string {
 type Props = { song: Song; settings: Settings };
 
 export default function PrintLayout({ song, settings }: Props) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   const fontFamily   = FONT_CSS[settings.fontFamily ?? "system"];
   const fontSize     = settings.fontSize ?? 17;
   const showChords   = settings.showChords ?? true;
@@ -33,11 +38,12 @@ export default function PrintLayout({ song, settings }: Props) {
   // px width one character takes at the current font size (rough heuristic)
   const pxPerChar = fontSize * 0.55;
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div
       id="wp-print-root"
       style={{
-        display: "none",           // hidden on screen; print CSS overrides this
         fontFamily,
         fontSize: `${fontSize}px`,
         lineHeight: 1.5,
@@ -151,6 +157,7 @@ export default function PrintLayout({ song, settings }: Props) {
           );
         })}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

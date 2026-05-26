@@ -401,11 +401,11 @@ export default function Home() {
 
   const handlePrint = () => {
     if (!activeSong) return;
-    const existing = document.getElementById("wp-print-styles");
+    const existing = document.getElementById("wp-print-page-size");
     if (existing) existing.remove();
     const style = document.createElement("style");
-    style.id = "wp-print-styles";
-    style.textContent = `@page { size: ${settings.printLayout === "A4" ? "A4" : "letter"}; margin: 0.6in; } @media print { body > * { display: none !important; } #wp-print-root { display: block !important; } }`;
+    style.id = "wp-print-page-size";
+    style.textContent = "@page { size: " + (settings.printLayout === "A4" ? "A4" : "letter") + "; margin: 0.6in; }";
     document.head.appendChild(style);
     window.print();
   };

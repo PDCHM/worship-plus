@@ -28,3 +28,16 @@ html, body {
 ::selection {
   background: rgb(99 102 241 / 0.25);
 }
+
+#wp-print-root {
+  display: none;
+}
+
+@media print {
+  body > *:not(#wp-print-root) {
+    display: none !important;
+  }
+  #wp-print-root {
+    display: block !important;
+  }
+}
