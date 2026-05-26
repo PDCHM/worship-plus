@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import type { SupabaseClient, User } from "@supabase/supabase-js";
+import { createClient } from "@/lib/supabase/client";
 import Library from "@/app/_components/Library";
 import PasteSongModal from "@/app/_components/PasteSongModal";
 import SettingsView from "@/app/_components/SettingsView";
@@ -10,7 +13,6 @@ import {
   DEFAULT_SECTION_COLORS_DARK,
   DEFAULT_SECTION_COLORS_LIGHT,
   makeNewSong,
-  makeSampleSongs,
   parseSongText,
   serializeSong,
   type Settings,
@@ -24,14 +26,80 @@ type View =
   | { kind: "folders" }
   | { kind: "groups" };
 
-const SONGS_KEY = "wp-songs-v2";
 const SETTINGS_KEY = "wp-settings-v1";
 const LIBRARY_VIEW_KEY = "wp-library-view-v1";
 
 type LibraryView = "grid" | "list";
 
+type Profile = {
+  id: string;
+  email: string | null;
+  full_name: string | null;
+  avatar_url: string | null;
+};
+
+function songToRow(song: Song, userId: string) {
+  return {
+    id: song.id,
+    user_id: userId,
+    title: song.title,
+    artist: song.artist || null,
+    key: song.key,
+    bpm: song.bpm,
+    capo: song.capo,
+    favorite: song.favorite,
+    data: { sections: song.sections },
+    updated_at: new Date(song.updatedAt).toISOString(),
+  };
+}
+
+type SongRow = {
+  id: string;
+  title: string;
+  artist: string | null;
+  key: string;
+  bpm: number | null;
+  capo: number | null;
+  favorite: boolean;
+  data: { sections?: Song["sections"] } | null;
+  created_at: string;
+  updated_at: string;
+};
+
+function rowToSong(row: SongRow): Song {
+  return {
+    id: row.id,
+    title: row.title,
+    artist: row.artist ?? "",
+    key: row.key,
+    bpm: row.bpm,
+    capo: row.capo,
+    favorite: !!row.favorite,
+    sections: row.data?.sections ?? [],
+    createdAt: new Date(row.created_at).getTime(),
+    updatedAt: new Date(row.updated_at).getTime(),
+  };
+}
+
+async function saveSongToDb(
+  supabase: SupabaseClient,
+  song: Song,
+  userId: string,
+) {
+  const { error } = await supabase.from("songs").upsert(songToRow(song, userId));
+  if (error) console.error("save song failed", error);
+}
+
 export default function Home() {
-  const [songs, setSongs] = useState<Song[]>(() => makeSampleSongs());
+  const router = useRouter();
+  const supabaseRef = useRef<SupabaseClient | null>(null);
+  if (!supabaseRef.current) supabaseRef.current = createClient();
+  const supabase = supabaseRef.current;
+
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [songs, setSongs] = useState<Song[]>([]);
+  const [songsLoaded, setSongsLoaded] = useState(false);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [view, setView] = useState<View>({ kind: "library", filter: "all" });
   const [loaded, setLoaded] = useState(false);
@@ -40,15 +108,80 @@ export default function Home() {
   const [pasteOpen, setPasteOpen] = useState(false);
   const [libraryView, setLibraryView] = useState<LibraryView>("grid");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingSavesRef = useRef<Map<string, Song>>(new Map());
 
+  // Load user, profile, songs from Supabase.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const {
+        data: { user: u },
+      } = await supabase.auth.getUser();
+      if (cancelled) return;
+      if (!u) {
+        router.replace("/login");
+        return;
+      }
+      setUser(u);
+
+      const [{ data: profileRow }, { data: songRows, error: songsError }] =
+        await Promise.all([
+          supabase
+            .from("profiles")
+            .select("id, email, full_name, avatar_url")
+            .eq("id", u.id)
+            .maybeSingle(),
+          supabase
+            .from("songs")
+            .select(
+              "id, title, artist, key, bpm, capo, favorite, data, created_at, updated_at",
+            )
+            .eq("user_id", u.id)
+            .order("updated_at", { ascending: false }),
+        ]);
+      if (cancelled) return;
+
+      if (profileRow) {
+        setProfile(profileRow as Profile);
+      } else {
+        // Fallback if the trigger hasn't fired yet for some reason.
+        setProfile({
+          id: u.id,
+          email: u.email ?? null,
+          full_name:
+            (u.user_metadata?.full_name as string | undefined) ??
+            (u.user_metadata?.name as string | undefined) ??
+            null,
+          avatar_url:
+            (u.user_metadata?.avatar_url as string | undefined) ?? null,
+        });
+      }
+
+      if (songsError) console.error("load songs failed", songsError);
+      const loaded = (songRows ?? []).map((r) => rowToSong(r as SongRow));
+      setSongs(loaded);
+      setSongsLoaded(true);
+    })();
+
+    const { data: subscription } = supabase.auth.onAuthStateChange(
+      (event) => {
+        if (event === "SIGNED_OUT") {
+          router.replace("/login");
+        }
+      },
+    );
+
+    return () => {
+      cancelled = true;
+      subscription.subscription.unsubscribe();
+    };
+  }, [supabase, router]);
+
+  // Load settings + library view from localStorage (UI preferences, not data).
   useEffect(() => {
     let sawSettings = false;
     try {
-      const savedSongs = localStorage.getItem(SONGS_KEY);
-      if (savedSongs) {
-        const parsed = JSON.parse(savedSongs);
-        if (Array.isArray(parsed) && parsed.length) setSongs(parsed);
-      }
       const savedSettings = localStorage.getItem(SETTINGS_KEY);
       if (savedSettings) {
         sawSettings = true;
@@ -89,13 +222,6 @@ export default function Home() {
   useEffect(() => {
     if (!loaded) return;
     try {
-      localStorage.setItem(SONGS_KEY, JSON.stringify(songs));
-    } catch {}
-  }, [songs, loaded]);
-
-  useEffect(() => {
-    if (!loaded) return;
-    try {
       localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
     } catch {}
   }, [settings, loaded]);
@@ -117,6 +243,35 @@ export default function Home() {
     window.setTimeout(() => setToast(null), 2400);
   };
 
+  const flushPendingSaves = () => {
+    if (!user) return;
+    const queued = Array.from(pendingSavesRef.current.values());
+    pendingSavesRef.current.clear();
+    queued.forEach((song) => {
+      void saveSongToDb(supabase, song, user.id);
+    });
+  };
+
+  const scheduleSave = (song: Song) => {
+    if (!user) return;
+    pendingSavesRef.current.set(song.id, song);
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(flushPendingSaves, 700);
+  };
+
+  // Flush any pending edit on unmount or page hide so we don't lose work.
+  useEffect(() => {
+    const onHide = () => flushPendingSaves();
+    window.addEventListener("pagehide", onHide);
+    window.addEventListener("beforeunload", onHide);
+    return () => {
+      window.removeEventListener("pagehide", onHide);
+      window.removeEventListener("beforeunload", onHide);
+      flushPendingSaves();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, supabase]);
+
   const upsertSong = (updated: Song) => {
     setSongs((prev) => {
       const idx = prev.findIndex((s) => s.id === updated.id);
@@ -125,17 +280,23 @@ export default function Home() {
       next[idx] = updated;
       return next;
     });
+    scheduleSave(updated);
   };
 
   const toggleFavorite = (songId: string) => {
-    setSongs((prev) =>
-      prev.map((s) =>
-        s.id !== songId ? s : { ...s, favorite: !s.favorite, updatedAt: Date.now() },
-      ),
-    );
+    setSongs((prev) => {
+      const next = prev.map((s) =>
+        s.id !== songId
+          ? s
+          : { ...s, favorite: !s.favorite, updatedAt: Date.now() },
+      );
+      const changed = next.find((s) => s.id === songId);
+      if (changed) scheduleSave(changed);
+      return next;
+    });
   };
 
-  const deleteSong = (songId: string) => {
+  const deleteSong = async (songId: string) => {
     setSongs((prev) => prev.filter((s) => s.id !== songId));
     setView((prev) => {
       if (prev.kind === "editor" && prev.songId === songId) {
@@ -143,6 +304,14 @@ export default function Home() {
       }
       return prev;
     });
+    pendingSavesRef.current.delete(songId);
+    if (user) {
+      const { error } = await supabase
+        .from("songs")
+        .delete()
+        .eq("id", songId);
+      if (error) console.error("delete song failed", error);
+    }
     showToast("Song deleted");
   };
 
@@ -150,6 +319,7 @@ export default function Home() {
     const song = makeNewSong();
     setSongs((prev) => [song, ...prev]);
     setView({ kind: "editor", songId: song.id });
+    if (user) void saveSongToDb(supabase, song, user.id);
   };
 
   const openSong = (id: string) => {
@@ -161,6 +331,7 @@ export default function Home() {
     setView({ kind: "editor", songId: song.id });
     setPasteOpen(false);
     showToast(`Imported "${song.title}"`);
+    if (user) void saveSongToDb(supabase, song, user.id);
   };
 
   const handleImport = async (file: File) => {
@@ -175,9 +346,16 @@ export default function Home() {
       setSongs((prev) => [parsed, ...prev]);
       setView({ kind: "editor", songId: parsed.id });
       showToast(`Imported "${parsed.title}"`);
+      if (user) void saveSongToDb(supabase, parsed, user.id);
     } catch {
       showToast("Could not read file");
     }
+  };
+
+  const handleSignOut = async () => {
+    flushPendingSaves();
+    await supabase.auth.signOut();
+    router.replace("/login");
   };
 
   const handlePrint = () => {
@@ -228,12 +406,19 @@ export default function Home() {
         onNewSong={newSong}
         onImport={() => fileInputRef.current?.click()}
         onHome={() => setView({ kind: "library", filter: "all" })}
+        profile={profile}
+        onSignOut={handleSignOut}
       />
 
       <div className="flex flex-1 min-h-0">
         <Sidebar view={view} onNavigate={setView} />
         <main className="flex-1 min-w-0 overflow-x-hidden pb-20 md:pb-0">
-          {view.kind === "library" && (
+          {view.kind === "library" && !songsLoaded && (
+            <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 py-12 text-sm text-slate-400 dark:text-slate-500">
+              Loading library…
+            </div>
+          )}
+          {view.kind === "library" && songsLoaded && (
             <Library
               songs={songs}
               onOpen={openSong}
@@ -310,11 +495,45 @@ function TopNav({
   onNewSong,
   onImport,
   onHome,
+  profile,
+  onSignOut,
 }: {
   onNewSong: () => void;
   onImport: () => void;
   onHome: () => void;
+  profile: Profile | null;
+  onSignOut: () => void;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = (e: MouseEvent) => {
+      if (wrapRef.current && wrapRef.current.contains(e.target as Node)) return;
+      setMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [menuOpen]);
+
+  const displayName =
+    profile?.full_name ||
+    profile?.email?.split("@")[0] ||
+    "Account";
+  const initial = (
+    profile?.full_name?.[0] ??
+    profile?.email?.[0] ??
+    "?"
+  ).toUpperCase();
+
   return (
     <header className="border-b border-slate-200 dark:border-slate-800 backdrop-blur-md bg-white/80 dark:bg-slate-950/80 sticky top-0 z-30 print:hidden">
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
@@ -351,13 +570,60 @@ function TopNav({
             </svg>
             <span className="hidden sm:inline">Import</span>
           </button>
-          <button
-            type="button"
-            aria-label="User profile"
-            className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-400 to-violet-500 text-white text-sm font-semibold flex items-center justify-center shadow-sm"
-          >
-            P
-          </button>
+          <div ref={wrapRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setMenuOpen((o) => !o)}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              aria-label="User menu"
+              className="w-9 h-9 rounded-full overflow-hidden bg-gradient-to-br from-indigo-400 to-violet-500 text-white text-sm font-semibold flex items-center justify-center shadow-sm hover:ring-2 hover:ring-indigo-300 dark:hover:ring-indigo-700 transition-all"
+            >
+              {profile?.avatar_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={profile.avatar_url}
+                  alt=""
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                initial
+              )}
+            </button>
+            {menuOpen && (
+              <div
+                role="menu"
+                className="absolute right-0 mt-2 min-w-[220px] py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/20 z-40"
+              >
+                <div className="px-3 py-2 border-b border-slate-200 dark:border-slate-700">
+                  <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                    {displayName}
+                  </div>
+                  {profile?.email && (
+                    <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                      {profile.email}
+                    </div>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onSignOut();
+                  }}
+                  className="w-full text-left px-3 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-2"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                  </svg>
+                  Sign out
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </header>

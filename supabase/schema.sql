@@ -17,9 +17,19 @@ create table if not exists public.songs (
   artist      text,
   key         text,
   bpm         integer,
+  capo        integer,
+  favorite    boolean not null default false,
+  data        jsonb not null default '{}'::jsonb,
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
 );
+
+alter table public.songs add column if not exists capo integer;
+alter table public.songs add column if not exists favorite boolean not null default false;
+alter table public.songs add column if not exists data jsonb not null default '{}'::jsonb;
+
+create index if not exists songs_favorite_idx on public.songs(user_id, favorite) where favorite;
+create index if not exists songs_updated_at_idx on public.songs(user_id, updated_at desc);
 
 create table if not exists public.sections (
   id          uuid primary key default gen_random_uuid(),
@@ -82,6 +92,59 @@ create table if not exists public.group_songs (
 );
 
 -- ============================================================
+-- Profiles
+-- ============================================================
+
+create table if not exists public.profiles (
+  id          uuid primary key references auth.users(id) on delete cascade,
+  email       text,
+  full_name   text,
+  avatar_url  text,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+
+alter table public.profiles enable row level security;
+
+drop policy if exists profiles_self_read on public.profiles;
+create policy profiles_self_read on public.profiles
+  for select to authenticated
+  using (id = (select auth.uid()));
+
+drop policy if exists profiles_self_update on public.profiles;
+create policy profiles_self_update on public.profiles
+  for update to authenticated
+  using (id = (select auth.uid()))
+  with check (id = (select auth.uid()));
+
+create or replace function public.handle_new_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, auth
+as $$
+begin
+  insert into public.profiles (id, email, full_name, avatar_url)
+  values (
+    new.id,
+    new.email,
+    coalesce(
+      new.raw_user_meta_data->>'full_name',
+      new.raw_user_meta_data->>'name'
+    ),
+    new.raw_user_meta_data->>'avatar_url'
+  )
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function public.handle_new_user();
+
+-- ============================================================
 -- Indexes
 -- ============================================================
 
@@ -119,6 +182,11 @@ create trigger songs_set_updated_at
 drop trigger if exists group_songs_set_updated_at on public.group_songs;
 create trigger group_songs_set_updated_at
   before update on public.group_songs
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists profiles_set_updated_at on public.profiles;
+create trigger profiles_set_updated_at
+  before update on public.profiles
   for each row execute function public.set_updated_at();
 
 -- ============================================================

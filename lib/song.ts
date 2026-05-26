@@ -144,6 +144,21 @@ export function uid(): string {
   return Math.random().toString(36).slice(2, 10);
 }
 
+export function songUid(): string {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
+    return crypto.randomUUID();
+  }
+  // Fallback (only hit in very old runtimes): RFC4122-ish v4
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 export function noteToIndex(note: string): number {
   const head =
     note.length >= 2 && (note[1] === "#" || note[1] === "b")
@@ -348,7 +363,7 @@ export function parseSongText(text: string): Song {
 
   const now = Date.now();
   return {
-    id: uid(),
+    id: songUid(),
     title,
     artist,
     key,
@@ -364,7 +379,7 @@ export function parseSongText(text: string): Song {
 export function makeNewSong(): Song {
   const now = Date.now();
   return {
-    id: uid(),
+    id: songUid(),
     title: "Untitled Song",
     artist: "",
     key: "C",
@@ -657,7 +672,7 @@ export function pastedChartToSong(
   const { sections, key } = parsePastedChart(text);
   const now = Date.now();
   return {
-    id: uid(),
+    id: songUid(),
     title: title.trim() || "Untitled Song",
     artist: artist.trim(),
     key,
