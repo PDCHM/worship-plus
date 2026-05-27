@@ -175,6 +175,7 @@ export default function Home() {
   const [groups, setGroups] = useState<Group[]>([]);
   const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
   const [groupSongs, setGroupSongs] = useState<GroupSong[]>([]);
+  const [groupsLoaded, setGroupsLoaded] = useState(false);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [view, setView] = useState<View>(() => {
     if (typeof window === "undefined") return { kind: "library", filter: "all" };
@@ -315,6 +316,7 @@ export default function Home() {
           };
         }));
         setGroupSongs((gsRows??[]).map((r:any)=>({id:r.id,groupId:r.group_id,songId:r.song_id})));
+        setGroupsLoaded(true);
         /* eslint-enable @typescript-eslint/no-explicit-any */
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -742,7 +744,14 @@ export default function Home() {
               showToast={showToast}
             />
           )}
-          {view.kind==="groups"&&<GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={songs} onCreateGroup={createGroup} onAddMember={addGroupMember} onRemoveMember={removeGroupMember} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onOpenSong={openSong} showToast={showToast}/>}
+          {view.kind === "groups" && !groupsLoaded && (
+            <div className="flex items-center justify-center py-24">
+              <div className="w-6 h-6 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+            </div>
+          )}
+          {view.kind === "groups" && groupsLoaded && (
+            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={songs} onCreateGroup={createGroup} onAddMember={addGroupMember} onRemoveMember={removeGroupMember} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onOpenSong={openSong} showToast={showToast}/>
+          )}
         </main>
       </div>
 
