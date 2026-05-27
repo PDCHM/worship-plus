@@ -47,7 +47,7 @@ export default function Library({
     songId: string;
     title: string;
   } | null>(null);
-  const [sortCol, setSortCol] = useState<"title"|"artist"|"key"|null>(null);
+  const [sortCol, setSortCol] = useState<"title"|"artist"|"key"|null>("title");
   const [sortDir, setSortDir] = useState<"asc"|"desc">("asc");
   const menuRef = useRef<HTMLDivElement | null>(null);
 
