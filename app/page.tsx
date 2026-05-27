@@ -270,13 +270,11 @@ export default function Home() {
           supabase.from("group_members").select("id,group_id,user_id,role,profiles:user_id(full_name,email,avatar_url)"),
           supabase.from("group_songs").select("id,group_id,song_id"),
         ]);
-        if (gRows?.length) {
-          /* eslint-disable @typescript-eslint/no-explicit-any */
-          setGroups((gRows??[]).map((r:any)=>({id:r.id,name:r.name,church:r.church??"",inviteToken:r.invite_token??"",createdAt:new Date(r.created_at).getTime()})));
-          setGroupMembers((mRows??[]).map((r:any)=>({id:r.id,groupId:r.group_id,userId:r.user_id,role:r.role,fullName:r.profiles?.full_name??null,email:r.profiles?.email??null,avatarUrl:r.profiles?.avatar_url??null})));
-          setGroupSongs((gsRows??[]).map((r:any)=>({id:r.id,groupId:r.group_id,songId:r.song_id})));
-          /* eslint-enable @typescript-eslint/no-explicit-any */
-        }
+        /* eslint-disable @typescript-eslint/no-explicit-any */
+        setGroups((gRows??[]).map((r:any)=>({id:r.id,name:r.name,church:r.church??"",inviteToken:r.invite_token??"",createdAt:new Date(r.created_at).getTime()})));
+        setGroupMembers((mRows??[]).map((r:any)=>({id:r.id,groupId:r.group_id,userId:r.user_id,role:r.role,fullName:r.profiles?.full_name??null,email:r.profiles?.email??null,avatarUrl:r.profiles?.avatar_url??null})));
+        setGroupSongs((gsRows??[]).map((r:any)=>({id:r.id,groupId:r.group_id,songId:r.song_id})));
+        /* eslint-enable @typescript-eslint/no-explicit-any */
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         showToast("Init error: " + err.message);
