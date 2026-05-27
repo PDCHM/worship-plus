@@ -429,6 +429,9 @@ export default function Home() {
           setSongs(prev => [...imported, ...prev]);
           imported.forEach(s => { if (user) void saveSongToDb(supabase, s, user.id); });
           showToast("Imported " + imported.length + " songs");
+          navigateTo({ kind: "library", filter: "all" });
+        } else {
+          showToast("Unrecognized .worship file format");
         }
       } catch { showToast("Could not read .worship file"); }
       return;
