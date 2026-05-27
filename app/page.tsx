@@ -280,6 +280,7 @@ export default function Home() {
         const { data: profileRows } = memberUserIds.length > 0
           ? await supabase.from("profiles").select("id,full_name,email,avatar_url").in("id", memberUserIds)
           : { data: [] };
+        showToast("profiles: " + (profileRows?.length ?? "null") + " members: " + (mRows?.length ?? "null"));
         const profileMap = Object.fromEntries((profileRows??[]).map((p:any) => [p.id, p]));
         setGroups((gRows??[]).map((r:any)=>({id:r.id,name:r.name,church:r.church??"",inviteToken:r.invite_token??"",createdAt:new Date(r.created_at).getTime()})));
         setGroupMembers((mRows??[]).map((r:any) => {
