@@ -514,7 +514,7 @@ export default function Home() {
 
       <div className="flex-1 min-h-0">
         <div onClick={() => setSidebarOpen(false)} className={"fixed inset-0 z-30 bg-black/40 transition-opacity duration-200 print:hidden " + (sidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none")} />
-        <Sidebar view={view} onNavigate={setView} folders={folders} sidebarOpen={sidebarOpen} />
+        <Sidebar view={view} onNavigate={setView} folders={folders} sidebarOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <main className="w-full overflow-x-hidden pb-20 md:pb-0">
           {view.kind === "library" && !songsLoaded && (
             <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 py-12 text-sm text-slate-400 dark:text-slate-500">
@@ -709,12 +709,13 @@ function TopNav({
 }
 
 function Sidebar({
-  view, onNavigate, folders, sidebarOpen,
+  view, onNavigate, folders, sidebarOpen, onClose,
 }: {
   view: View;
   onNavigate: (v: View) => void;
   folders: Folder[];
   sidebarOpen: boolean;
+  onClose: () => void;
 }) {
   const isLibrary = (filter: "all" | "favorites" | "recent") =>
     view.kind === "library" && view.filter === filter;
@@ -727,28 +728,28 @@ function Sidebar({
   return (
     <aside className={"fixed left-0 top-0 bottom-0 z-40 w-64 flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 gap-1 overflow-y-auto transition-transform duration-200 ease-in-out print:hidden shadow-xl" + (sidebarOpen ? " translate-x-0" : " -translate-x-full")}>
       <SidebarHeading>Library</SidebarHeading>
-      <SidebarItem active={isLibrary("all")} onClick={() => onNavigate({ kind: "library", filter: "all" })}
+      <SidebarItem active={isLibrary("all")} onClick={() => { onNavigate({ kind: "library", filter: "all" }); onClose(); }}
         icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 17V5l12-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="15" r="3"/></svg>}>
         All Songs
       </SidebarItem>
-      <SidebarItem active={isLibrary("favorites")} onClick={() => onNavigate({ kind: "library", filter: "favorites" })}
+      <SidebarItem active={isLibrary("favorites")} onClick={() => { onNavigate({ kind: "library", filter: "favorites" }); onClose(); }}
         icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15 9 22 9.5 17 14.5 18.5 22 12 18 5.5 22 7 14.5 2 9.5 9 9 12 2"/></svg>}>
         Favourites
       </SidebarItem>
-      <SidebarItem active={isLibrary("recent")} onClick={() => onNavigate({ kind: "library", filter: "recent" })}
+      <SidebarItem active={isLibrary("recent")} onClick={() => { onNavigate({ kind: "library", filter: "recent" }); onClose(); }}
         icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>}>
         Recent
       </SidebarItem>
 
       <SidebarHeading className="mt-4">Folders</SidebarHeading>
       <SidebarItem active={view.kind === "folders" && view.subview === "all"}
-        onClick={() => onNavigate({ kind: "folders", subview: "all" })}
+        onClick={() => { onNavigate({ kind: "folders", subview: "all" }); onClose(); }}
         icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>}>
         All Folders
       </SidebarItem>
       {folderList.map((f) => (
         <SidebarItem key={f.id} active={isFolderActive(f.id)}
-          onClick={() => onNavigate({ kind: "folders", subview: f.id })}
+          onClick={() => { onNavigate({ kind: "folders", subview: f.id }); onClose(); }}
           icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>}>
           {f.name}
         </SidebarItem>
@@ -759,7 +760,7 @@ function Sidebar({
           <SidebarHeading className="mt-4">Setlists</SidebarHeading>
           {setlistList.map((f) => (
             <SidebarItem key={f.id} active={isFolderActive(f.id)}
-              onClick={() => onNavigate({ kind: "folders", subview: f.id })}
+              onClick={() => { onNavigate({ kind: "folders", subview: f.id }); onClose(); }}
               icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>}>
               {f.name}
             </SidebarItem>
@@ -768,13 +769,13 @@ function Sidebar({
       )}
 
       <SidebarHeading className="mt-4">Groups</SidebarHeading>
-      <SidebarItem active={view.kind === "groups"} onClick={() => onNavigate({ kind: "groups" })}
+      <SidebarItem active={view.kind === "groups"} onClick={() => { onNavigate({ kind: "groups" }); onClose(); }}
         icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>}>
         Worship Team
       </SidebarItem>
 
       <div className="mt-auto pt-4">
-        <SidebarItem active={view.kind === "settings"} onClick={() => onNavigate({ kind: "settings" })}
+        <SidebarItem active={view.kind === "settings"} onClick={() => { onNavigate({ kind: "settings" }); onClose(); }}
           icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>}>
           Settings
         </SidebarItem>
