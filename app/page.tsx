@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
+import ExportModal from "@/app/_components/ExportModal";
 import Library from "@/app/_components/Library";
 import PasteSongModal from "@/app/_components/PasteSongModal";
 import SettingsView from "@/app/_components/SettingsView";
@@ -17,7 +18,6 @@ import {
   getSectionColorKey,
   makeNewSong,
   parseSongText,
-  serializeSong,
   type Settings,
   type Song,
 } from "@/lib/song";
@@ -175,6 +175,7 @@ export default function Home() {
   const [toast, setToast] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [libraryView, setLibraryView] = useState<LibraryView>("grid");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -410,23 +411,6 @@ export default function Home() {
     window.print();
   };
 
-  const handleExport = () => {
-    if (view.kind !== "editor") return;
-    const song = songs.find((s) => s.id === view.songId);
-    if (!song) return;
-    const content = serializeSong(song);
-    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${song.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "song"}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    showToast("Exported");
-  };
-
   // ─── Folder / Setlist CRUD ────────────────────────────────────────────────
 
   const createFolder = async (name: string, type: "folder" | "setlist"): Promise<Folder | null> => {
@@ -554,7 +538,7 @@ export default function Home() {
               onSettingsChange={setSettings}
               isDark={isDark}
               onPrint={handlePrint}
-              onExport={handleExport}
+              onExport={() => setExportOpen(true)}
               onPasteSong={() => setPasteOpen(true)}
               onSave={() => { flushPendingSaves(); showToast("Song saved"); }}
               showToast={showToast}
@@ -607,6 +591,14 @@ export default function Home() {
         onClose={() => setPasteOpen(false)}
         onImport={handleImportPasted}
       />
+
+      {exportOpen && activeSong && (
+        <ExportModal
+          song={activeSong}
+          onPrint={handlePrint}
+          onClose={() => setExportOpen(false)}
+        />
+      )}
 
       {toast && (
         <div className="fixed bottom-24 md:bottom-6 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-medium shadow-2xl shadow-slate-900/30 z-50 print:hidden">
