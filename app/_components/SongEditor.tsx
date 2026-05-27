@@ -591,7 +591,7 @@ export default function SongEditor({
                   <div className="grid grid-cols-6 gap-1.5">
                     {KEYS.map(k => (
                       <button key={k} type="button"
-                        onClick={() => { handleTranspose(k); setKeyPickerOpen(false); }}
+                        onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); handleTranspose(k); setKeyPickerOpen(false); }}
                         className={"min-w-9 h-9 px-2 rounded-lg text-sm font-semibold transition-all " + (song.key === k ? "bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/40 scale-105" : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300")}>
                         {k}
                       </button>
@@ -611,7 +611,7 @@ export default function SongEditor({
               <div onMouseDown={(e) => e.stopPropagation()} className="absolute left-0 top-full mt-1 z-30 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
                 <div className="flex items-center gap-3 px-1">
                   <button type="button"
-                    onClick={() => handleCapoChange((song.capo ?? 0) <= 1 ? null : (song.capo ?? 0) - 1)}
+                    onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); handleCapoChange((song.capo ?? 0) <= 1 ? null : (song.capo ?? 0) - 1); }}
                     className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors">
                     −
                   </button>
@@ -620,7 +620,7 @@ export default function SongEditor({
                     <div className="text-[10px] text-slate-400 uppercase tracking-wider">CAPO</div>
                   </div>
                   <button type="button"
-                    onClick={() => handleCapoChange(Math.min(7, (song.capo ?? 0) + 1))}
+                    onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); handleCapoChange(Math.min(7, (song.capo ?? 0) + 1)); }}
                     className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors">
                     +
                   </button>
