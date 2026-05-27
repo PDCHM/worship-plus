@@ -129,7 +129,8 @@ export type Settings = {
   capoByDefault: boolean;
   printLayout: "A4" | "Letter";
   fontFamily: "system" | "mono" | "serif";
-  printColumns: 1 | 2;
+  printColumns: 1 | 2 | 3;
+  printOrientation: "portrait" | "landscape";
   showChords: boolean;
 };
 
@@ -143,6 +144,7 @@ export const DEFAULT_SETTINGS: Settings = {
   printLayout: "A4",
   fontFamily: "system",
   printColumns: 1,
+  printOrientation: "portrait",
   showChords: true,
 };
 

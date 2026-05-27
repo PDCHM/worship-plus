@@ -406,7 +406,7 @@ export default function Home() {
     if (existing) existing.remove();
     const style = document.createElement("style");
     style.id = "wp-print-page-size";
-    style.textContent = "@page { size: " + (settings.printLayout === "A4" ? "A4" : "letter") + "; margin: 0.6in; }";
+    style.textContent = "@page { size: " + (settings.printLayout === "A4" ? "A4" : "letter") + " " + (settings.printOrientation ?? "portrait") + "; margin: 0.6in; }";
     document.head.appendChild(style);
     window.print();
   };
