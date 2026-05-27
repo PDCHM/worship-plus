@@ -543,7 +543,12 @@ export default function Home() {
     setGroupMembers(p=>[...p,{id:uid(),groupId:g.id,userId:user.id,role:"owner",fullName:profile?.full_name??null,email:profile?.email??null,avatarUrl:profile?.avatar_url??null}]);
     return g;
   };
-  const shareGroupSong=async(groupId:string,songId:string):Promise<void>=>{const{data,error}=await supabase.from("group_songs").insert({group_id:groupId,song_id:songId}).select().single();if(error){logErr("share song",error);showToast("Error: "+error.message);return;}setGroupSongs(p=>[...p,{id:data.id,groupId,songId}]);};
+  const shareGroupSong=async(groupId:string,songId:string):Promise<void>=>{
+    const{data,error}=await supabase.rpc("add_song_to_group",{p_group_id:groupId,p_song_id:songId});
+    if(error){logErr("share song",error);showToast("Error: "+error.message);return;}
+    const r=data as{id:string;group_id:string;song_id:string};
+    setGroupSongs(prev=>[...prev,{id:r.id,groupId:r.group_id,songId:r.song_id}]);
+  };
   const unshareGroupSong=(groupId:string,songId:string):void=>{setGroupSongs(p=>p.filter(gs=>!(gs.groupId===groupId&&gs.songId===songId)));void supabase.from("group_songs").delete().eq("group_id",groupId).eq("song_id",songId);};
   const removeGroupMember=(groupId:string,memberId:string):void=>{setGroupMembers(p=>p.filter(m=>!(m.groupId===groupId&&m.userId===memberId)));void supabase.from("group_members").delete().eq("group_id",groupId).eq("user_id",memberId);};
   const leaveGroup=(groupId:string):void=>{if(!user)return;setGroups(p=>p.filter(g=>g.id!==groupId));setGroupMembers(p=>p.filter(m=>!(m.groupId===groupId&&m.userId===user.id)));void supabase.from("group_members").delete().eq("group_id",groupId).eq("user_id",user.id);};

@@ -59,13 +59,10 @@ export default function JoinPage() {
 
     if (!group) { setStatus("notfound"); setJoining(false); return; }
 
-    const { error } = await supabase
-      .from("group_members")
-      .insert({ group_id: group.id, user_id: user.id, role: "member" });
-
-    if (error) { setStatus("error"); setJoining(false); return; }
+    const{data,error}=await supabase.rpc("join_worship_group",{p_token:token});
+    if(error||data?.error){setStatus("error");setJoining(false);return;}
     setStatus("joined");
-    setTimeout(() => router.replace("/"), 1500);
+    setTimeout(()=>router.replace("/"),1500);
   };
 
   return (
