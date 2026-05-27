@@ -445,6 +445,7 @@ export default function Home() {
   // ─── Folder / Setlist CRUD ────────────────────────────────────────────────
 
   const createFolder = async (name: string, type: "folder" | "setlist"): Promise<Folder | null> => {
+    showToast("Creating...");
     if (!user) return null;
     const { data, error } = await supabase
       .from("folders")
