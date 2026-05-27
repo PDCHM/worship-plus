@@ -99,15 +99,9 @@ function Overview({
     <div className="max-w-5xl w-full mx-auto px-4 sm:px-6 py-8 space-y-10">
       {/* Folders */}
       <section>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2 mb-4 cursor-pointer group" onClick={() => setShowNewFolder(true)}>
           <h2 className="font-semibold text-base">Folders</h2>
-          <button
-            type="button"
-            onClick={() => setShowNewFolder(true)}
-            className="h-8 px-3 rounded-lg text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1"
-          >
-            <PlusIconSm /> New Folder
-          </button>
+          <span className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-sm font-bold group-hover:bg-indigo-600 group-hover:text-white transition-colors">+</span>
         </div>
         {showNewFolder && (
           <NewNameInput
@@ -118,13 +112,7 @@ function Overview({
             onCancel={() => { setShowNewFolder(false); setNewFolderName(""); }}
           />
         )}
-        {folderList.length === 0 && !showNewFolder ? (
-          <EmptyHint
-            label="No folders yet. "
-            linkLabel="Create one"
-            onClick={() => setShowNewFolder(true)}
-          />
-        ) : (
+        {folderList.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {folderList.map((f) => (
               <ItemCard
@@ -142,15 +130,9 @@ function Overview({
 
       {/* Setlists */}
       <section>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2 mb-4 cursor-pointer group" onClick={() => setShowNewSetlist(true)}>
           <h2 className="font-semibold text-base">Setlists</h2>
-          <button
-            type="button"
-            onClick={() => setShowNewSetlist(true)}
-            className="h-8 px-3 rounded-lg text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1"
-          >
-            <PlusIconSm /> New Setlist
-          </button>
+          <span className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-sm font-bold group-hover:bg-indigo-600 group-hover:text-white transition-colors">+</span>
         </div>
         {showNewSetlist && (
           <NewNameInput
@@ -161,13 +143,7 @@ function Overview({
             onCancel={() => { setShowNewSetlist(false); setNewSetlistName(""); }}
           />
         )}
-        {setlistList.length === 0 && !showNewSetlist ? (
-          <EmptyHint
-            label="No setlists yet. "
-            linkLabel="Create one"
-            onClick={() => setShowNewSetlist(true)}
-          />
-        ) : (
+        {setlistList.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {setlistList.map((f) => (
               <ItemCard
@@ -653,17 +629,6 @@ function NewNameInput({ placeholder, value, onChange, onSubmit, onCancel }: {
         Cancel
       </button>
     </div>
-  );
-}
-
-function EmptyHint({ label, linkLabel, onClick }: { label: string; linkLabel: string; onClick: () => void }) {
-  return (
-    <p className="text-sm text-slate-400 dark:text-slate-500 py-6">
-      {label}
-      <button type="button" onClick={onClick} className="text-indigo-600 dark:text-indigo-400 hover:underline">
-        {linkLabel}
-      </button>
-    </p>
   );
 }
 
