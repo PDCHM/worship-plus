@@ -77,7 +77,6 @@ function NoGroupView({ onCreateGroup, showToast }: GroupsViewProps) {
     const result = await onCreateGroup(name.trim());
     setLoading(false);
     if (result) { showToast("Team created!"); setCreating(false); }
-    else showToast("Failed to create team");
   };
 
   return (
