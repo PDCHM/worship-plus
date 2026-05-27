@@ -577,7 +577,7 @@ export default function Home() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".txt,.docx,.pdf,.xlsx"
+        accept=".txt,.docx,.pdf,.xlsx,.worship"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];
