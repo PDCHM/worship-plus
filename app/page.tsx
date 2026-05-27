@@ -198,6 +198,7 @@ export default function Home() {
       }
       setUser(u);
       setAuthChecked(true);
+      showToast("User: " + u.id.slice(0, 8));
 
       const [
         { data: profileRow },
