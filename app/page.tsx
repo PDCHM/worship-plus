@@ -10,6 +10,7 @@ import PasteSongModal from "@/app/_components/PasteSongModal";
 import SettingsView from "@/app/_components/SettingsView";
 import SongEditor from "@/app/_components/SongEditor";
 import FoldersView, { type Folder, type FolderSong } from "@/app/_components/FoldersView";
+import GroupsView, { type Group, type GroupMember, type GroupSong } from "@/app/_components/GroupsView";
 import PrintLayout from "@/app/_components/PrintLayout";
 import {
   DEFAULT_SETTINGS,
@@ -171,6 +172,9 @@ export default function Home() {
   const [songsLoaded, setSongsLoaded] = useState(false);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [folderSongs, setFolderSongs] = useState<FolderSong[]>([]);
+  const [groups, setGroups] = useState<Group[]>([]);
+  const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
+  const [groupSongs, setGroupSongs] = useState<GroupSong[]>([]);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [view, setView] = useState<View>({ kind: "library", filter: "all" });
   const [loaded, setLoaded] = useState(false);
@@ -259,6 +263,21 @@ export default function Home() {
           position: r.position ?? 0,
         }));
         setFolderSongs(loadedFolderSongs);
+
+        const myMemberships = await supabase.from("group_members").select("group_id").eq("user_id", u.id);
+        const groupIds = (myMemberships.data ?? []).map((m: {group_id:string}) => m.group_id);
+        if (groupIds.length > 0) {
+          const [{ data: gRows }, { data: mRows }, { data: gsRows }] = await Promise.all([
+            supabase.from("groups").select("id,name,invite_token,created_at").in("id", groupIds),
+            supabase.from("group_members").select("id,group_id,user_id,role,profiles:user_id(full_name,email,avatar_url)").in("group_id", groupIds),
+            supabase.from("group_songs").select("id,group_id,song_id").in("group_id", groupIds),
+          ]);
+          /* eslint-disable @typescript-eslint/no-explicit-any */
+          setGroups((gRows??[]).map((r:any)=>({id:r.id,name:r.name,inviteToken:r.invite_token,createdAt:new Date(r.created_at).getTime()})));
+          setGroupMembers((mRows??[]).map((r:any)=>({id:r.id,groupId:r.group_id,userId:r.user_id,role:r.role,fullName:r.profiles?.full_name??null,email:r.profiles?.email??null,avatarUrl:r.profiles?.avatar_url??null})));
+          setGroupSongs((gsRows??[]).map((r:any)=>({id:r.id,groupId:r.group_id,songId:r.song_id})));
+          /* eslint-enable @typescript-eslint/no-explicit-any */
+        }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         showToast("Init error: " + err.message);
@@ -512,6 +531,12 @@ export default function Home() {
     if (error) logErr("update folder date", error);
   };
 
+  const createGroup=async(name:string):Promise<Group|null>=>{if(!user)return null;const{data,error}=await supabase.from("groups").insert({name}).select().single();if(error){logErr("create group",error);return null;}const g:Group={id:data.id,name:data.name,inviteToken:data.invite_token,createdAt:new Date(data.created_at).getTime()};setGroups(p=>[...p,g]);setGroupMembers(p=>[...p,{id:uid(),groupId:g.id,userId:user.id,role:"owner",fullName:profile?.full_name??null,email:profile?.email??null,avatarUrl:profile?.avatar_url??null}]);return g;};
+  const shareGroupSong=async(groupId:string,songId:string):Promise<void>=>{const{data,error}=await supabase.from("group_songs").insert({group_id:groupId,song_id:songId}).select().single();if(error){logErr("share song",error);return;}setGroupSongs(p=>[...p,{id:data.id,groupId,songId}]);};
+  const unshareGroupSong=(groupId:string,songId:string):void=>{setGroupSongs(p=>p.filter(gs=>!(gs.groupId===groupId&&gs.songId===songId)));void supabase.from("group_songs").delete().eq("group_id",groupId).eq("song_id",songId);};
+  const removeGroupMember=(groupId:string,memberId:string):void=>{setGroupMembers(p=>p.filter(m=>!(m.groupId===groupId&&m.userId===memberId)));void supabase.from("group_members").delete().eq("group_id",groupId).eq("user_id",memberId);};
+  const leaveGroup=(groupId:string):void=>{if(!user)return;setGroups(p=>p.filter(g=>g.id!==groupId));setGroupMembers(p=>p.filter(m=>!(m.groupId===groupId&&m.userId===user.id)));void supabase.from("group_members").delete().eq("group_id",groupId).eq("user_id",user.id);};
+
   const renameFolder = async (id: string, name: string): Promise<void> => {
     setFolders((prev) => prev.map((f) => f.id === id ? { ...f, name } : f));
     const { error } = await supabase.from("folders").update({ name }).eq("id", id);
@@ -659,13 +684,7 @@ export default function Home() {
               showToast={showToast}
             />
           )}
-          {view.kind === "groups" && (
-            <Placeholder
-              icon="users"
-              title="Groups"
-              body="Share song sets with your worship team. Coming soon."
-            />
-          )}
+          {view.kind==="groups"&&<GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={songs} onCreateGroup={createGroup} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onRemoveMember={removeGroupMember} onLeaveGroup={leaveGroup} onOpenSong={openSong} showToast={showToast}/>}
         </main>
       </div>
 
