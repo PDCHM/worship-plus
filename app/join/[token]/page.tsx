@@ -21,7 +21,7 @@ export default function JoinPage() {
       if (!user) {
         await supabase.auth.signInWithOAuth({
           provider: "google",
-          options: { redirectTo: `${window.location.origin}/auth/callback?next=/join/${token}` },
+          options: { redirectTo: `https://worshipplus.vercel.app/auth/callback?next=/join/${token}` },
         });
         return;
       }
@@ -55,7 +55,7 @@ export default function JoinPage() {
     if (!user) {
       await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: `${window.location.origin}/auth/callback?next=/join/${token}` },
+        options: { redirectTo: `https://worshipplus.vercel.app/auth/callback?next=/join/${token}` },
       });
       return;
     }
