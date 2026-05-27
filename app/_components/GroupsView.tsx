@@ -6,7 +6,7 @@ export type Group = { id: string; name: string; inviteToken: string; createdAt: 
 export type GroupMember = {
   id: string; groupId: string; userId: string | null; role: "owner"|"admin"|"member";
   displayName: string | null; instrument: string | null; instrumentDetail: string | null;
-  status: "pending"|"joined";
+  status: "pending"|"joined"; email: string | null;
 };
 export type GroupSong = { id: string; groupId: string; songId: string; };
 export type GroupsViewProps = {
@@ -136,6 +136,7 @@ function LeaderView({ group, userId, groupMembers, groupSongs, songs, onAddMembe
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{m.displayName ?? "Unknown"}</div>
+                    {m.email && <div className="text-xs text-slate-400 truncate">{m.email}</div>}
                     <div className="flex items-center gap-2 mt-0.5">
                       {insLabel(m) && <span className="text-xs text-slate-400">{insLabel(m)}</span>}
                       <span className={"text-xs px-1.5 py-0.5 rounded-full "+(m.status==="joined"?"bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600":"bg-amber-50 dark:bg-amber-950/40 text-amber-600")}>

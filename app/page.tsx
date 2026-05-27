@@ -276,12 +276,21 @@ export default function Home() {
         const { data: gsRows } = await supabase.from("group_songs").select("id,group_id,song_id");
         if (mErr) showToast("Members error: " + mErr.message);
         /* eslint-disable @typescript-eslint/no-explicit-any */
+        const memberUserIds = [...new Set((mRows??[]).map((r:any) => r.user_id).filter(Boolean))];
+        const { data: profileRows } = memberUserIds.length > 0
+          ? await supabase.from("profiles").select("id,full_name,email,avatar_url").in("id", memberUserIds)
+          : { data: [] };
+        const profileMap = Object.fromEntries((profileRows??[]).map((p:any) => [p.id, p]));
         setGroups((gRows??[]).map((r:any)=>({id:r.id,name:r.name,inviteToken:r.invite_token??"",createdAt:new Date(r.created_at).getTime()})));
-        setGroupMembers((mRows??[]).map((r:any)=>({
-          id:r.id, groupId:r.group_id, userId:r.user_id, role:r.role,
-          displayName:r.display_name??null, instrument:r.instrument??null,
-          instrumentDetail:r.instrument_detail??null, status:r.status??"pending",
-        })));
+        setGroupMembers((mRows??[]).map((r:any) => {
+          const p = profileMap[r.user_id];
+          return {
+            id:r.id, groupId:r.group_id, userId:r.user_id, role:r.role,
+            displayName:r.display_name??null, instrument:r.instrument??null,
+            instrumentDetail:r.instrument_detail??null, status:r.status??"pending",
+            email:p?.email ?? null,
+          };
+        }));
         setGroupSongs((gsRows??[]).map((r:any)=>({id:r.id,groupId:r.group_id,songId:r.song_id})));
         /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -553,7 +562,7 @@ export default function Home() {
     const r=data as{id:string;name:string;invite_token:string;created_at:string};
     const g:Group={id:r.id,name:r.name,inviteToken:r.invite_token??"",createdAt:new Date(r.created_at).getTime()};
     setGroups(p=>[...p,g]);
-    setGroupMembers(p=>[...p,{id:uid(),groupId:g.id,userId:user.id,role:"owner",displayName:profile?.full_name??null,instrument:null,instrumentDetail:null,status:"joined"}]);
+    setGroupMembers(p=>[...p,{id:uid(),groupId:g.id,userId:user.id,role:"owner",displayName:profile?.full_name??null,instrument:null,instrumentDetail:null,status:"joined",email:profile?.email??null}]);
     return g;
   };
   /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -561,7 +570,7 @@ export default function Home() {
     const{data,error}=await supabase.rpc("add_group_member",{p_group_id:groupId,p_display_name:displayName,p_role:role,p_instrument:instrument,p_instrument_detail:instrumentDetail});
     if(error){showToast("Error: "+error.message);return;}
     const r=data as any;
-    setGroupMembers(prev=>[...prev,{id:r.id,groupId:r.group_id,userId:r.user_id??null,role:r.role,displayName:r.display_name??null,instrument:r.instrument??null,instrumentDetail:r.instrument_detail??null,status:r.status??"pending"}]);
+    setGroupMembers(prev=>[...prev,{id:r.id,groupId:r.group_id,userId:r.user_id??null,role:r.role,displayName:r.display_name??null,instrument:r.instrument??null,instrumentDetail:r.instrument_detail??null,status:r.status??"pending",email:null}]);
   };
   /* eslint-enable @typescript-eslint/no-explicit-any */
   const shareGroupSong=async(groupId:string,songId:string):Promise<void>=>{
