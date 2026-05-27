@@ -186,6 +186,7 @@ function PaperContent({ song, settings, cols, paperW, paperH }: {
       <div style={{
         columnCount: cols > 1 ? cols : undefined,
         columnGap:   cols > 1 ? "2em"  : undefined,
+        overflow: "hidden",
       }}>
         {song.sections.map((section) => {
           const color = colorMap[getSectionColorKey(section.label)];
@@ -206,12 +207,12 @@ function PaperContent({ song, settings, cols, paperW, paperH }: {
                     <pre style={{
                       margin: 0, fontFamily: "ui-monospace, Menlo, monospace",
                       fontSize: `${fontSize * 0.8}px`, fontWeight: 700,
-                      color: "#1e3a8a", lineHeight: 1.3, whiteSpace: "pre-wrap",
+                      color: "#1e3a8a", lineHeight: 1.3, whiteSpace: "pre-wrap", overflow: "hidden",
                     }}>
                       {buildChordLine(line.chords, pxPerChar)}
                     </pre>
                   )}
-                  <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.4, minHeight: `${fontSize * 1.4}px` }}>
+                  <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.4, minHeight: `${fontSize * 1.4}px`, overflow: "hidden", wordBreak: "break-word" }}>
                     {line.lyric || "\u00a0"}
                   </div>
                 </div>
