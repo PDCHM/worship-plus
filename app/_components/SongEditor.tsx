@@ -37,6 +37,7 @@ type Props = {
   onExport: () => void;
   onPasteSong: () => void;
   onSave: () => void;
+  isDirty: boolean;
   showToast: (msg: string) => void;
 };
 
@@ -168,6 +169,7 @@ export default function SongEditor({
   onExport,
   onPasteSong,
   onSave,
+  isDirty,
   showToast,
 }: Props) {
   const [editingChord, setEditingChord] = useState<string | null>(null);
@@ -686,18 +688,21 @@ export default function SongEditor({
             </svg>
             <span className="hidden sm:inline">Export</span>
           </button>
-          <button
-            type="button"
-            onClick={onSave}
-            className="h-9 px-3 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center gap-1.5 shadow-sm shadow-indigo-600/30"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-              <polyline points="17 21 17 13 7 13 7 21" />
-              <polyline points="7 3 7 8 15 8" />
-            </svg>
-            <span className="hidden sm:inline">Save</span>
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={onSave}
+              className="h-9 px-3 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center gap-1.5 shadow-sm shadow-indigo-600/30"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+                <polyline points="17 21 17 13 7 13 7 21" />
+                <polyline points="7 3 7 8 15 8" />
+              </svg>
+              <span className="hidden sm:inline">Save</span>
+            </button>
+            {isDirty && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-400 border-2 border-white dark:border-slate-950 pointer-events-none" />}
+          </div>
         </div>
       </div>
 

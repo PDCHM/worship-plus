@@ -15,9 +15,11 @@ import {
   DEFAULT_SETTINGS,
   DEFAULT_SECTION_COLORS_DARK,
   DEFAULT_SECTION_COLORS_LIGHT,
+  cloneSection,
   getSectionColorKey,
   makeNewSong,
   parseSongText,
+  uid,
   type Settings,
   type Song,
 } from "@/lib/song";
@@ -178,9 +180,10 @@ export default function Home() {
   const [exportOpen, setExportOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [libraryView, setLibraryView] = useState<LibraryView>("grid");
+  const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set());
+  const lastSavedRef = useRef<Map<string, Song>>(new Map());
+  const [unsavedModal, setUnsavedModal] = useState<{ pendingView: View } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingSavesRef = useRef<Map<string, Song>>(new Map());
 
   // Load user, profile, songs, folders from Supabase.
   useEffect(() => {
@@ -224,6 +227,20 @@ export default function Home() {
       const loadedSongs = (songRows ?? []).map((r) => rowToSong(r as SongRow));
       setSongs(loadedSongs);
       setSongsLoaded(true);
+
+      for (const song of loadedSongs) {
+        lastSavedRef.current.set(song.id, song);
+        try {
+          const raw = localStorage.getItem("wp-backup-" + song.id);
+          if (raw) {
+            const bs = JSON.parse(raw) as Song;
+            if (bs.updatedAt > song.updatedAt) {
+              setSongs(prev => prev.map(s => s.id === song.id ? bs : s));
+              setDirtyIds(prev => new Set(prev).add(song.id));
+            }
+          }
+        } catch {}
+      }
 
       const loadedFolders = (folderRows ?? []).map((r: { id: string; name: string; type: string | null; created_at: string }) => ({
         id: r.id,
@@ -301,41 +318,23 @@ export default function Home() {
     window.setTimeout(() => setToast(null), 2400);
   };
 
-  const flushPendingSaves = () => {
-    if (!user) return;
-    const queued = Array.from(pendingSavesRef.current.values());
-    pendingSavesRef.current.clear();
-    queued.forEach((song) => void saveSongToDb(supabase, song, user.id));
-  };
-
-  const scheduleSave = (song: Song) => {
-    if (!user) return;
-    pendingSavesRef.current.set(song.id, song);
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(flushPendingSaves, 700);
-  };
-
-  useEffect(() => {
-    const onHide = () => flushPendingSaves();
-    window.addEventListener("pagehide", onHide);
-    window.addEventListener("beforeunload", onHide);
-    return () => {
-      window.removeEventListener("pagehide", onHide);
-      window.removeEventListener("beforeunload", onHide);
-      flushPendingSaves();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, supabase]);
-
   const upsertSong = (updated: Song) => {
-    setSongs((prev) => {
-      const idx = prev.findIndex((s) => s.id === updated.id);
+    setSongs(prev => {
+      const idx = prev.findIndex(s => s.id === updated.id);
       if (idx === -1) return [updated, ...prev];
-      const next = [...prev];
-      next[idx] = updated;
-      return next;
+      const next = [...prev]; next[idx] = updated; return next;
     });
-    scheduleSave(updated);
+    setDirtyIds(prev => new Set(prev).add(updated.id));
+    try { localStorage.setItem("wp-backup-" + updated.id, JSON.stringify(updated)); } catch {}
+  };
+
+  const saveSong = async (song: Song) => {
+    if (!user) return;
+    await saveSongToDb(supabase, song, user.id);
+    lastSavedRef.current.set(song.id, song);
+    setDirtyIds(prev => { const n = new Set(prev); n.delete(song.id); return n; });
+    try { localStorage.removeItem("wp-backup-" + song.id); } catch {}
+    showToast("Saved");
   };
 
   const toggleFavorite = async (songId: string) => {
@@ -355,7 +354,8 @@ export default function Home() {
       if (prev.kind === "editor" && prev.songId === songId) return { kind: "library", filter: "all" };
       return prev;
     });
-    pendingSavesRef.current.delete(songId);
+    setDirtyIds(prev => { const n = new Set(prev); n.delete(songId); return n; });
+    try { localStorage.removeItem("wp-backup-" + songId); } catch {}
     if (user) {
       const { error } = await supabase.from("songs").delete().eq("id", songId);
       if (error) console.error("delete song failed", error);
@@ -367,14 +367,45 @@ export default function Home() {
     const song = makeNewSong();
     setSongs((prev) => [song, ...prev]);
     setView({ kind: "editor", songId: song.id });
-    if (user) void saveSongToDb(supabase, song, user.id);
+    if (!user) return;
+    lastSavedRef.current.set(song.id, song);
+    void saveSongToDb(supabase, song, user.id);
   };
 
-  const openSong = (id: string) => setView({ kind: "editor", songId: id });
+  const duplicateSong = (songId: string) => {
+    const source = songs.find(s => s.id === songId);
+    if (!source || !user) return;
+    const newSong: Song = {
+      ...source,
+      id: uid(),
+      title: "Copy of " + source.title,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      sections: source.sections.map(s => cloneSection(s)),
+    };
+    setSongs(prev => [newSong, ...prev]);
+    lastSavedRef.current.set(newSong.id, newSong);
+    void saveSongToDb(supabase, newSong, user.id);
+    setView({ kind: "editor", songId: newSong.id });
+    showToast('Duplicated "' + source.title + '"');
+  };
+
+  const navigateTo = (newView: View) => {
+    if (view.kind === "editor") {
+      const songId = (view as { kind: "editor"; songId: string }).songId;
+      if (dirtyIds.has(songId)) {
+        setUnsavedModal({ pendingView: newView });
+        return;
+      }
+    }
+    setView(newView);
+  };
+
+  const openSong = (id: string) => navigateTo({ kind: "editor", songId: id });
 
   const handleImportPasted = (song: Song) => {
     setSongs((prev) => [song, ...prev]);
-    setView({ kind: "editor", songId: song.id });
+    navigateTo({ kind: "editor", songId: song.id });
     setPasteOpen(false);
     showToast(`Imported "${song.title}"`);
     if (user) void saveSongToDb(supabase, song, user.id);
@@ -387,7 +418,7 @@ export default function Home() {
       const text = await file.text();
       const parsed = parseSongText(text);
       setSongs((prev) => [parsed, ...prev]);
-      setView({ kind: "editor", songId: parsed.id });
+      navigateTo({ kind: "editor", songId: parsed.id });
       showToast(`Imported "${parsed.title}"`);
       if (user) void saveSongToDb(supabase, parsed, user.id);
     } catch {
@@ -396,7 +427,6 @@ export default function Home() {
   };
 
   const handleSignOut = async () => {
-    flushPendingSaves();
     await supabase.auth.signOut();
     router.replace("/login");
   };
@@ -505,7 +535,7 @@ export default function Home() {
       <TopNav
         onNewSong={newSong}
         onImport={() => fileInputRef.current?.click()}
-        onHome={() => setView({ kind: "library", filter: "all" })}
+        onHome={() => navigateTo({ kind: "library", filter: "all" })}
         profile={profile}
         onSignOut={handleSignOut}
         sidebarOpen={sidebarOpen}
@@ -514,7 +544,7 @@ export default function Home() {
 
       <div className="flex-1 min-h-0">
         <div onClick={() => setSidebarOpen(false)} className={"fixed inset-0 z-30 bg-black/40 transition-opacity duration-200 print:hidden " + (sidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none")} />
-        <Sidebar view={view} onNavigate={setView} folders={folders} sidebarOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        <Sidebar view={view} onNavigate={navigateTo} folders={folders} sidebarOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <main className="w-full overflow-x-hidden pb-20 md:pb-0">
           {view.kind === "library" && !songsLoaded && (
             <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 py-12 text-sm text-slate-400 dark:text-slate-500">
@@ -528,6 +558,7 @@ export default function Home() {
               onToggleFavorite={toggleFavorite}
               onPasteSong={() => setPasteOpen(true)}
               onDelete={deleteSong}
+              onDuplicate={duplicateSong}
               showToast={showToast}
               filter={view.filter}
               libraryView={libraryView}
@@ -544,7 +575,8 @@ export default function Home() {
               onPrint={handlePrint}
               onExport={() => setExportOpen(true)}
               onPasteSong={() => setPasteOpen(true)}
-              onSave={() => { flushPendingSaves(); showToast("Song saved"); }}
+              isDirty={view.kind === "editor" && dirtyIds.has((view as { kind: "editor"; songId: string }).songId)}
+              onSave={() => { const s = songs.find(x => view.kind === "editor" && x.id === (view as { kind: "editor"; songId: string }).songId); if (s) void saveSong(s); }}
               showToast={showToast}
             />
           )}
@@ -552,7 +584,7 @@ export default function Home() {
             <EmptyState
               message="Song not found"
               cta="Back to library"
-              onAction={() => setView({ kind: "library", filter: "all" })}
+              onAction={() => navigateTo({ kind: "library", filter: "all" })}
             />
           )}
           {view.kind === "settings" && (
@@ -564,7 +596,7 @@ export default function Home() {
               folders={folders}
               folderSongs={folderSongs}
               songs={songs}
-              onNavigate={(to) => setView({ kind: "folders", subview: to })}
+              onNavigate={(to) => navigateTo({ kind: "folders", subview: to })}
               onCreate={createFolder}
               onRename={renameFolder}
               onDelete={deleteFolder}
@@ -586,7 +618,7 @@ export default function Home() {
         </main>
       </div>
 
-      <BottomTabs view={view} onNavigate={setView} />
+      <BottomTabs view={view} onNavigate={navigateTo} />
 
       {activeSong && <PrintLayout song={activeSong} settings={settings} />}
 
@@ -604,11 +636,53 @@ export default function Home() {
         />
       )}
 
+      {unsavedModal && (
+        <UnsavedModal
+          onSave={() => {
+            const s = songs.find(x => view.kind === "editor" && x.id === (view as { kind: "editor"; songId: string }).songId);
+            if (s) void saveSong(s);
+            setView(unsavedModal.pendingView);
+            setUnsavedModal(null);
+          }}
+          onDiscard={() => {
+            if (view.kind === "editor") {
+              const songId = (view as { kind: "editor"; songId: string }).songId;
+              const last = lastSavedRef.current.get(songId);
+              if (last) setSongs(prev => prev.map(s => s.id === songId ? last : s));
+              setDirtyIds(prev => { const n = new Set(prev); n.delete(songId); return n; });
+              try { localStorage.removeItem("wp-backup-" + songId); } catch {}
+            }
+            setView(unsavedModal.pendingView);
+            setUnsavedModal(null);
+          }}
+          onCancel={() => setUnsavedModal(null)}
+        />
+      )}
+
       {toast && (
         <div className="fixed bottom-24 md:bottom-6 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-medium shadow-2xl shadow-slate-900/30 z-50 print:hidden">
           {toast}
         </div>
       )}
+    </div>
+  );
+}
+
+function UnsavedModal({ onSave, onDiscard, onCancel }: { onSave: () => void; onDiscard: () => void; onCancel: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-6">
+        <div className="w-10 h-10 rounded-full bg-amber-50 dark:bg-amber-950/60 flex items-center justify-center mb-4">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </div>
+        <h2 className="font-bold text-lg mb-1">Unsaved changes</h2>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Save your changes before leaving, or discard them.</p>
+        <div className="flex flex-col gap-2">
+          <button type="button" onClick={onSave} className="w-full h-10 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors">Save changes</button>
+          <button type="button" onClick={onDiscard} className="w-full h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">Discard changes</button>
+          <button type="button" onClick={onCancel} className="w-full h-10 text-slate-400 dark:text-slate-500 text-sm hover:text-slate-600 dark:hover:text-slate-300 transition-colors">Cancel — keep editing</button>
+        </div>
+      </div>
     </div>
   );
 }
