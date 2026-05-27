@@ -19,8 +19,10 @@ export default function JoinPage() {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        localStorage.setItem("wp-pending-join", token);
-        router.replace("/login");
+        await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: { redirectTo: `${window.location.origin}/auth/callback?next=/join/${token}` },
+        });
         return;
       }
 
@@ -50,7 +52,13 @@ export default function JoinPage() {
   const handleJoin = async () => {
     setJoining(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { localStorage.setItem("wp-pending-join", token); router.replace("/login"); return; }
+    if (!user) {
+      await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: `${window.location.origin}/auth/callback?next=/join/${token}` },
+      });
+      return;
+    }
 
     const { data: group } = await supabase
       .from("groups")

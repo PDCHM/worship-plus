@@ -205,13 +205,6 @@ export default function Home() {
         setUser(u);
         setAuthChecked(true);
 
-        const pendingJoin = localStorage.getItem("wp-pending-join");
-        if (pendingJoin) {
-          localStorage.removeItem("wp-pending-join");
-          router.replace("/join/" + pendingJoin);
-          return;
-        }
-
         const [
           { data: profileRow },
           { data: songRows, error: songsError },
