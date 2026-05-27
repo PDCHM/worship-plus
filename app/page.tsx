@@ -190,6 +190,10 @@ export default function Home() {
   const [unsavedModal, setUnsavedModal] = useState<{ pendingView: View } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    localStorage.setItem("wp-last-view", JSON.stringify(view));
+  }, [view]);
+
   // Load user, profile, songs, folders from Supabase.
   useEffect(() => {
     let cancelled = false;
@@ -275,6 +279,14 @@ export default function Home() {
         setGroupSongs((gsRows??[]).map((r:any)=>({id:r.id,groupId:r.group_id,songId:r.song_id})));
         showToast(`g:${gRows?.length} m:${mRows?.length} uid:${u.id.slice(0,6)}`);
         /* eslint-enable @typescript-eslint/no-explicit-any */
+
+        try {
+          const saved = localStorage.getItem("wp-last-view");
+          if (saved) {
+            const v = JSON.parse(saved);
+            if (v.kind !== "editor") setView(v);
+          }
+        } catch {}
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         showToast("Init error: " + err.message);
