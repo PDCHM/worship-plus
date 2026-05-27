@@ -176,6 +176,7 @@ export default function Home() {
   const [isDark, setIsDark] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [libraryView, setLibraryView] = useState<LibraryView>("grid");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -507,10 +508,12 @@ export default function Home() {
         onHome={() => setView({ kind: "library", filter: "all" })}
         profile={profile}
         onSignOut={handleSignOut}
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen(o => !o)}
       />
 
       <div className="flex flex-1 min-h-0">
-        <Sidebar view={view} onNavigate={setView} folders={folders} />
+        <Sidebar view={view} onNavigate={setView} folders={folders} sidebarOpen={sidebarOpen} />
         <main className="flex-1 min-w-0 overflow-x-hidden pb-20 md:pb-0">
           {view.kind === "library" && !songsLoaded && (
             <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 py-12 text-sm text-slate-400 dark:text-slate-500">
@@ -626,10 +629,11 @@ function LoadingScreen() {
 }
 
 function TopNav({
-  onNewSong, onImport, onHome, profile, onSignOut,
+  onNewSong, onImport, onHome, profile, onSignOut, sidebarOpen, onToggleSidebar,
 }: {
   onNewSong: () => void; onImport: () => void; onHome: () => void;
   profile: Profile | null; onSignOut: () => void;
+  sidebarOpen: boolean; onToggleSidebar: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -652,21 +656,24 @@ function TopNav({
   return (
     <header className="border-b border-slate-200 dark:border-slate-800 backdrop-blur-md bg-white/80 dark:bg-slate-950/80 sticky top-0 z-30 print:hidden">
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
-        <button type="button" onClick={onHome} className="flex items-center gap-2 min-w-0">
-          <div className="font-bold text-lg tracking-tight">Worship<span className="text-blue-500">+</span></div>
-        </button>
-        <div className="flex items-center gap-2 shrink-0">
-          <button type="button" onClick={onNewSong}
-            className="h-9 px-3 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center gap-1.5 shadow-sm shadow-indigo-600/30">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            <span className="hidden sm:inline">New Song</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <button type="button" onClick={onToggleSidebar} className="w-9 h-9 rounded-lg flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" aria-label="Toggle sidebar" aria-expanded={sidebarOpen}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
           </button>
-          <button type="button" onClick={onImport}
-            className="h-9 px-3 rounded-lg text-sm font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5">
+          <button type="button" onClick={onHome} className="flex items-center gap-2 min-w-0">
+            <div className="font-bold text-lg tracking-tight">Worship<span className="text-blue-500">+</span></div>
+          </button>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button type="button" onClick={onNewSong} title="New Song" aria-label="New Song"
+            className="w-9 h-9 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center justify-center shadow-sm shadow-indigo-600/30">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+          <button type="button" onClick={onImport} title="Import" aria-label="Import"
+            className="w-9 h-9 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors flex items-center justify-center">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
             </svg>
-            <span className="hidden sm:inline">Import</span>
           </button>
           <div ref={wrapRef} className="relative">
             <button type="button" onClick={() => setMenuOpen((o) => !o)}
@@ -701,11 +708,12 @@ function TopNav({
 }
 
 function Sidebar({
-  view, onNavigate, folders,
+  view, onNavigate, folders, sidebarOpen,
 }: {
   view: View;
   onNavigate: (v: View) => void;
   folders: Folder[];
+  sidebarOpen: boolean;
 }) {
   const isLibrary = (filter: "all" | "favorites" | "recent") =>
     view.kind === "library" && view.filter === filter;
@@ -716,7 +724,7 @@ function Sidebar({
   const setlistList = folders.filter((f) => f.type === "setlist");
 
   return (
-    <aside className="hidden md:flex flex-col w-[200px] shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white/40 dark:bg-slate-900/40 p-3 gap-1 overflow-y-auto print:hidden">
+    <aside className={"hidden md:flex flex-col shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white/40 dark:bg-slate-900/40 overflow-hidden transition-all duration-200 print:hidden " + (sidebarOpen ? "w-[200px] p-3" : "w-0")}>
       <SidebarHeading>Library</SidebarHeading>
       <SidebarItem active={isLibrary("all")} onClick={() => onNavigate({ kind: "library", filter: "all" })}
         icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 17V5l12-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="15" r="3"/></svg>}>
