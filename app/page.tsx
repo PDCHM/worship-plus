@@ -189,78 +189,84 @@ export default function Home() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const { data: { user: u } } = await supabase.auth.getUser();
-      if (cancelled) return;
-      if (!u) {
+      try {
+        const { data: { user: u } } = await supabase.auth.getUser();
+        if (cancelled) return;
+        if (!u) {
+          setAuthChecked(true);
+          router.replace("/login");
+          return;
+        }
+        setUser(u);
         setAuthChecked(true);
-        router.replace("/login");
-        return;
-      }
-      setUser(u);
-      setAuthChecked(true);
-      showToast("User: " + u.id.slice(0, 8));
+        setToast("User: " + u.id.slice(0, 8));
+        setTimeout(() => setToast(null), 10000);
 
-      const [
-        { data: profileRow },
-        { data: songRows, error: songsError },
-        { data: folderRows },
-        { data: folderSongRows },
-      ] = await Promise.all([
-        supabase.from("profiles").select("id, email, full_name, avatar_url").eq("id", u.id).maybeSingle(),
-        supabase.from("songs").select("*, sections(*, lines(*, chords(*)))").eq("user_id", u.id).order("created_at", { ascending: false }),
-        supabase.from("folders").select("id, name, type, created_at, date").eq("user_id", u.id).order("created_at"),
-        supabase.from("folder_songs").select("id, folder_id, song_id, position").order("position"),
-      ]);
-      if (cancelled) return;
+        const [
+          { data: profileRow },
+          { data: songRows, error: songsError },
+          { data: folderRows },
+          { data: folderSongRows },
+        ] = await Promise.all([
+          supabase.from("profiles").select("id, email, full_name, avatar_url").eq("id", u.id).maybeSingle(),
+          supabase.from("songs").select("*, sections(*, lines(*, chords(*)))").eq("user_id", u.id).order("created_at", { ascending: false }),
+          supabase.from("folders").select("id, name, type, created_at, date").eq("user_id", u.id).order("created_at"),
+          supabase.from("folder_songs").select("id, folder_id, song_id, position").order("position"),
+        ]);
+        if (cancelled) return;
 
-      if (profileRow) {
-        setProfile(profileRow as Profile);
-      } else {
-        setProfile({
-          id: u.id,
-          email: u.email ?? null,
-          full_name: (u.user_metadata?.full_name as string | undefined) ?? (u.user_metadata?.name as string | undefined) ?? null,
-          avatar_url: (u.user_metadata?.avatar_url as string | undefined) ?? null,
-        });
-      }
+        if (profileRow) {
+          setProfile(profileRow as Profile);
+        } else {
+          setProfile({
+            id: u.id,
+            email: u.email ?? null,
+            full_name: (u.user_metadata?.full_name as string | undefined) ?? (u.user_metadata?.name as string | undefined) ?? null,
+            avatar_url: (u.user_metadata?.avatar_url as string | undefined) ?? null,
+          });
+        }
 
-      if (songsError) console.error("load songs failed", songsError.message);
-      const loadedSongs = (songRows ?? []).map((r) => rowToSong(r as SongRow));
-      setSongs(loadedSongs);
-      setSongsLoaded(true);
+        if (songsError) console.error("load songs failed", songsError.message);
+        const loadedSongs = (songRows ?? []).map((r) => rowToSong(r as SongRow));
+        setSongs(loadedSongs);
+        setSongsLoaded(true);
 
-      for (const song of loadedSongs) {
-        lastSavedRef.current.set(song.id, song);
-        try {
-          const raw = localStorage.getItem("wp-backup-" + song.id);
-          if (raw) {
-            const bs = JSON.parse(raw) as Song;
-            if (bs.updatedAt > song.updatedAt) {
-              setSongs(prev => prev.map(s => s.id === song.id ? bs : s));
-              setDirtyIds(prev => new Set(prev).add(song.id));
+        for (const song of loadedSongs) {
+          lastSavedRef.current.set(song.id, song);
+          try {
+            const raw = localStorage.getItem("wp-backup-" + song.id);
+            if (raw) {
+              const bs = JSON.parse(raw) as Song;
+              if (bs.updatedAt > song.updatedAt) {
+                setSongs(prev => prev.map(s => s.id === song.id ? bs : s));
+                setDirtyIds(prev => new Set(prev).add(song.id));
+              }
             }
-          }
-        } catch {}
+          } catch {}
+        }
+
+        const loadedFolders = (folderRows ?? []).map((r: { id: string; name: string; type: string | null; created_at: string; date?: string | null }) => ({
+          id: r.id,
+          name: r.name,
+          type: (r.type === "setlist" ? "setlist" : "folder") as "folder" | "setlist",
+          createdAt: new Date(r.created_at).getTime(),
+          date: r.date ?? undefined,
+        }));
+        setFolders(loadedFolders);
+
+        const loadedFolderSongs = (folderSongRows ?? []).map((r: { id: string; folder_id: string; song_id: string; position: number }) => ({
+          id: r.id,
+          folderId: r.folder_id,
+          songId: r.song_id,
+          position: r.position ?? 0,
+        }));
+        setFolderSongs(loadedFolderSongs);
+
+        showToast("Loaded: " + loadedSongs.length + " songs, " + loadedFolders.length + " folders");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } catch (err: any) {
+        showToast("Init error: " + err.message);
       }
-
-      const loadedFolders = (folderRows ?? []).map((r: { id: string; name: string; type: string | null; created_at: string; date?: string | null }) => ({
-        id: r.id,
-        name: r.name,
-        type: (r.type === "setlist" ? "setlist" : "folder") as "folder" | "setlist",
-        createdAt: new Date(r.created_at).getTime(),
-        date: r.date ?? undefined,
-      }));
-      setFolders(loadedFolders);
-
-      const loadedFolderSongs = (folderSongRows ?? []).map((r: { id: string; folder_id: string; song_id: string; position: number }) => ({
-        id: r.id,
-        folderId: r.folder_id,
-        songId: r.song_id,
-        position: r.position ?? 0,
-      }));
-      setFolderSongs(loadedFolderSongs);
-
-      showToast("Loaded: " + loadedSongs.length + " songs, " + loadedFolders.length + " folders");
     })();
 
     const { data: subscription } = supabase.auth.onAuthStateChange((event) => {
