@@ -41,7 +41,14 @@ export default function Library({
     songId: string;
     title: string;
   } | null>(null);
+  const [sortCol, setSortCol] = useState<"title"|"artist"|"key"|null>(null);
+  const [sortDir, setSortDir] = useState<"asc"|"desc">("asc");
   const menuRef = useRef<HTMLDivElement | null>(null);
+
+  const toggleSort = (col: "title"|"artist"|"key") => {
+    if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
+    else { setSortCol(col); setSortDir("asc"); }
+  };
 
   useEffect(() => {
     if (!menu) return;
@@ -87,6 +94,12 @@ export default function Library({
     }
     return list;
   }, [songs, query, filter]);
+
+  const sorted = sortCol ? [...filtered].sort((a, b) => {
+    const av = sortCol === "title" ? a.title : sortCol === "artist" ? (a.artist || "") : a.key;
+    const bv = sortCol === "title" ? b.title : sortCol === "artist" ? (b.artist || "") : b.key;
+    return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+  }) : filtered;
 
   const heading =
     filter === "favorites"
@@ -239,13 +252,13 @@ export default function Library({
             className="grid items-center gap-3 px-4 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800"
             style={{ gridTemplateColumns: "1fr 140px 56px 32px 32px" }}
           >
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Song</span>
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Artist</span>
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 text-center">Key</span>
+            <SortHeader label="Song" col="title" sortCol={sortCol} sortDir={sortDir} onClick={() => toggleSort("title")} />
+            <SortHeader label="Artist" col="artist" sortCol={sortCol} sortDir={sortDir} onClick={() => toggleSort("artist")} />
+            <SortHeader label="Key" col="key" sortCol={sortCol} sortDir={sortDir} onClick={() => toggleSort("key")} center />
             <span />
             <span />
           </div>
-          {filtered.map((song, idx) => (
+          {sorted.map((song, idx) => (
             <SongRow
               key={song.id}
               song={song}
@@ -573,6 +586,29 @@ function SongCard({
         <DotsButton onClick={onMenu} />
       </div>
     </div>
+  );
+}
+
+function SortHeader({
+  label, col, sortCol, sortDir, onClick, center = false,
+}: {
+  label: string;
+  col: "title" | "artist" | "key";
+  sortCol: "title" | "artist" | "key" | null;
+  sortDir: "asc" | "desc";
+  onClick: () => void;
+  center?: boolean;
+}) {
+  const active = sortCol === col;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={"text-[11px] font-semibold uppercase tracking-wider transition-colors flex items-center gap-1 " + (center ? "justify-center " : "") + (active ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200")}
+    >
+      <span>{label}</span>
+      {active && <span aria-hidden>{sortDir === "asc" ? "↑" : "↓"}</span>}
+    </button>
   );
 }
 
