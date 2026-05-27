@@ -176,7 +176,7 @@ export default function Home() {
   const [isDark, setIsDark] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [libraryView, setLibraryView] = useState<LibraryView>("grid");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -512,9 +512,10 @@ export default function Home() {
         onToggleSidebar={() => setSidebarOpen(o => !o)}
       />
 
-      <div className="flex flex-1 min-h-0">
+      <div className="flex-1 min-h-0">
+        <div onClick={() => setSidebarOpen(false)} className={"fixed inset-0 z-30 bg-black/40 transition-opacity duration-200 print:hidden " + (sidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none")} />
         <Sidebar view={view} onNavigate={setView} folders={folders} sidebarOpen={sidebarOpen} />
-        <main className="flex-1 min-w-0 overflow-x-hidden pb-20 md:pb-0">
+        <main className="w-full overflow-x-hidden pb-20 md:pb-0">
           {view.kind === "library" && !songsLoaded && (
             <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 py-12 text-sm text-slate-400 dark:text-slate-500">
               Loading library…
@@ -724,7 +725,7 @@ function Sidebar({
   const setlistList = folders.filter((f) => f.type === "setlist");
 
   return (
-    <aside className={"hidden md:flex flex-col shrink-0 border-r border-slate-200 dark:border-slate-800 bg-white/40 dark:bg-slate-900/40 overflow-hidden transition-all duration-200 print:hidden " + (sidebarOpen ? "w-[200px] p-3" : "w-0")}>
+    <aside className={"fixed left-0 top-0 bottom-0 z-40 w-64 flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 gap-1 overflow-y-auto transition-transform duration-200 ease-in-out print:hidden shadow-xl" + (sidebarOpen ? " translate-x-0" : " -translate-x-full")}>
       <SidebarHeading>Library</SidebarHeading>
       <SidebarItem active={isLibrary("all")} onClick={() => onNavigate({ kind: "library", filter: "all" })}
         icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 17V5l12-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="15" r="3"/></svg>}>
