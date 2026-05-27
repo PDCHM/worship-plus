@@ -176,7 +176,17 @@ export default function Home() {
   const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
   const [groupSongs, setGroupSongs] = useState<GroupSong[]>([]);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
-  const [view, setView] = useState<View>({ kind: "library", filter: "all" });
+  const [view, setView] = useState<View>(() => {
+    if (typeof window === "undefined") return { kind: "library", filter: "all" };
+    try {
+      const saved = localStorage.getItem("wp-view");
+      if (saved) {
+        const v = JSON.parse(saved);
+        if (v.kind && v.kind !== "editor") return v;
+      }
+    } catch {}
+    return { kind: "library", filter: "all" };
+  });
   const [loaded, setLoaded] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(false);
@@ -307,13 +317,6 @@ export default function Home() {
         setGroupSongs((gsRows??[]).map((r:any)=>({id:r.id,groupId:r.group_id,songId:r.song_id})));
         /* eslint-enable @typescript-eslint/no-explicit-any */
 
-        try {
-          const saved = localStorage.getItem("wp-view");
-          if (saved) {
-            const v = JSON.parse(saved);
-            if (v.kind && v.kind !== "editor") setView(v);
-          }
-        } catch {}
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         showToast("Init error: " + err.message);
