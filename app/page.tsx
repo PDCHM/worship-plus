@@ -198,6 +198,15 @@ export default function Home() {
 
   // Load user, profile, songs, folders from Supabase.
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("error")) {
+        url.searchParams.delete("error");
+        url.searchParams.delete("error_code");
+        url.searchParams.delete("error_description");
+        window.history.replaceState({}, "", url.toString());
+      }
+    }
     let cancelled = false;
     (async () => {
       try {
