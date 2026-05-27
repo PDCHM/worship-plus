@@ -269,25 +269,19 @@ export default function Home() {
         }));
         setFolderSongs(loadedFolderSongs);
 
-        const { data: gRows } = await supabase.from("groups").select("id,name,invite_token,created_at,church");
+        const { data: gRows } = await supabase.from("groups").select("id,name,invite_token,created_at");
         const { data: mRows, error: mErr } = await supabase
           .from("group_members")
-          .select("id,group_id,user_id,role");
+          .select("id,group_id,user_id,role,display_name,instrument,instrument_detail,status");
         const { data: gsRows } = await supabase.from("group_songs").select("id,group_id,song_id");
         if (mErr) showToast("Members error: " + mErr.message);
         /* eslint-disable @typescript-eslint/no-explicit-any */
-        const memberUserIds = [...new Set((mRows??[]).map((r:any) => r.user_id))];
-        const { data: profileRows } = memberUserIds.length > 0
-          ? await supabase.from("profiles").select("id,full_name,email,avatar_url").in("id", memberUserIds)
-          : { data: [] };
-        showToast("profiles: " + (profileRows?.length ?? "null") + " members: " + (mRows?.length ?? "null"));
-        const profileMap = Object.fromEntries((profileRows??[]).map((p:any) => [p.id, p]));
-        setGroups((gRows??[]).map((r:any)=>({id:r.id,name:r.name,church:r.church??"",inviteToken:r.invite_token??"",createdAt:new Date(r.created_at).getTime()})));
-        setGroupMembers((mRows??[]).map((r:any) => {
-          const p = profileMap[r.user_id];
-          return {id:r.id,groupId:r.group_id,userId:r.user_id,role:r.role,
-            fullName:p?.full_name??null,email:p?.email??null,avatarUrl:p?.avatar_url??null};
-        }));
+        setGroups((gRows??[]).map((r:any)=>({id:r.id,name:r.name,inviteToken:r.invite_token??"",createdAt:new Date(r.created_at).getTime()})));
+        setGroupMembers((mRows??[]).map((r:any)=>({
+          id:r.id, groupId:r.group_id, userId:r.user_id, role:r.role,
+          displayName:r.display_name??null, instrument:r.instrument??null,
+          instrumentDetail:r.instrument_detail??null, status:r.status??"pending",
+        })));
         setGroupSongs((gsRows??[]).map((r:any)=>({id:r.id,groupId:r.group_id,songId:r.song_id})));
         /* eslint-enable @typescript-eslint/no-explicit-any */
 
@@ -559,9 +553,17 @@ export default function Home() {
     const r=data as{id:string;name:string;invite_token:string;created_at:string};
     const g:Group={id:r.id,name:r.name,inviteToken:r.invite_token??"",createdAt:new Date(r.created_at).getTime()};
     setGroups(p=>[...p,g]);
-    setGroupMembers(p=>[...p,{id:uid(),groupId:g.id,userId:user.id,role:"owner",fullName:profile?.full_name??null,email:profile?.email??null,avatarUrl:profile?.avatar_url??null}]);
+    setGroupMembers(p=>[...p,{id:uid(),groupId:g.id,userId:user.id,role:"owner",displayName:profile?.full_name??null,instrument:null,instrumentDetail:null,status:"joined"}]);
     return g;
   };
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const addGroupMember=async(groupId:string,displayName:string,role:string,instrument:string,instrumentDetail:string):Promise<void>=>{
+    const{data,error}=await supabase.rpc("add_group_member",{p_group_id:groupId,p_display_name:displayName,p_role:role,p_instrument:instrument,p_instrument_detail:instrumentDetail});
+    if(error){showToast("Error: "+error.message);return;}
+    const r=data as any;
+    setGroupMembers(prev=>[...prev,{id:r.id,groupId:r.group_id,userId:r.user_id??null,role:r.role,displayName:r.display_name??null,instrument:r.instrument??null,instrumentDetail:r.instrument_detail??null,status:r.status??"pending"}]);
+  };
+  /* eslint-enable @typescript-eslint/no-explicit-any */
   const shareGroupSong=async(groupId:string,songId:string):Promise<void>=>{
     const{data,error}=await supabase.rpc("add_song_to_group",{p_group_id:groupId,p_song_id:songId});
     if(error){logErr("share song",error);showToast("Error: "+error.message);return;}
@@ -569,8 +571,10 @@ export default function Home() {
     setGroupSongs(prev=>[...prev,{id:r.id,groupId:r.group_id,songId:r.song_id}]);
   };
   const unshareGroupSong=(groupId:string,songId:string):void=>{setGroupSongs(p=>p.filter(gs=>!(gs.groupId===groupId&&gs.songId===songId)));void supabase.from("group_songs").delete().eq("group_id",groupId).eq("song_id",songId);};
-  const removeGroupMember=(groupId:string,memberId:string):void=>{setGroupMembers(p=>p.filter(m=>!(m.groupId===groupId&&m.userId===memberId)));void supabase.from("group_members").delete().eq("group_id",groupId).eq("user_id",memberId);};
-  const leaveGroup=(groupId:string):void=>{if(!user)return;setGroups(p=>p.filter(g=>g.id!==groupId));setGroupMembers(p=>p.filter(m=>!(m.groupId===groupId&&m.userId===user.id)));void supabase.from("group_members").delete().eq("group_id",groupId).eq("user_id",user.id);};
+  const removeGroupMember=(memberId:string):void=>{
+    setGroupMembers(p=>p.filter(m=>m.id!==memberId));
+    void supabase.from("group_members").delete().eq("id",memberId);
+  };
 
   const renameFolder = async (id: string, name: string): Promise<void> => {
     setFolders((prev) => prev.map((f) => f.id === id ? { ...f, name } : f));
@@ -713,7 +717,7 @@ export default function Home() {
               showToast={showToast}
             />
           )}
-          {view.kind==="groups"&&<GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={songs} onCreateGroup={createGroup} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onRemoveMember={removeGroupMember} onLeaveGroup={leaveGroup} onOpenSong={openSong} showToast={showToast}/>}
+          {view.kind==="groups"&&<GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={songs} onCreateGroup={createGroup} onAddMember={addGroupMember} onRemoveMember={removeGroupMember} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onOpenSong={openSong} showToast={showToast}/>}
         </main>
       </div>
 
