@@ -89,9 +89,11 @@ function Overview({
     if (!name.trim()) return;
     const r = await onCreate(name.trim(), type);
     if (r) {
-      showToast(`${type === "folder" ? "Folder" : "Setlist"} created`);
+      showToast(type === "folder" ? "Folder created" : "Setlist created");
       if (type === "folder") { setNewFolderName(""); setShowNewFolder(false); }
       else { setNewSetlistName(""); setShowNewSetlist(false); }
+    } else {
+      showToast("Failed to create — check Supabase connection");
     }
   };
 

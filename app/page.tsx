@@ -451,7 +451,7 @@ export default function Home() {
       .insert({ user_id: user.id, name, type })
       .select()
       .single();
-    if (error) { logErr("create folder", error); return null; }
+    if (error) { logErr("create folder", error); showToast("Error: " + error.message); return null; }
     const f: Folder = {
       id: data.id,
       name: data.name,
