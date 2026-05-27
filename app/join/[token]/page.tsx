@@ -44,8 +44,8 @@ export default function JoinPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { router.replace("/login"); return; }
     if (slotId) {
-      const { error } = await supabase.from("group_members").update({ user_id: user.id, status: "joined" }).eq("id", slotId);
-      if (error) { setStatus("error"); setJoining(false); return; }
+      const { data: slotData, error } = await supabase.rpc("join_team_slot", { p_slot_id: slotId });
+      if (error || !slotData) { setStatus("error"); setJoining(false); return; }
     } else {
       const { data: group } = await supabase.from("groups").select("id").eq("invite_token", token).single();
       if (!group) { setStatus("notfound"); setJoining(false); return; }
