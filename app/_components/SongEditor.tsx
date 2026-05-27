@@ -4,7 +4,6 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import PrintPreviewModal from "@/app/_components/PrintPreviewModal";
 import QuickActionsPanel from "@/app/_components/QuickActionsPanel";
 import {
-  CAPO_OPTIONS,
   KEYS,
   PREFER_FLAT_KEYS,
   SECTION_PRESETS,
@@ -185,6 +184,8 @@ export default function SongEditor({
   const [viewMode, setViewMode] = useState<ViewMode>("standard");
   const [charWidth, setCharWidth] = useState(9.6);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [keyPickerOpen, setKeyPickerOpen] = useState(false);
+  const [capoPickerOpen, setCapoPickerOpen] = useState(false);
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [autoScrolling, setAutoScrolling] = useState(false);
   const [scrollSpeed, setScrollSpeed] = useState(3);
@@ -233,6 +234,13 @@ export default function SongEditor({
       window.removeEventListener("blur", close);
     };
   }, [contextMenu]);
+
+  useEffect(() => {
+    if (!keyPickerOpen && !capoPickerOpen) return;
+    const close = () => { setKeyPickerOpen(false); setCapoPickerOpen(false); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [keyPickerOpen, capoPickerOpen]);
 
   useEffect(() => {
     if (!autoScrolling) {
@@ -571,23 +579,51 @@ export default function SongEditor({
             />
           )}
           <span className="text-slate-300 dark:text-slate-600">·</span>
-          <span>
-            Key{" "}
-            <span className="font-semibold text-indigo-600 dark:text-indigo-400">
-              {song.key}
-            </span>
+          <span className="flex items-center gap-1">
+            Key
+            <div className="relative">
+              <button type="button" onClick={() => { setKeyPickerOpen(o => !o); setCapoPickerOpen(false); }}
+                className="font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 px-1.5 py-0.5 rounded-md transition-colors">
+                {song.key}
+              </button>
+              {keyPickerOpen && (
+                <div className="absolute left-0 top-full mt-1 z-30 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
+                  <div className="grid grid-cols-6 gap-1.5">
+                    {KEYS.map(k => (
+                      <button key={k} type="button"
+                        onClick={() => { handleTranspose(k); setKeyPickerOpen(false); }}
+                        className={"min-w-9 h-9 px-2 rounded-lg text-sm font-semibold transition-all " + (song.key === k ? "bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/40 scale-105" : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300")}>
+                        {k}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </span>
-          {song.capo ? (
-            <>
-              <span className="text-slate-300 dark:text-slate-600">·</span>
-              <span>
-                Capo{" "}
-                <span className="font-semibold text-indigo-600 dark:text-indigo-400">
-                  {song.capo}
-                </span>
-              </span>
-            </>
-          ) : null}
+          <span className="text-slate-300 dark:text-slate-600">·</span>
+          <div className="relative">
+            <button type="button" onClick={() => { setCapoPickerOpen(o => !o); setKeyPickerOpen(false); }}
+              className="font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 px-1.5 py-0.5 rounded-md transition-colors">
+              {song.capo ? "Capo " + song.capo : "Capo"}
+            </button>
+            {capoPickerOpen && (
+              <div className="absolute left-0 top-full mt-1 z-30 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={() => { handleCapoChange(null); setCapoPickerOpen(false); }}
+                    className={"h-9 px-3 rounded-lg text-sm font-medium transition-colors " + (!song.capo ? "bg-indigo-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700")}>
+                    None
+                  </button>
+                  {[1,2,3,4,5,6,7].map(c => (
+                    <button key={c} type="button" onClick={() => { handleCapoChange(c); setCapoPickerOpen(false); }}
+                      className={"w-9 h-9 rounded-lg text-sm font-semibold transition-colors " + (song.capo === c ? "bg-indigo-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700")}>
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
           {clipboard && !readOnly && (
             <span className="inline-flex items-center gap-2 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-xs border border-amber-200 dark:border-amber-900 print:hidden">
               <span className="font-medium">{clipboard.label}</span> copied
@@ -658,50 +694,6 @@ export default function SongEditor({
             </svg>
             <span className="hidden sm:inline">Save</span>
           </button>
-        </div>
-      </div>
-
-      <div className="mb-5 p-3 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm print:hidden">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400 pl-1 shrink-0">
-            Key
-          </span>
-          <div className="flex gap-1 flex-wrap">
-            {KEYS.map((k) => {
-              const active = song.key === k;
-              return (
-                <button
-                  key={k}
-                  onClick={() => handleTranspose(k)}
-                  className={`min-w-9 h-9 px-2 rounded-lg text-sm font-semibold transition-all ${
-                    active
-                      ? "bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/40 scale-105"
-                      : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300"
-                  }`}
-                >
-                  {k}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400 pl-1 shrink-0">
-            Capo
-          </span>
-          <select
-            value={song.capo ?? ""}
-            onChange={(e) =>
-              handleCapoChange(e.target.value === "" ? null : Number(e.target.value))
-            }
-            className="h-9 px-3 rounded-lg text-sm font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors outline-none border-0"
-          >
-            {CAPO_OPTIONS.map((c) => (
-              <option key={c ?? "none"} value={c ?? ""}>
-                {c === null ? "None" : `Capo ${c}`}
-              </option>
-            ))}
-          </select>
         </div>
       </div>
 
