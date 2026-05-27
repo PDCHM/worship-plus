@@ -92,8 +92,6 @@ function Overview({
       showToast(type === "folder" ? "Folder created" : "Setlist created");
       if (type === "folder") { setNewFolderName(""); setShowNewFolder(false); }
       else { setNewSetlistName(""); setShowNewSetlist(false); }
-    } else {
-      showToast("Failed to create — check Supabase connection");
     }
   };
 
