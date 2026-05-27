@@ -609,17 +609,21 @@ export default function SongEditor({
             </button>
             {capoPickerOpen && (
               <div className="absolute left-0 top-full mt-1 z-30 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
-                <div className="flex items-center gap-3">
-                  <button type="button" onClick={() => { handleCapoChange(null); setCapoPickerOpen(false); }}
-                    className={"h-9 px-3 rounded-lg text-sm font-medium transition-colors " + (!song.capo ? "bg-indigo-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700")}>
-                    None
+                <div className="flex items-center gap-3 px-1">
+                  <button type="button"
+                    onClick={() => handleCapoChange(song.capo && song.capo > 0 ? song.capo - 1 : null)}
+                    className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors">
+                    −
                   </button>
-                  {[1,2,3,4,5,6,7].map(c => (
-                    <button key={c} type="button" onClick={() => { handleCapoChange(c); setCapoPickerOpen(false); }}
-                      className={"w-9 h-9 rounded-lg text-sm font-semibold transition-colors " + (song.capo === c ? "bg-indigo-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700")}>
-                      {c}
-                    </button>
-                  ))}
+                  <div className="w-12 text-center">
+                    <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{song.capo ?? 0}</div>
+                    <div className="text-[10px] text-slate-400 uppercase tracking-wider">{song.capo ? "capo" : "none"}</div>
+                  </div>
+                  <button type="button"
+                    onClick={() => handleCapoChange(Math.min(7, (song.capo ?? 0) + 1))}
+                    className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors">
+                    +
+                  </button>
                 </div>
               </div>
             )}
