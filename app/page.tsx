@@ -277,6 +277,7 @@ export default function Home() {
           setGroups((gRows??[]).map((r:any)=>({id:r.id,name:r.name,inviteToken:r.invite_token,createdAt:new Date(r.created_at).getTime()})));
           setGroupMembers((mRows??[]).map((r:any)=>({id:r.id,groupId:r.group_id,userId:r.user_id,role:r.role,fullName:r.profiles?.full_name??null,email:r.profiles?.email??null,avatarUrl:r.profiles?.avatar_url??null})));
           setGroupSongs((gsRows??[]).map((r:any)=>({id:r.id,groupId:r.group_id,songId:r.song_id})));
+          showToast("Groups: " + (gRows?.length ?? 0) + " Members: " + (mRows?.length ?? 0));
           /* eslint-enable @typescript-eslint/no-explicit-any */
         }
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
