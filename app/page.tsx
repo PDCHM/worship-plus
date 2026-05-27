@@ -191,7 +191,9 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    localStorage.setItem("wp-last-view", JSON.stringify(view));
+    if (view.kind !== "editor") {
+      localStorage.setItem("wp-view", JSON.stringify(view));
+    }
   }, [view]);
 
   // Load user, profile, songs, folders from Supabase.
@@ -295,10 +297,10 @@ export default function Home() {
         /* eslint-enable @typescript-eslint/no-explicit-any */
 
         try {
-          const saved = localStorage.getItem("wp-last-view");
+          const saved = localStorage.getItem("wp-view");
           if (saved) {
             const v = JSON.parse(saved);
-            if (v.kind !== "editor") setView(v);
+            if (v.kind && v.kind !== "editor") setView(v);
           }
         } catch {}
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
