@@ -560,19 +560,13 @@ export default function Home() {
     void supabase.from("folders").delete().eq("id", id);
   };
 
-  const addSongToFolder = async (folderId: string, songId: string): Promise<void> => {
-    const existing = folderSongs.filter((fs) => fs.folderId === folderId);
-    const position = existing.length > 0 ? Math.max(...existing.map((fs) => fs.position)) + 1 : 0;
-    const { data, error } = await supabase
-      .from("folder_songs")
-      .insert({ folder_id: folderId, song_id: songId, position })
-      .select()
-      .single();
-    if (error) { logErr("add song to folder", error); showToast("Error: " + error.message); return; }
-    setFolderSongs((prev) => [
-      ...prev,
-      { id: data.id, folderId: data.folder_id, songId: data.song_id, position: data.position },
-    ]);
+  const addSongToFolder=async(folderId:string,songId:string):Promise<void>=>{
+    const existing=folderSongs.filter(fs=>fs.folderId===folderId);
+    const position=existing.length>0?Math.max(...existing.map(fs=>fs.position))+1:0;
+    const{data,error}=await supabase.rpc("add_song_to_folder",{p_folder_id:folderId,p_song_id:songId,p_position:position});
+    if(error){logErr("add song to folder",error);showToast("Error: "+error.message);return;}
+    const r=data as{id:string;folder_id:string;song_id:string;position:number};
+    setFolderSongs(prev=>[...prev,{id:r.id,folderId:r.folder_id,songId:r.song_id,position:r.position}]);
   };
 
   const removeSongFromFolder = (folderId: string, songId: string): void => {
