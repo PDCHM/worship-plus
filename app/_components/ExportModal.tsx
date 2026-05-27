@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { serializeSong, type Chord, type Song } from "@/lib/song";
+import type { Chord, Song } from "@/lib/song";
 
 /* ─── helpers ────────────────────────────────────────────────────────────── */
 
@@ -31,8 +31,25 @@ function download(blob: Blob, filename: string) {
 /* ─── export functions ───────────────────────────────────────────────────── */
 
 function doText(song: Song) {
+  const pxPerChar = 17 * 0.55;
+  const lines: string[] = [];
+  lines.push(`{title: ${song.title}}`);
+  if (song.artist) lines.push(`{artist: ${song.artist}}`);
+  lines.push(`{key: ${song.key}}`);
+  if (song.capo != null) lines.push(`{capo: ${song.capo}}`);
+  if (song.bpm != null) lines.push(`{bpm: ${song.bpm}}`);
+  for (const section of song.sections) {
+    lines.push("");
+    lines.push(`{section: ${section.label}}`);
+    for (const line of section.lines) {
+      if (line.chords.length > 0) {
+        lines.push(buildChordLine(line.chords, pxPerChar));
+      }
+      lines.push(line.lyric);
+    }
+  }
   download(
-    new Blob([serializeSong(song)], { type: "text/plain;charset=utf-8" }),
+    new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" }),
     `${slug(song.title)}.txt`,
   );
 }
