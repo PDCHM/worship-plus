@@ -186,6 +186,7 @@ export default function Home() {
   const [libraryView, setLibraryView] = useState<LibraryView>("grid");
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set());
   const lastSavedRef = useRef<Map<string, Song>>(new Map());
+  const newSongIdsRef = useRef<Set<string>>(new Set());
   const [unsavedModal, setUnsavedModal] = useState<{ pendingView: View } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -358,6 +359,7 @@ export default function Home() {
     await saveSongToDb(supabase, song, user.id);
     lastSavedRef.current.set(song.id, song);
     setDirtyIds(prev => { const n = new Set(prev); n.delete(song.id); return n; });
+    newSongIdsRef.current.delete(song.id);
     try { localStorage.removeItem("wp-backup-" + song.id); } catch {}
     showToast("Saved");
   };
@@ -390,11 +392,11 @@ export default function Home() {
 
   const newSong = () => {
     const song = makeNewSong();
-    setSongs((prev) => [song, ...prev]);
-    setView({ kind: "editor", songId: song.id });
-    if (!user) return;
+    setSongs(prev => [song, ...prev]);
+    setDirtyIds(prev => new Set(prev).add(song.id));
     lastSavedRef.current.set(song.id, song);
-    void saveSongToDb(supabase, song, user.id);
+    newSongIdsRef.current.add(song.id);
+    navigateTo({ kind: "editor", songId: song.id });
   };
 
   const duplicateSong = (songId: string) => {
@@ -617,8 +619,6 @@ export default function Home() {
       />
 
       <TopNav
-        onNewSong={newSong}
-        onImport={() => fileInputRef.current?.click()}
         onHome={() => navigateTo({ kind: "library", filter: "all" })}
         profile={profile}
         onSignOut={handleSignOut}
@@ -643,6 +643,8 @@ export default function Home() {
               onPasteSong={() => setPasteOpen(true)}
               onDelete={deleteSong}
               onDuplicate={duplicateSong}
+              onNewSong={newSong}
+              onImport={() => fileInputRef.current?.click()}
               showToast={showToast}
               filter={view.filter}
               libraryView={libraryView}
@@ -726,6 +728,12 @@ export default function Home() {
           onDiscard={() => {
             if (view.kind === "editor") {
               const songId = (view as { kind: "editor"; songId: string }).songId;
+              if (newSongIdsRef.current.has(songId)) {
+                setSongs(prev => prev.filter(s => s.id !== songId));
+                newSongIdsRef.current.delete(songId);
+                setDirtyIds(prev => { const n = new Set(prev); n.delete(songId); return n; });
+                setView(unsavedModal.pendingView); setUnsavedModal(null); return;
+              }
               const last = lastSavedRef.current.get(songId);
               if (last) setSongs(prev => prev.map(s => s.id === songId ? last : s));
               setDirtyIds(prev => { const n = new Set(prev); n.delete(songId); return n; });
@@ -783,9 +791,9 @@ function LoadingScreen() {
 }
 
 function TopNav({
-  onNewSong, onImport, onHome, profile, onSignOut, sidebarOpen, onToggleSidebar,
+  onHome, profile, onSignOut, sidebarOpen, onToggleSidebar,
 }: {
-  onNewSong: () => void; onImport: () => void; onHome: () => void;
+  onHome: () => void;
   profile: Profile | null; onSignOut: () => void;
   sidebarOpen: boolean; onToggleSidebar: () => void;
 }) {
@@ -819,16 +827,6 @@ function TopNav({
           </button>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <button type="button" onClick={onNewSong} title="New Song" aria-label="New Song"
-            className="w-9 h-9 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center justify-center shadow-sm shadow-indigo-600/30">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          </button>
-          <button type="button" onClick={onImport} title="Import" aria-label="Import"
-            className="w-9 h-9 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors flex items-center justify-center">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-            </svg>
-          </button>
           <div ref={wrapRef} className="relative">
             <button type="button" onClick={() => setMenuOpen((o) => !o)}
               aria-haspopup="menu" aria-expanded={menuOpen} aria-label="User menu"

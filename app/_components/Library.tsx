@@ -13,6 +13,8 @@ type Props = {
   onPasteSong: () => void;
   onDelete: (songId: string) => void;
   onDuplicate?: (songId: string) => void;
+  onNewSong: () => void;
+  onImport: () => void;
   showToast: (msg: string) => void;
   filter: LibraryFilter;
   libraryView: LibraryView;
@@ -26,6 +28,8 @@ export default function Library({
   onPasteSong,
   onDelete,
   onDuplicate,
+  onNewSong,
+  onImport,
   showToast,
   filter,
   libraryView,
@@ -132,12 +136,35 @@ export default function Library({
     <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 md:py-8">
       <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
-            {heading}
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">
-            {filtered.length} {filtered.length === 1 ? "song" : "songs"}
-          </p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+              {heading}
+            </h1>
+            <button
+              type="button"
+              onClick={onNewSong}
+              title="New song"
+              aria-label="New song"
+              className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-600 hover:text-white flex items-center justify-center text-base font-bold transition-colors"
+            >
+              +
+            </button>
+          </div>
+          <div className="flex items-center gap-3 mt-1">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              {filtered.length} {filtered.length === 1 ? "song" : "songs"}
+            </p>
+            <button
+              type="button"
+              onClick={onImport}
+              className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+              </svg>
+              Import
+            </button>
+          </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div
