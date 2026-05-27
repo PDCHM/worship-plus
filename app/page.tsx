@@ -258,6 +258,8 @@ export default function Home() {
         position: r.position ?? 0,
       }));
       setFolderSongs(loadedFolderSongs);
+
+      showToast("Loaded: " + loadedSongs.length + " songs, " + loadedFolders.length + " folders");
     })();
 
     const { data: subscription } = supabase.auth.onAuthStateChange((event) => {
@@ -427,9 +429,15 @@ export default function Home() {
             updatedAt: Date.now(),
           }));
           setSongs(prev => [...imported, ...prev]);
-          imported.forEach(s => { if (user) void saveSongToDb(supabase, s, user.id); });
           showToast("Imported " + imported.length + " songs");
           navigateTo({ kind: "library", filter: "all" });
+          if (user) {
+            let failed = 0;
+            for (const s of imported) {
+              try { await saveSongToDb(supabase, s, user.id); } catch { failed++; }
+            }
+            if (failed) showToast(failed + " of " + imported.length + " failed to save");
+          }
         } else {
           showToast("Unrecognized .worship file format");
         }
