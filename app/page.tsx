@@ -276,13 +276,18 @@ export default function Home() {
         const { data: gsRows } = await supabase.from("group_songs").select("id,group_id,song_id");
         if (mErr) showToast("Members error: " + mErr.message);
         /* eslint-disable @typescript-eslint/no-explicit-any */
+        const memberUserIds = [...new Set((mRows??[]).map((r:any) => r.user_id))];
+        const { data: profileRows } = memberUserIds.length > 0
+          ? await supabase.from("profiles").select("id,full_name,email,avatar_url").in("id", memberUserIds)
+          : { data: [] };
+        const profileMap = Object.fromEntries((profileRows??[]).map((p:any) => [p.id, p]));
         setGroups((gRows??[]).map((r:any)=>({id:r.id,name:r.name,church:r.church??"",inviteToken:r.invite_token??"",createdAt:new Date(r.created_at).getTime()})));
-        setGroupMembers((mRows??[]).map((r:any)=>({
-          id:r.id, groupId:r.group_id, userId:r.user_id, role:r.role,
-          fullName:null, email:null, avatarUrl:null
-        })));
+        setGroupMembers((mRows??[]).map((r:any) => {
+          const p = profileMap[r.user_id];
+          return {id:r.id,groupId:r.group_id,userId:r.user_id,role:r.role,
+            fullName:p?.full_name??null,email:p?.email??null,avatarUrl:p?.avatar_url??null};
+        }));
         setGroupSongs((gsRows??[]).map((r:any)=>({id:r.id,groupId:r.group_id,songId:r.song_id})));
-        showToast(`g:${gRows?.length} m:${mRows?.length} uid:${u.id.slice(0,6)}`);
         /* eslint-enable @typescript-eslint/no-explicit-any */
 
         try {
