@@ -10,6 +10,7 @@ export type Folder = {
   name: string;
   type: "folder" | "setlist";
   createdAt: number;
+  date?: string;
 };
 
 export type FolderSong = {
@@ -33,6 +34,7 @@ export type FoldersViewProps = {
   onMoveUp: (folderId: string, songId: string) => void;
   onMoveDown: (folderId: string, songId: string) => void;
   onOpenSong: (id: string) => void;
+  onUpdateDate: (id: string, date: string | null) => Promise<void>;
   showToast: (msg: string) => void;
 };
 
@@ -231,7 +233,7 @@ function FolderDetail({
 
 function SetlistDetail({
   folder, currentSongs, songs, onNavigate, onRename, onDelete,
-  onAddSong, onRemoveSong, onMoveUp, onMoveDown, onOpenSong, showToast,
+  onAddSong, onRemoveSong, onMoveUp, onMoveDown, onOpenSong, onUpdateDate, showToast,
 }: { folder: Folder; currentSongs: Song[] } & FoldersViewProps) {
   const [addOpen, setAddOpen] = useState(false);
   const alreadyIn = new Set(currentSongs.map((s) => s.id));
@@ -244,6 +246,15 @@ function SetlistDetail({
         onRename={(name) => onRename(folder.id, name)}
         onDelete={() => { onDelete(folder.id); onNavigate("all"); showToast("Setlist deleted"); }}
       />
+      <div className="flex items-center gap-2 mt-3 mb-1">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400 shrink-0"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <input
+          type="date"
+          value={folder.date ?? ""}
+          onChange={(e) => onUpdateDate(folder.id, e.target.value || null)}
+          className="text-sm text-slate-600 dark:text-slate-300 bg-transparent border-none outline-none cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+        />
+      </div>
       <div className="flex items-center justify-between mt-6 mb-4">
         <p className="text-sm text-slate-500 dark:text-slate-400">
           {currentSongs.length} {currentSongs.length === 1 ? "song" : "songs"}
@@ -478,6 +489,11 @@ function ItemCard({
         <div className="text-xs text-slate-400 dark:text-slate-500">
           {count} {count === 1 ? "song" : "songs"}
         </div>
+        {item.type === "setlist" && item.date && (
+          <div style={{fontSize:"11px"}} className="text-indigo-400 dark:text-indigo-500 mt-0.5">
+            {new Date(item.date + "T00:00:00").toLocaleDateString("en-GB", { weekday:"short", day:"numeric", month:"short", year:"numeric" })}
+          </div>
+        )}
       </div>
       <button
         type="button"

@@ -207,7 +207,7 @@ export default function Home() {
       ] = await Promise.all([
         supabase.from("profiles").select("id, email, full_name, avatar_url").eq("id", u.id).maybeSingle(),
         supabase.from("songs").select("*, sections(*, lines(*, chords(*)))").eq("user_id", u.id).order("created_at", { ascending: false }),
-        supabase.from("folders").select("id, name, type, created_at").eq("user_id", u.id).order("created_at"),
+        supabase.from("folders").select("id, name, type, created_at, date").eq("user_id", u.id).order("created_at"),
         supabase.from("folder_songs").select("id, folder_id, song_id, position").order("position"),
       ]);
       if (cancelled) return;
@@ -242,11 +242,12 @@ export default function Home() {
         } catch {}
       }
 
-      const loadedFolders = (folderRows ?? []).map((r: { id: string; name: string; type: string | null; created_at: string }) => ({
+      const loadedFolders = (folderRows ?? []).map((r: { id: string; name: string; type: string | null; created_at: string; date?: string | null }) => ({
         id: r.id,
         name: r.name,
         type: (r.type === "setlist" ? "setlist" : "folder") as "folder" | "setlist",
         createdAt: new Date(r.created_at).getTime(),
+        date: r.date ?? undefined,
       }));
       setFolders(loadedFolders);
 
@@ -448,9 +449,11 @@ export default function Home() {
     showToast("Creating...");
     if (!user) return null;
     try {
+      const insertData: Record<string, unknown> = { user_id: user.id, name, type };
+      if (type === "setlist") insertData.date = new Date().toISOString().split("T")[0];
       const { data, error } = await supabase
         .from("folders")
-        .insert({ user_id: user.id, name, type })
+        .insert(insertData)
         .select()
         .single();
       if (error) { showToast("Insert error: " + error.message + " code:" + error.code); return null; }
@@ -459,6 +462,7 @@ export default function Home() {
         name: data.name,
         type: data.type ?? "folder",
         createdAt: new Date(data.created_at).getTime(),
+        date: data.date ?? undefined,
       };
       setFolders((prev) => [...prev, f]);
       return f;
@@ -467,6 +471,12 @@ export default function Home() {
       showToast("Catch: " + e.message);
       return null;
     }
+  };
+
+  const updateFolderDate = async (id: string, date: string | null): Promise<void> => {
+    setFolders(prev => prev.map(f => f.id === id ? { ...f, date: date ?? undefined } : f));
+    const { error } = await supabase.from("folders").update({ date }).eq("id", id);
+    if (error) logErr("update folder date", error);
   };
 
   const renameFolder = async (id: string, name: string): Promise<void> => {
@@ -612,6 +622,7 @@ export default function Home() {
               onMoveUp={(fid, sid) => moveSetlistSong(fid, sid, "up")}
               onMoveDown={(fid, sid) => moveSetlistSong(fid, sid, "down")}
               onOpenSong={openSong}
+              onUpdateDate={updateFolderDate}
               showToast={showToast}
             />
           )}
