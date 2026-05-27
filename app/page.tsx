@@ -447,20 +447,26 @@ export default function Home() {
   const createFolder = async (name: string, type: "folder" | "setlist"): Promise<Folder | null> => {
     showToast("Creating...");
     if (!user) return null;
-    const { data, error } = await supabase
-      .from("folders")
-      .insert({ user_id: user.id, name, type })
-      .select()
-      .single();
-    if (error) { logErr("create folder", error); showToast("Error: " + error.message); return null; }
-    const f: Folder = {
-      id: data.id,
-      name: data.name,
-      type: data.type ?? "folder",
-      createdAt: new Date(data.created_at).getTime(),
-    };
-    setFolders((prev) => [...prev, f]);
-    return f;
+    try {
+      const { data, error } = await supabase
+        .from("folders")
+        .insert({ user_id: user.id, name, type })
+        .select()
+        .single();
+      if (error) { showToast("Insert error: " + error.message + " code:" + error.code); return null; }
+      const f: Folder = {
+        id: data.id,
+        name: data.name,
+        type: data.type ?? "folder",
+        createdAt: new Date(data.created_at).getTime(),
+      };
+      setFolders((prev) => [...prev, f]);
+      return f;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (e: any) {
+      showToast("Catch: " + e.message);
+      return null;
+    }
   };
 
   const renameFolder = async (id: string, name: string): Promise<void> => {
