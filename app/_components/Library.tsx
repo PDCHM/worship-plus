@@ -234,11 +234,22 @@ export default function Library({
           ))}
         </div>
       ) : (
-        <div className="space-y-1.5">
-          {filtered.map((song) => (
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
+          <div
+            className="grid items-center gap-3 px-4 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800"
+            style={{ gridTemplateColumns: "1fr 140px 56px 32px 32px" }}
+          >
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Song</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Artist</span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 text-center">Key</span>
+            <span />
+            <span />
+          </div>
+          {filtered.map((song, idx) => (
             <SongRow
               key={song.id}
               song={song}
+              index={idx}
               onOpen={() => onOpen(song.id)}
               onToggleFavorite={() => onToggleFavorite(song.id)}
               onMenu={(e) => openMenu(song.id, e)}
@@ -565,17 +576,41 @@ function SongCard({
   );
 }
 
+const KEY_COLORS: Record<string, { bg: string; fg: string }> = {
+  C:    { bg: "#EEEDFE", fg: "#3C3489" },
+  D:    { bg: "#E6F1FB", fg: "#0C447C" },
+  E:    { bg: "#E1F5EE", fg: "#085041" },
+  F:    { bg: "#FAECE7", fg: "#712B13" },
+  G:    { bg: "#EEEDFE", fg: "#3C3489" },
+  A:    { bg: "#EAF3DE", fg: "#27500A" },
+  B:    { bg: "#E6F1FB", fg: "#0C447C" },
+  Bb:   { bg: "#FAEEDA", fg: "#633806" },
+  Ab:   { bg: "#E1F5EE", fg: "#085041" },
+  Eb:   { bg: "#FAECE7", fg: "#712B13" },
+  Db:   { bg: "#FAEEDA", fg: "#633806" },
+  "F#": { bg: "#EAF3DE", fg: "#27500A" },
+};
+
 function SongRow({
   song,
+  index,
   onOpen,
   onToggleFavorite,
   onMenu,
 }: {
   song: Song;
+  index: number;
   onOpen: () => void;
   onToggleFavorite: () => void;
   onMenu: (e: React.MouseEvent<HTMLElement>) => void;
 }) {
+  const keyColor = KEY_COLORS[song.key] ?? { bg: "#E6F1FB", fg: "#0C447C" };
+  const oddRow = index % 2 === 0;
+  const subParts: string[] = [];
+  subParts.push(song.sections.length + " " + (song.sections.length === 1 ? "section" : "sections"));
+  if (song.bpm) subParts.push(song.bpm + " bpm");
+  if (song.capo) subParts.push("Capo " + song.capo);
+
   return (
     <div
       role="button"
@@ -587,33 +622,31 @@ function SongRow({
           onOpen();
         }
       }}
-      className="group flex items-center gap-3 px-3 py-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
+      className={"group grid items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors hover:bg-indigo-50/60 dark:hover:bg-indigo-950/30 border-b border-slate-100 dark:border-slate-800/60 last:border-b-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 " + (oddRow ? "bg-white dark:bg-slate-900" : "bg-slate-50 dark:bg-slate-800/40")}
+      style={{ gridTemplateColumns: "1fr 140px 56px 32px 32px" }}
       aria-label={`Open ${song.title}`}
     >
-      <span className="shrink-0 inline-flex items-center justify-center min-w-[2.5rem] h-7 px-2 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-xs font-bold uppercase tracking-wide">
-        {song.key}
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="font-medium text-sm text-slate-900 dark:text-slate-100 truncate">
+      <div className="min-w-0">
+        <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
           {song.title}
         </div>
         <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
-          {song.artist || "Unknown artist"}
-          <span className="text-slate-300 dark:text-slate-600 mx-1.5">·</span>
-          {song.sections.length}{" "}
-          {song.sections.length === 1 ? "section" : "sections"}
-          {song.capo ? (
-            <>
-              <span className="text-slate-300 dark:text-slate-600 mx-1.5">·</span>
-              Capo {song.capo}
-            </>
-          ) : null}
+          {subParts.join(" · ")}
         </div>
       </div>
-      <div className="flex items-center gap-0.5 shrink-0">
-        <StarButton favorite={song.favorite} onClick={onToggleFavorite} />
-        <DotsButton onClick={onMenu} />
+      <div className="text-[13px] text-slate-500 dark:text-slate-400 truncate">
+        {song.artist || ""}
       </div>
+      <div className="flex items-center justify-center">
+        <span
+          className="inline-flex items-center justify-center min-w-[2.25rem] h-6 px-2 rounded-md text-[11px] font-bold uppercase tracking-wide"
+          style={{ background: keyColor.bg, color: keyColor.fg }}
+        >
+          {song.key}
+        </span>
+      </div>
+      <StarButton favorite={song.favorite} onClick={onToggleFavorite} />
+      <DotsButton onClick={onMenu} />
     </div>
   );
 }
