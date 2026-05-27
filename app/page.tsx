@@ -190,7 +190,9 @@ export default function Home() {
   const [unsavedModal, setUnsavedModal] = useState<{ pendingView: View } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const isFirstRender = useRef(true);
   useEffect(() => {
+    if (isFirstRender.current) { isFirstRender.current = false; return; }
     if (view.kind !== "editor") {
       localStorage.setItem("wp-view", JSON.stringify(view));
     }
