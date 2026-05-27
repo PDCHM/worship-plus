@@ -587,7 +587,7 @@ export default function SongEditor({
                 {song.key}
               </button>
               {keyPickerOpen && (
-                <div className="absolute left-0 top-full mt-1 z-30 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
+                <div onMouseDown={(e) => e.stopPropagation()} className="absolute right-0 top-full mt-1 z-30 min-w-[300px] bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
                   <div className="grid grid-cols-6 gap-1.5">
                     {KEYS.map(k => (
                       <button key={k} type="button"
@@ -608,16 +608,16 @@ export default function SongEditor({
               {song.capo ? "Capo " + song.capo : "Capo"}
             </button>
             {capoPickerOpen && (
-              <div className="absolute left-0 top-full mt-1 z-30 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
+              <div onMouseDown={(e) => e.stopPropagation()} className="absolute left-0 top-full mt-1 z-30 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
                 <div className="flex items-center gap-3 px-1">
                   <button type="button"
-                    onClick={() => handleCapoChange(song.capo && song.capo > 0 ? song.capo - 1 : null)}
+                    onClick={() => handleCapoChange((song.capo ?? 0) <= 1 ? null : (song.capo ?? 0) - 1)}
                     className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors">
                     −
                   </button>
                   <div className="w-12 text-center">
-                    <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{song.capo ?? 0}</div>
-                    <div className="text-[10px] text-slate-400 uppercase tracking-wider">{song.capo ? "capo" : "none"}</div>
+                    <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{song.capo ? song.capo : "—"}</div>
+                    <div className="text-[10px] text-slate-400 uppercase tracking-wider">CAPO</div>
                   </div>
                   <button type="button"
                     onClick={() => handleCapoChange(Math.min(7, (song.capo ?? 0) + 1))}
