@@ -199,8 +199,6 @@ export default function Home() {
         }
         setUser(u);
         setAuthChecked(true);
-        setToast("User: " + u.id.slice(0, 8));
-        setTimeout(() => setToast(null), 10000);
 
         const [
           { data: profileRow },
@@ -261,8 +259,6 @@ export default function Home() {
           position: r.position ?? 0,
         }));
         setFolderSongs(loadedFolderSongs);
-
-        showToast("Loaded: " + loadedSongs.length + " songs, " + loadedFolders.length + " folders");
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         showToast("Init error: " + err.message);
