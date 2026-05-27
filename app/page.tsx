@@ -531,7 +531,16 @@ export default function Home() {
     if (error) logErr("update folder date", error);
   };
 
-  const createGroup=async(name:string):Promise<Group|null>=>{if(!user)return null;const{data,error}=await supabase.from("groups").insert({name}).select().single();if(error){logErr("create group",error);showToast("Error: "+error.message);return null;}const g:Group={id:data.id,name:data.name,inviteToken:data.invite_token,createdAt:new Date(data.created_at).getTime()};setGroups(p=>[...p,g]);setGroupMembers(p=>[...p,{id:uid(),groupId:g.id,userId:user.id,role:"owner",fullName:profile?.full_name??null,email:profile?.email??null,avatarUrl:profile?.avatar_url??null}]);return g;};
+  const createGroup=async(name:string):Promise<Group|null>=>{
+    if(!user)return null;
+    const{data,error}=await supabase.rpc("create_worship_group",{group_name:name});
+    if(error){logErr("create group",error);showToast("Error: "+error.message);return null;}
+    const r=data as{id:string;name:string;invite_token:string;created_at:string};
+    const g:Group={id:r.id,name:r.name,inviteToken:r.invite_token??"",createdAt:new Date(r.created_at).getTime()};
+    setGroups(p=>[...p,g]);
+    setGroupMembers(p=>[...p,{id:uid(),groupId:g.id,userId:user.id,role:"owner",fullName:profile?.full_name??null,email:profile?.email??null,avatarUrl:profile?.avatar_url??null}]);
+    return g;
+  };
   const shareGroupSong=async(groupId:string,songId:string):Promise<void>=>{const{data,error}=await supabase.from("group_songs").insert({group_id:groupId,song_id:songId}).select().single();if(error){logErr("share song",error);return;}setGroupSongs(p=>[...p,{id:data.id,groupId,songId}]);};
   const unshareGroupSong=(groupId:string,songId:string):void=>{setGroupSongs(p=>p.filter(gs=>!(gs.groupId===groupId&&gs.songId===songId)));void supabase.from("group_songs").delete().eq("group_id",groupId).eq("song_id",songId);};
   const removeGroupMember=(groupId:string,memberId:string):void=>{setGroupMembers(p=>p.filter(m=>!(m.groupId===groupId&&m.userId===memberId)));void supabase.from("group_members").delete().eq("group_id",groupId).eq("user_id",memberId);};
