@@ -19,6 +19,7 @@ export default function JoinPage() {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
+        localStorage.setItem("wp-pending-join", token);
         router.replace("/login");
         return;
       }
@@ -49,7 +50,7 @@ export default function JoinPage() {
   const handleJoin = async () => {
     setJoining(true);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { router.replace("/login"); return; }
+    if (!user) { localStorage.setItem("wp-pending-join", token); router.replace("/login"); return; }
 
     const { data: group } = await supabase
       .from("groups")
