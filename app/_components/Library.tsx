@@ -57,6 +57,11 @@ export default function Library({
   };
 
   useEffect(() => {
+    if (filter === "recent") { setSortCol(null); setSortDir("asc"); }
+    else { setSortCol("title"); setSortDir("asc"); }
+  }, [filter]);
+
+  useEffect(() => {
     if (!menu) return;
     const close = (e: MouseEvent) => {
       if (menuRef.current && menuRef.current.contains(e.target as Node)) return;
@@ -101,11 +106,13 @@ export default function Library({
     return list;
   }, [songs, query, filter]);
 
-  const sorted = sortCol ? [...filtered].sort((a, b) => {
-    const av = sortCol === "title" ? a.title : sortCol === "artist" ? (a.artist || "") : a.key;
-    const bv = sortCol === "title" ? b.title : sortCol === "artist" ? (b.artist || "") : b.key;
-    return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
-  }) : filtered;
+  const sorted = (sortCol && !(filter === "recent" && sortCol === "title" && sortDir === "asc"))
+    ? [...filtered].sort((a,b) => {
+        const av = sortCol === "title" ? a.title : sortCol === "artist" ? (a.artist||"") : a.key;
+        const bv = sortCol === "title" ? b.title : sortCol === "artist" ? (b.artist||"") : b.key;
+        return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+      })
+    : filtered;
 
   const heading =
     filter === "favorites"
