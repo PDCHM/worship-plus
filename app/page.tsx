@@ -640,11 +640,11 @@ export default function Home() {
               songs={songs}
               onOpen={openSong}
               onToggleFavorite={toggleFavorite}
-              onPasteSong={() => setPasteOpen(true)}
               onDelete={deleteSong}
               onDuplicate={duplicateSong}
               onNewSong={newSong}
-              onImport={() => fileInputRef.current?.click()}
+              onPasteChart={() => setPasteOpen(true)}
+              onImportFile={() => fileInputRef.current?.click()}
               showToast={showToast}
               filter={view.filter}
               libraryView={libraryView}

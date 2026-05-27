@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Song } from "@/lib/song";
+import AddSongSheet from "@/app/_components/AddSongSheet";
 
 type LibraryFilter = "all" | "favorites" | "recent";
 type LibraryView = "grid" | "list";
@@ -10,11 +11,11 @@ type Props = {
   songs: Song[];
   onOpen: (songId: string) => void;
   onToggleFavorite: (songId: string) => void;
-  onPasteSong: () => void;
   onDelete: (songId: string) => void;
   onDuplicate?: (songId: string) => void;
   onNewSong: () => void;
-  onImport: () => void;
+  onPasteChart: () => void;
+  onImportFile: () => void;
   showToast: (msg: string) => void;
   filter: LibraryFilter;
   libraryView: LibraryView;
@@ -25,16 +26,17 @@ export default function Library({
   songs,
   onOpen,
   onToggleFavorite,
-  onPasteSong,
   onDelete,
   onDuplicate,
   onNewSong,
-  onImport,
+  onPasteChart,
+  onImportFile,
   showToast,
   filter,
   libraryView,
   onLibraryViewChange,
 }: Props) {
+  const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [menu, setMenu] = useState<{
     songId: string;
@@ -140,31 +142,11 @@ export default function Library({
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
               {heading}
             </h1>
-            <button
-              type="button"
-              onClick={onNewSong}
-              title="New song"
-              aria-label="New song"
-              className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-600 hover:text-white flex items-center justify-center text-base font-bold transition-colors"
-            >
-              +
-            </button>
+            <button onClick={()=>setAddSheetOpen(true)} className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center hover:bg-indigo-700 transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
           </div>
-          <div className="flex items-center gap-3 mt-1">
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              {filtered.length} {filtered.length === 1 ? "song" : "songs"}
-            </p>
-            <button
-              type="button"
-              onClick={onImport}
-              className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-              </svg>
-              Import
-            </button>
-          </div>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            {filtered.length} {filtered.length === 1 ? "song" : "songs"}
+          </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div
@@ -201,17 +183,6 @@ export default function Library({
               }
             />
           </div>
-          <button
-            type="button"
-            onClick={onPasteSong}
-            className="h-10 px-4 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center gap-2 shadow-sm shadow-indigo-600/30"
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
-              <rect x="8" y="2" width="8" height="4" rx="1" />
-            </svg>
-            Paste Song
-          </button>
         </div>
       </div>
 
@@ -436,6 +407,8 @@ export default function Library({
           </div>
         </div>
       )}
+
+      {addSheetOpen && <AddSongSheet onBuildNew={onNewSong} onPasteChart={onPasteChart} onImportFile={onImportFile} onClose={()=>setAddSheetOpen(false)} />}
     </div>
   );
 }
