@@ -414,6 +414,25 @@ export default function Home() {
 
   const handleImport = async (file: File) => {
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    if (ext === "worship") {
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        if (data.wpFormat === "worship-plus" && Array.isArray(data.songs)) {
+          const imported: Song[] = data.songs.map((s: Song) => ({
+            ...s,
+            id: uid(),
+            sections: s.sections.map(sec => cloneSection(sec)),
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          }));
+          setSongs(prev => [...imported, ...prev]);
+          imported.forEach(s => { if (user) void saveSongToDb(supabase, s, user.id); });
+          showToast("Imported " + imported.length + " songs");
+        }
+      } catch { showToast("Could not read .worship file"); }
+      return;
+    }
     if (ext !== "txt") { showToast(`.${ext} import is coming soon — try .txt`); return; }
     try {
       const text = await file.text();
