@@ -1080,6 +1080,7 @@ export default function SongEditor({
               <PrintPreviewModal
                 song={song}
                 settings={settings}
+                editorPrefs={sectionStyles.prefs}
                 viewMode={viewMode}
                 onSettingsChange={onSettingsChange}
                 onPrint={onPrint}

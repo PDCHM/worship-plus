@@ -102,6 +102,8 @@ export default function PrintLayout({ song, settings }: Props) {
                 breakInside: "avoid",
                 pageBreakInside: "avoid",
                 marginBottom: "1.1em",
+                overflow: "hidden",
+                width: "100%",
               }}
             >
               {/* Label badge */}
@@ -124,7 +126,7 @@ export default function PrintLayout({ song, settings }: Props) {
               {section.lines.map((line) => {
                 const hasChords = line.chords.length > 0;
                 return (
-                  <div key={line.id} style={{ marginBottom: "0.05em" }}>
+                  <div key={line.id} style={{ marginBottom: "0.05em", overflow: "hidden", width: "100%" }}>
                     {/* Chord line */}
                     {showChords && hasChords && (
                       <pre style={{
@@ -135,7 +137,8 @@ export default function PrintLayout({ song, settings }: Props) {
                         color: "#1e3a8a",
                         lineHeight: 1.3,
                         whiteSpace: "pre",
-                        overflow: "visible",
+                        overflow: "hidden",
+                        width: "100%",
                       }}>
                         {buildChordLine(line.chords)}
                       </pre>
@@ -147,6 +150,8 @@ export default function PrintLayout({ song, settings }: Props) {
                       minHeight: `${fontSize * 1.4}px`,
                       fontSize: `${fontSize}px`,
                       fontFamily: MONO_FAMILY,
+                      overflow: "hidden",
+                      width: "100%",
                     }}>
                       {line.lyric || "\u00a0"}
                     </div>

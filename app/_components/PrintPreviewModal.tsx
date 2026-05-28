@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { getSectionColorKey, type Chord, type Song, type Settings } from "@/lib/song";
+import { getSectionColorKey, type Chord, type EditorPrefs, type Song, type Settings } from "@/lib/song";
 
 const FONT_CSS: Record<string, string> = {
   system: "ui-sans-serif, system-ui, -apple-system, sans-serif",
@@ -25,6 +25,7 @@ const MONO_FAMILY = "ui-monospace, Menlo, Consolas, 'Courier New', monospace";
 type Props = {
   song: Song;
   settings: Settings;
+  editorPrefs: EditorPrefs;
   viewMode: "standard" | "split-2" | "split-3";
   onSettingsChange: (s: Settings) => void;
   onPrint: () => void;
@@ -32,20 +33,32 @@ type Props = {
 };
 
 export default function PrintPreviewModal({
-  song, settings, viewMode, onSettingsChange, onPrint, onClose,
+  song, settings, editorPrefs, viewMode, onSettingsChange, onPrint, onClose,
 }: Props) {
   const update = (patch: Partial<Settings>) => onSettingsChange({ ...settings, ...patch });
 
-  // Auto-match columns to the current editor split view on first open
+  const largeFont = editorPrefs.lyricFontSize !== "small";
+  const maxCols: 1 | 2 | 3 = largeFont ? 2 : 3;
+
+  // Auto-match columns to the editor split view on first open, capped at maxCols.
   useEffect(() => {
     const auto = viewMode === "split-3" ? 3 : viewMode === "split-2" ? 2 : 1;
-    if (auto !== (settings.printColumns ?? 1)) {
-      onSettingsChange({ ...settings, printColumns: auto as 1 | 2 | 3 });
+    const desired = Math.min(auto, maxCols) as 1 | 2 | 3;
+    if (desired !== (settings.printColumns ?? 1)) {
+      onSettingsChange({ ...settings, printColumns: desired });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const cols        = (settings.printColumns   ?? 1)          as 1 | 2 | 3;
+  // If the user previously saved 3 cols but font is now M/L, cap to 2.
+  useEffect(() => {
+    if ((settings.printColumns ?? 1) > maxCols) {
+      onSettingsChange({ ...settings, printColumns: maxCols });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [maxCols]);
+
+  const cols        = Math.min((settings.printColumns ?? 1), maxCols) as 1 | 2 | 3;
   const orientation = (settings.printOrientation ?? "portrait") as "portrait" | "landscape";
   const isLandscape = orientation === "landscape";
 
@@ -88,8 +101,10 @@ export default function PrintPreviewModal({
 
           <CtrlRow label="Columns">
             <SegBtn options={[1,2,3] as const} active={cols}
-              onSelect={(v) => update({ printColumns: v })}
-              label={(v) => String(v)} />
+              onSelect={(v) => { if (v <= maxCols) update({ printColumns: v }); }}
+              label={(v) => String(v)}
+              disabled={(v) => v > maxCols}
+              disabledTitle="Reduce font size for 3 columns" />
           </CtrlRow>
 
           <CtrlRow label="Orientation">
@@ -186,13 +201,19 @@ function PaperContent({ song, settings, cols, paperW, paperH }: {
       {/* Sections */}
       <div style={{
         columnCount: cols > 1 ? cols : undefined,
-        columnGap:   cols > 1 ? "2em"  : undefined,
-        overflow: "hidden",
+        columnGap:   cols > 1 ? "2.5em" : undefined,
+        columnFill: "auto",
       }}>
         {song.sections.map((section) => {
           const color = colorMap[getSectionColorKey(section.label)];
           return (
-            <div key={section.id} style={{ breakInside: "avoid", pageBreakInside: "avoid", marginBottom: "1em" }}>
+            <div key={section.id} style={{
+              breakInside: "avoid",
+              pageBreakInside: "avoid",
+              marginBottom: "1em",
+              overflow: "hidden",
+              width: "100%",
+            }}>
               <div style={{
                 display: "inline-block",
                 background: color.bg, color: color.fg,
@@ -203,17 +224,17 @@ function PaperContent({ song, settings, cols, paperW, paperH }: {
                 {section.label}
               </div>
               {section.lines.map((line) => (
-                <div key={line.id} style={{ marginBottom: "0.05em" }}>
+                <div key={line.id} style={{ marginBottom: "0.05em", overflow: "hidden", width: "100%" }}>
                   {showChords && line.chords.length > 0 && (
                     <pre style={{
                       margin: 0, fontFamily: MONO_FAMILY,
                       fontSize: `${fontSize * 0.8}px`, fontWeight: 700,
-                      color: "#1e3a8a", lineHeight: 1.3, whiteSpace: "pre", overflow: "visible",
+                      color: "#1e3a8a", lineHeight: 1.3, whiteSpace: "pre", overflow: "hidden", width: "100%",
                     }}>
                       {buildChordLine(line.chords)}
                     </pre>
                   )}
-                  <div style={{ whiteSpace: "pre", lineHeight: 1.4, minHeight: `${fontSize * 1.4}px`, overflow: "visible", fontFamily: MONO_FAMILY }}>
+                  <div style={{ whiteSpace: "pre", lineHeight: 1.4, minHeight: `${fontSize * 1.4}px`, overflow: "hidden", fontFamily: MONO_FAMILY, width: "100%" }}>
                     {line.lyric || "\u00a0"}
                   </div>
                 </div>
@@ -240,24 +261,34 @@ function CtrlRow({ label, children }: { label: string; children: React.ReactNode
 }
 
 function SegBtn<T extends string | number>({
-  options, active, onSelect, label,
+  options, active, onSelect, label, disabled, disabledTitle,
 }: {
   options: readonly T[];
   active: T;
   onSelect: (v: T) => void;
   label: (v: T) => string;
+  disabled?: (v: T) => boolean;
+  disabledTitle?: string;
 }) {
   return (
     <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden text-xs">
-      {options.map((o) => (
-        <button key={String(o)} type="button" onClick={() => onSelect(o)}
-          className={`flex-1 h-7 font-medium transition-colors ${active === o
-            ? "bg-indigo-600 text-white"
-            : "bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-          }`}>
-          {label(o)}
-        </button>
-      ))}
+      {options.map((o) => {
+        const isDisabled = disabled?.(o) ?? false;
+        return (
+          <button key={String(o)} type="button" onClick={() => onSelect(o)}
+            disabled={isDisabled}
+            title={isDisabled ? disabledTitle : undefined}
+            className={`flex-1 h-7 font-medium transition-colors ${
+              isDisabled
+                ? "bg-slate-50 dark:bg-slate-900 text-slate-300 dark:text-slate-600 cursor-not-allowed"
+                : active === o
+                  ? "bg-indigo-600 text-white"
+                  : "bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+            }`}>
+            {label(o)}
+          </button>
+        );
+      })}
     </div>
   );
 }
