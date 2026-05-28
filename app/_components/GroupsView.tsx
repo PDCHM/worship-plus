@@ -293,7 +293,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
       )}
       <TeamSetlistList setlists={teamSetlists} onOpen={onOpenSetlist} />
       {addOpen && <AddMemberModal groupId={group.id} onAdd={onAddMember} onClose={() => setAddOpen(false)} showToast={showToast} />}
-      {addSongsOpen && <AddSongsModal songs={songs} alreadyShared={sharedSongIds} groupId={group.id} onShare={onShareSong} onClose={() => setAddSongsOpen(false)} showToast={showToast} />}
+      {addSongsOpen && <AddSongsModal songs={songs.filter(s => s.userId === userId)} alreadyShared={sharedSongIds} groupId={group.id} onShare={onShareSong} onClose={() => setAddSongsOpen(false)} showToast={showToast} />}
     </div>
   );
 }

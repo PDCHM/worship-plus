@@ -90,6 +90,7 @@ export type Song = {
   favorite: boolean;
   createdAt: number;
   updatedAt: number;
+  userId?: string;
 };
 
 export type SectionColor = { bg: string; fg: string };

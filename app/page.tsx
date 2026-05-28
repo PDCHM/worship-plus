@@ -46,6 +46,7 @@ type Profile = {
 
 type SongRow = {
   id: string;
+  user_id: string;
   title: string;
   artist: string | null;
   key: string;
@@ -105,6 +106,7 @@ function rowToSong(row: SongRow): Song {
     sections,
     createdAt: new Date(row.created_at).getTime(),
     updatedAt: new Date(row.updated_at).getTime(),
+    userId: row.user_id,
   };
 }
 
@@ -238,11 +240,21 @@ export default function Home() {
           { data: songRows, error: songsError },
           { data: folderRows },
           { data: folderSongRows },
+          { data: gRows },
+          { data: mRows, error: mErr },
+          { data: gsRows },
         ] = await Promise.all([
           supabase.from("profiles").select("id, email, full_name, avatar_url").eq("id", u.id).maybeSingle(),
-          supabase.from("songs").select("*, sections(*, lines(*, chords(*)))").eq("user_id", u.id).order("created_at", { ascending: false }),
+          // No user_id filter: RLS lets the user see their own songs PLUS songs
+          // shared via group_songs or via a setlist shared with their team.
+          // Setlist rendering needs the leader's songs to resolve, so we pull
+          // them all and let consumers filter on userId when they need personal-only.
+          supabase.from("songs").select("*, sections(*, lines(*, chords(*)))").order("created_at", { ascending: false }),
           supabase.from("folders").select("id, name, type, created_at, date, group_id").order("created_at"),
           supabase.from("folder_songs").select("id, folder_id, song_id, position").order("position"),
+          supabase.from("groups").select("id,name,invite_token,created_at"),
+          supabase.from("group_members").select("id,group_id,user_id,role,display_name,status,instrument,instrument_detail,email"),
+          supabase.from("group_songs").select("id,group_id,song_id"),
         ]);
         if (cancelled) return;
 
@@ -294,11 +306,6 @@ export default function Home() {
         }));
         setFolderSongs(loadedFolderSongs);
 
-        const { data: gRows } = await supabase.from("groups").select("id,name,invite_token,created_at");
-        const { data: mRows, error: mErr } = await supabase
-          .from("group_members")
-          .select("id,group_id,user_id,role,display_name,status,instrument,instrument_detail,email");
-        const { data: gsRows } = await supabase.from("group_songs").select("id,group_id,song_id");
         if (mErr) showToast("Members error: " + mErr.message);
         /* eslint-disable @typescript-eslint/no-explicit-any */
         setGroups((gRows??[]).map((r:any)=>({id:r.id,name:r.name,inviteToken:r.invite_token??"",createdAt:new Date(r.created_at).getTime()})));
@@ -689,7 +696,7 @@ export default function Home() {
           )}
           {view.kind === "library" && songsLoaded && (
             <Library
-              songs={songs}
+              songs={songs.filter(s => s.userId === user.id)}
               onOpen={openSong}
               onToggleFavorite={toggleFavorite}
               onDelete={deleteSong}

@@ -431,9 +431,11 @@ function AddSongsModal({
         <div className="overflow-y-auto flex-1">
           {available.length === 0 ? (
             <p className="text-center py-8 text-sm text-slate-400 dark:text-slate-500">
-              {allSongs.filter((s) => !alreadyIn.has(s.id)).length === 0
-                ? "All songs already added."
-                : "No matching songs."}
+              {allSongs.length === 0
+                ? "No songs in your library yet."
+                : allSongs.filter((s) => !alreadyIn.has(s.id)).length === 0
+                  ? "All songs already added."
+                  : "No matching songs."}
             </p>
           ) : (
             available.map((song) => {
