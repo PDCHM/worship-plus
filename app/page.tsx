@@ -296,25 +296,17 @@ export default function Home() {
         const { data: gRows } = await supabase.from("groups").select("id,name,invite_token,created_at");
         const { data: mRows, error: mErr } = await supabase
           .from("group_members")
-          .select("id,group_id,user_id,role,display_name,instrument,instrument_detail,status");
+          .select("id,group_id,user_id,role,display_name,status,instrument,instrument_detail");
         const { data: gsRows } = await supabase.from("group_songs").select("id,group_id,song_id");
         if (mErr) showToast("Members error: " + mErr.message);
         /* eslint-disable @typescript-eslint/no-explicit-any */
-        const memberUserIds = [...new Set((mRows??[]).map((r:any) => r.user_id).filter(Boolean))];
-        const { data: profileRows } = memberUserIds.length > 0
-          ? await supabase.from("profiles").select("id,full_name,email,avatar_url").in("id", memberUserIds)
-          : { data: [] };
-        const profileMap = Object.fromEntries((profileRows??[]).map((p:any) => [p.id, p]));
         setGroups((gRows??[]).map((r:any)=>({id:r.id,name:r.name,inviteToken:r.invite_token??"",createdAt:new Date(r.created_at).getTime()})));
-        setGroupMembers((mRows??[]).map((r:any) => {
-          const p = profileMap[r.user_id];
-          return {
-            id:r.id, groupId:r.group_id, userId:r.user_id, role:r.role,
-            displayName:r.display_name??null, instrument:r.instrument??null,
-            instrumentDetail:r.instrument_detail??null, status:r.status??"pending",
-            email:p?.email ?? null,
-          };
-        }));
+        setGroupMembers((mRows??[]).map((r:any)=>({
+          id:r.id, groupId:r.group_id, userId:r.user_id??null, role:r.role,
+          displayName:r.display_name??null, status:r.status??"pending",
+          instrument:r.instrument??null, instrumentDetail:r.instrument_detail??null,
+          email:null
+        })));
         setGroupSongs((gsRows??[]).map((r:any)=>({id:r.id,groupId:r.group_id,songId:r.song_id})));
         setGroupsLoaded(true);
         /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -600,7 +592,7 @@ export default function Home() {
   const unshareGroupSong=(groupId:string,songId:string):void=>{setGroupSongs(p=>p.filter(gs=>!(gs.groupId===groupId&&gs.songId===songId)));void supabase.from("group_songs").delete().eq("group_id",groupId).eq("song_id",songId);};
   const removeGroupMember=(memberId:string):void=>{
     setGroupMembers(p=>p.filter(m=>m.id!==memberId));
-    void supabase.from("group_members").delete().eq("id",memberId);
+    void supabase.rpc("remove_group_member",{p_member_id:memberId});
   };
 
   const renameFolder = async (id: string, name: string): Promise<void> => {

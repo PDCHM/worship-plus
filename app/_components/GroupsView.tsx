@@ -154,7 +154,7 @@ function LeaderView({ group, userId, groupMembers, groupSongs, songs, onAddMembe
                     </button>
                   )}
                   {m.userId !== userId && (
-                    <button type="button" onClick={() => { onRemoveMember(m.id); showToast("Member removed"); }}
+                    <button type="button" onClick={() => { if(window.confirm(`Remove ${m.displayName} from the team?`)) { onRemoveMember(m.id); showToast("Member removed"); } }}
                       className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
