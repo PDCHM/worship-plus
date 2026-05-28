@@ -81,6 +81,11 @@ create table if not exists public.folder_songs (
   unique (folder_id, song_id)
 );
 
+-- Setlist ordering. Defaulted to 0 so re-runs against populated tables
+-- succeed without backfill; the client recomputes positions on insert/reorder.
+alter table public.folder_songs add column if not exists position integer not null default 0;
+create index if not exists folder_songs_position_idx on public.folder_songs(folder_id, position);
+
 create table if not exists public.groups (
   id          uuid primary key default gen_random_uuid(),
   name        text not null,

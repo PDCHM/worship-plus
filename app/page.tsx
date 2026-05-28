@@ -30,7 +30,7 @@ import {
 
 type View =
   | { kind: "library"; filter: "all" | "favorites" | "recent" }
-  | { kind: "editor"; songId: string }
+  | { kind: "editor"; songId: string; setlistId?: string }
   | { kind: "settings" }
   | { kind: "folders"; subview: "all" | string }
   | { kind: "groups" };
@@ -493,7 +493,7 @@ export default function Home() {
     setView(newView);
   };
 
-  const openSong = (id: string) => navigateTo({ kind: "editor", songId: id });
+  const openSong = (id: string, opts?: { setlistId?: string }) => navigateTo({ kind: "editor", songId: id, setlistId: opts?.setlistId });
 
   const handleImportPasted = (song: Song) => {
     setSongs((prev) => [song, ...prev]);
@@ -682,27 +682,51 @@ export default function Home() {
     void supabase.from("folder_songs").delete().eq("folder_id", folderId).eq("song_id", songId);
   };
 
-  const moveSetlistSong = (folderId: string, songId: string, direction: "up" | "down"): void => {
-    setFolderSongs((prev) => {
-      const entries = prev.filter((fs) => fs.folderId === folderId).sort((a, b) => a.position - b.position);
-      const idx = entries.findIndex((fs) => fs.songId === songId);
-      if (idx === -1) return prev;
-      const swapIdx = direction === "up" ? idx - 1 : idx + 1;
-      if (swapIdx < 0 || swapIdx >= entries.length) return prev;
-      const swapped = [...entries];
-      [swapped[idx], swapped[swapIdx]] = [swapped[swapIdx], swapped[idx]];
-      const updated = swapped.map((e, i) => ({ ...e, position: i }));
-      updated.forEach((e) => void supabase.from("folder_songs").update({ position: e.position }).eq("id", e.id));
-      return prev.map((fs) => {
+  const commitSetlistOrder = async (folderId: string, orderedSongIds: string[]): Promise<void> => {
+    const inFolder = folderSongs.filter((fs) => fs.folderId === folderId);
+    const updates = inFolder
+      .map((fs) => ({ id: fs.id, position: orderedSongIds.indexOf(fs.songId) }))
+      .filter((u) => u.position !== -1);
+    setFolderSongs((prev) =>
+      prev.map((fs) => {
         if (fs.folderId !== folderId) return fs;
-        return updated.find((e) => e.id === fs.id) ?? fs;
-      });
-    });
+        const u = updates.find((x) => x.id === fs.id);
+        return u ? { ...fs, position: u.position } : fs;
+      })
+    );
+    await Promise.all(
+      updates.map((u) => supabase.from("folder_songs").update({ position: u.position }).eq("id", u.id))
+    );
   };
 
   // ─────────────────────────────────────────────────────────────────────────
 
   const activeSong = view.kind === "editor" ? songs.find((s) => s.id === view.songId) : null;
+
+  const setlistContext = (() => {
+    if (view.kind !== "editor" || !view.setlistId) return null;
+    const folder = folders.find((f) => f.id === view.setlistId);
+    if (!folder) return null;
+    const orderedIds = folderSongs
+      .filter((fs) => fs.folderId === view.setlistId)
+      .sort((a, b) => a.position - b.position)
+      .map((fs) => fs.songId);
+    const currentIndex = orderedIds.indexOf(view.songId);
+    if (currentIndex === -1) return null;
+    const setlistId = folder.id;
+    return {
+      setlistId,
+      setlistName: folder.name,
+      total: orderedIds.length,
+      currentIndex,
+      onPrev: currentIndex > 0
+        ? () => openSong(orderedIds[currentIndex - 1], { setlistId })
+        : null,
+      onNext: currentIndex < orderedIds.length - 1
+        ? () => openSong(orderedIds[currentIndex + 1], { setlistId })
+        : null,
+    };
+  })();
 
   if (!authChecked || !user) return <LoadingScreen />;
 
@@ -766,6 +790,7 @@ export default function Home() {
               isDirty={view.kind === "editor" && dirtyIds.has((view as { kind: "editor"; songId: string }).songId)}
               onSave={() => { const s = songs.find(x => view.kind === "editor" && x.id === (view as { kind: "editor"; songId: string }).songId); if (s) void saveSong(s); }}
               currentUserId={user.id}
+              setlistContext={setlistContext}
               sectionStyles={sectionStyles}
               onSectionStylesChange={setSectionStyles}
               onSectionStylesSave={async (next) => {
@@ -801,8 +826,7 @@ export default function Home() {
               onDelete={deleteFolder}
               onAddSong={addSongToFolder}
               onRemoveSong={removeSongFromFolder}
-              onMoveUp={(fid, sid) => moveSetlistSong(fid, sid, "up")}
-              onMoveDown={(fid, sid) => moveSetlistSong(fid, sid, "down")}
+              onCommitOrder={commitSetlistOrder}
               onOpenSong={openSong}
               onUpdateDate={updateFolderDate}
               showToast={showToast}

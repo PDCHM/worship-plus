@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Song } from "@/lib/song";
 
 /* ─── Exported Types ──────────────────────────────────────────────────────── */
@@ -35,9 +35,8 @@ export type FoldersViewProps = {
   onDelete: (id: string) => void;
   onAddSong: (folderId: string, songId: string) => Promise<void>;
   onRemoveSong: (folderId: string, songId: string) => void;
-  onMoveUp: (folderId: string, songId: string) => void;
-  onMoveDown: (folderId: string, songId: string) => void;
-  onOpenSong: (id: string) => void;
+  onCommitOrder: (folderId: string, orderedSongIds: string[]) => Promise<void>;
+  onOpenSong: (id: string, opts?: { setlistId?: string }) => void;
   onUpdateDate: (id: string, date: string | null) => Promise<void>;
   showToast: (msg: string) => void;
 };
@@ -331,10 +330,81 @@ function FolderDetail({
 
 function SetlistDetail({
   folder, currentSongs, songs, onNavigate, onRename, onDelete,
-  onAddSong, onRemoveSong, onMoveUp, onMoveDown, onOpenSong, onUpdateDate, showToast,
+  onAddSong, onRemoveSong, onCommitOrder, onOpenSong, onUpdateDate, showToast,
 }: { folder: Folder; currentSongs: Song[] } & FoldersViewProps) {
   const [addOpen, setAddOpen] = useState(false);
-  const alreadyIn = new Set(currentSongs.map((s) => s.id));
+  const [dragSongId, setDragSongId] = useState<string | null>(null);
+  const [localOrder, setLocalOrder] = useState<string[]>(currentSongs.map((s) => s.id));
+  const localOrderRef = useRef(localOrder);
+  useEffect(() => { localOrderRef.current = localOrder; }, [localOrder]);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const draggingRef = useRef(false);
+  const suppressClickRef = useRef(false);
+
+  useEffect(() => {
+    if (draggingRef.current) return;
+    setLocalOrder(currentSongs.map((s) => s.id));
+  }, [currentSongs]);
+
+  const songById = new Map(currentSongs.map((s) => [s.id, s] as const));
+  const orderedSongs = localOrder.map((id) => songById.get(id)).filter((s): s is Song => Boolean(s));
+  const alreadyIn = new Set(orderedSongs.map((s) => s.id));
+
+  const startDrag = (e: React.PointerEvent<HTMLButtonElement>, songId: string) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    const startY = e.clientY;
+    const pointerId = e.pointerId;
+    let active = false;
+
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      if (!active && Math.abs(ev.clientY - startY) > 6) {
+        active = true;
+        draggingRef.current = true;
+        setDragSongId(songId);
+      }
+      if (!active) return;
+      ev.preventDefault();
+
+      const container = containerRef.current;
+      if (!container) return;
+      const rows = Array.from(container.querySelectorAll<HTMLElement>("[data-row-song-id]"));
+      const others = rows.filter((el) => el.dataset.rowSongId !== songId);
+      let targetIdx = others.length;
+      for (let k = 0; k < others.length; k++) {
+        const r = others[k].getBoundingClientRect();
+        if (ev.clientY < r.top + r.height / 2) { targetIdx = k; break; }
+      }
+      const cur = localOrderRef.current;
+      const fromIdx = cur.indexOf(songId);
+      if (fromIdx === -1 || fromIdx === targetIdx) return;
+      const next = [...cur];
+      const [moved] = next.splice(fromIdx, 1);
+      next.splice(targetIdx, 0, moved);
+      setLocalOrder(next);
+    };
+
+    const finish = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      if (active) {
+        suppressClickRef.current = true;
+        window.setTimeout(() => { suppressClickRef.current = false; }, 100);
+        const finalOrder = localOrderRef.current;
+        const before = currentSongs.map((s) => s.id).join("|");
+        const after = finalOrder.join("|");
+        if (before !== after) void onCommitOrder(folder.id, finalOrder);
+      }
+      draggingRef.current = false;
+      setDragSongId(null);
+    };
+
+    window.addEventListener("pointermove", move, { passive: false });
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+  };
 
   return (
     <div className="max-w-3xl w-full mx-auto px-4 sm:px-6 py-6">
@@ -355,7 +425,7 @@ function SetlistDetail({
       </div>
       <div className="flex items-center justify-between mt-6 mb-4">
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          {currentSongs.length} {currentSongs.length === 1 ? "song" : "songs"}
+          {orderedSongs.length} {orderedSongs.length === 1 ? "song" : "songs"}
         </p>
         <button
           type="button"
@@ -365,7 +435,7 @@ function SetlistDetail({
           <PlusIconSm /> Add Songs
         </button>
       </div>
-      {currentSongs.length === 0 ? (
+      {orderedSongs.length === 0 ? (
         <div className="py-14 text-center text-sm text-slate-400 dark:text-slate-500">
           No songs yet.{" "}
           <button
@@ -377,51 +447,50 @@ function SetlistDetail({
           </button>
         </div>
       ) : (
-        <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
-          {currentSongs.map((song, idx) => (
-            <div
-              key={song.id}
-              className="flex items-center gap-3 px-4 py-3 bg-white dark:bg-slate-900 group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
-            >
-              <span className="w-5 text-center text-xs font-mono text-slate-400 shrink-0">
-                {idx + 1}
-              </span>
+        <div ref={containerRef} className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
+          {orderedSongs.map((song, idx) => {
+            const isDragging = dragSongId === song.id;
+            return (
               <div
-                className="flex-1 min-w-0 cursor-pointer"
-                onClick={() => onOpenSong(song.id)}
+                key={song.id}
+                data-row-song-id={song.id}
+                className={
+                  "flex items-center gap-2 px-2 py-3 bg-white dark:bg-slate-900 group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors " +
+                  (isDragging ? "opacity-60 shadow-md z-10 relative" : "")
+                }
               >
-                <div className="text-sm font-medium truncate">{song.title}</div>
-                {song.artist && (
-                  <div className="text-xs text-slate-400 truncate">{song.artist}</div>
-                )}
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
                 <button
                   type="button"
-                  disabled={idx === 0}
-                  onClick={() => onMoveUp(folder.id, song.id)}
-                  className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                  aria-label="Drag to reorder"
+                  title="Drag to reorder"
+                  onPointerDown={(e) => startDrag(e, song.id)}
+                  style={{ touchAction: "none" }}
+                  className="w-7 h-7 rounded-md flex items-center justify-center text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-grab active:cursor-grabbing shrink-0"
                 >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="18 15 12 9 6 15"/></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>
                 </button>
-                <button
-                  type="button"
-                  disabled={idx === currentSongs.length - 1}
-                  onClick={() => onMoveDown(folder.id, song.id)}
-                  className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                <span className="w-5 text-center text-xs font-mono text-slate-400 shrink-0">
+                  {idx + 1}
+                </span>
+                <div
+                  className="flex-1 min-w-0 cursor-pointer px-1"
+                  onClick={() => { if (!suppressClickRef.current) onOpenSong(song.id, { setlistId: folder.id }); }}
                 >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-                </button>
+                  <div className="text-sm font-medium truncate">{song.title}</div>
+                  {song.artist && (
+                    <div className="text-xs text-slate-400 truncate">{song.artist}</div>
+                  )}
+                </div>
                 <button
                   type="button"
                   onClick={() => { onRemoveSong(folder.id, song.id); showToast("Removed"); }}
-                  className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
       {addOpen && (

@@ -33,6 +33,15 @@ import {
 
 type ViewMode = "standard" | "split-2" | "split-3";
 
+export type SetlistContext = {
+  setlistId: string;
+  setlistName: string;
+  total: number;
+  currentIndex: number;
+  onPrev: (() => void) | null;
+  onNext: (() => void) | null;
+};
+
 type Props = {
   song: Song;
   onChange: (song: Song) => void;
@@ -45,6 +54,7 @@ type Props = {
   onSave: () => void;
   isDirty: boolean;
   currentUserId: string;
+  setlistContext: SetlistContext | null;
   sectionStyles: SectionStyles;
   onSectionStylesChange: (s: SectionStyles) => void;
   onSectionStylesSave: (s: SectionStyles) => void | Promise<void>;
@@ -519,6 +529,7 @@ export default function SongEditor({
   onSave,
   isDirty,
   currentUserId,
+  setlistContext,
   sectionStyles,
   onSectionStylesChange,
   onSectionStylesSave,
@@ -954,8 +965,62 @@ export default function SongEditor({
     ? { minWidth: 0, overflow: "hidden", wordBreak: "break-word" }
     : {};
 
+  const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const onSwipeStart: React.TouchEventHandler<HTMLDivElement> = (e) => {
+    if (!setlistContext) return;
+    const target = e.target as HTMLElement | null;
+    if (target?.closest('button, input, textarea, select, [contenteditable], [data-chip-id], [data-row-song-id], [data-chord-id]')) return;
+    const t = e.touches[0];
+    swipeStartRef.current = { x: t.clientX, y: t.clientY };
+  };
+  const onSwipeEnd: React.TouchEventHandler<HTMLDivElement> = (e) => {
+    const start = swipeStartRef.current;
+    swipeStartRef.current = null;
+    if (!start || !setlistContext) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+    if (Math.abs(dx) < 50) return;
+    if (Math.abs(dx) < Math.abs(dy)) return;
+    if (dx < 0) setlistContext.onNext?.();
+    else setlistContext.onPrev?.();
+  };
+
   return (
-    <div className="max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 md:py-8">
+    <div className="max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 md:py-8"
+      onTouchStart={onSwipeStart}
+      onTouchEnd={onSwipeEnd}
+      onTouchCancel={() => { swipeStartRef.current = null; }}
+    >
+      {setlistContext && (
+        <div className="mb-3 -mt-2 print:hidden">
+          <div className="flex items-center justify-between gap-2 rounded-lg bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 px-3 py-1.5">
+            <div className="text-xs text-indigo-700 dark:text-indigo-300 truncate min-w-0 flex-1">
+              <span className="font-semibold">Setlist:</span>{" "}
+              <span className="truncate">{setlistContext.setlistName}</span>
+              <span className="text-indigo-400 dark:text-indigo-500"> · Song {setlistContext.currentIndex + 1} of {setlistContext.total}</span>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <button type="button"
+                onClick={() => setlistContext.onPrev?.()}
+                disabled={!setlistContext.onPrev}
+                title="Previous song"
+                aria-label="Previous song"
+                className="w-7 h-7 rounded-md flex items-center justify-center text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+              <button type="button"
+                onClick={() => setlistContext.onNext?.()}
+                disabled={!setlistContext.onNext}
+                title="Next song"
+                aria-label="Next song"
+                className="w-7 h-7 rounded-md flex items-center justify-center text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <span
         ref={rulerRef}
         aria-hidden
@@ -1385,6 +1450,7 @@ export default function SongEditor({
                                 />
                               ) : (
                                 <span
+                                  data-chord-id={ch.id}
                                   onPointerDown={
                                     readOnly
                                       ? undefined
