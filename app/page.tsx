@@ -609,6 +609,24 @@ export default function Home() {
     setGroupSongs(prev=>[...prev,{id:r.id,groupId:r.group_id,songId:r.song_id}]);
   };
   const unshareGroupSong=(groupId:string,songId:string):void=>{setGroupSongs(p=>p.filter(gs=>!(gs.groupId===groupId&&gs.songId===songId)));void supabase.from("group_songs").delete().eq("group_id",groupId).eq("song_id",songId);};
+  const deleteGroup=async(groupId:string):Promise<boolean>=>{
+    const snapshot={groups,groupMembers,groupSongs,folders};
+    setGroups(p=>p.filter(g=>g.id!==groupId));
+    setGroupMembers(p=>p.filter(m=>m.groupId!==groupId));
+    setGroupSongs(p=>p.filter(gs=>gs.groupId!==groupId));
+    setFolders(p=>p.map(f=>f.groupId===groupId?{...f,groupId:null}:f));
+    const{error}=await supabase.from("groups").delete().eq("id",groupId);
+    if(error){
+      logErr("delete group",error);
+      setGroups(snapshot.groups);
+      setGroupMembers(snapshot.groupMembers);
+      setGroupSongs(snapshot.groupSongs);
+      setFolders(snapshot.folders);
+      showToast("Could not delete: "+error.message);
+      return false;
+    }
+    return true;
+  };
   const removeGroupMember=async(memberId:string):Promise<boolean>=>{
     const snapshot=groupMembers;
     setGroupMembers(p=>p.filter(m=>m.id!==memberId));
@@ -770,7 +788,7 @@ export default function Home() {
             </div>
           )}
           {view.kind === "groups" && groupsLoaded && (
-            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={songs} folders={folders} onCreateGroup={createGroup} onAddMember={addGroupMember} onRemoveMember={removeGroupMember} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onOpenSong={openSong} onOpenSetlist={(id) => navigateTo({ kind: "folders", subview: id })} showToast={showToast}/>
+            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={songs} folders={folders} onCreateGroup={createGroup} onAddMember={addGroupMember} onRemoveMember={removeGroupMember} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onDeleteGroup={deleteGroup} onOpenSong={openSong} onOpenSetlist={(id) => navigateTo({ kind: "folders", subview: id })} showToast={showToast}/>
           )}
         </main>
       </div>

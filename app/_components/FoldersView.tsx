@@ -87,9 +87,20 @@ function Overview({
   const [newSetlistTeam, setNewSetlistTeam] = useState<string>("");
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [showNewSetlist, setShowNewSetlist] = useState(false);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
-  const folderList = folders.filter((f) => f.type === "folder");
-  const setlistList = folders.filter((f) => f.type === "setlist" && !f.groupId);
+  const folderList = folders
+    .filter((f) => f.type === "folder")
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const setlistList = folders
+    .filter((f) => f.type === "setlist" && !f.groupId)
+    .sort((a, b) => {
+      const ad = a.date ?? "";
+      const bd = b.date ?? "";
+      if (ad && !bd) return -1;
+      if (!ad && bd) return 1;
+      return ad.localeCompare(bd);
+    });
   const countSongs = (id: string) => folderSongs.filter((fs) => fs.folderId === id).length;
 
   const submit = async (name: string, type: "folder" | "setlist", groupId: string | null) => {
@@ -104,6 +115,24 @@ function Overview({
 
   return (
     <div className="max-w-5xl w-full mx-auto px-4 sm:px-6 py-8 space-y-10">
+      <div className="flex justify-end -mb-6">
+        <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden" role="group" aria-label="Folders view mode">
+          <button type="button" onClick={() => setViewMode("grid")} aria-pressed={viewMode === "grid"} aria-label="Grid view" title="Grid view"
+            className={"w-9 h-9 flex items-center justify-center transition-colors " + (viewMode === "grid" ? "bg-indigo-600 text-white" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>
+              <rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>
+            </svg>
+          </button>
+          <button type="button" onClick={() => setViewMode("list")} aria-pressed={viewMode === "list"} aria-label="List view" title="List view"
+            className={"w-9 h-9 flex items-center justify-center transition-colors " + (viewMode === "list" ? "bg-indigo-600 text-white" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+              <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+            </svg>
+          </button>
+        </div>
+      </div>
       {/* Folders */}
       <section>
         <div className="flex items-center gap-2 mb-4 cursor-pointer group" onClick={() => setShowNewFolder(true)}>
@@ -120,18 +149,34 @@ function Overview({
           />
         )}
         {folderList.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {folderList.map((f) => (
-              <ItemCard
-                key={f.id}
-                item={f}
-                count={countSongs(f.id)}
-                onClick={() => onNavigate(f.id)}
-                onRename={(name) => onRename(f.id, name).then(() => showToast("Renamed"))}
-                onDelete={() => { onDelete(f.id); showToast("Folder deleted"); }}
-              />
-            ))}
-          </div>
+          viewMode === "grid" ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {folderList.map((f) => (
+                <ItemCard
+                  key={f.id}
+                  item={f}
+                  count={countSongs(f.id)}
+                  onClick={() => onNavigate(f.id)}
+                  onRename={(name) => onRename(f.id, name).then(() => showToast("Renamed"))}
+                  onDelete={() => { onDelete(f.id); showToast("Folder deleted"); }}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden">
+              {folderList.map((f, idx) => (
+                <ItemRow
+                  key={f.id}
+                  item={f}
+                  count={countSongs(f.id)}
+                  isLast={idx === folderList.length - 1}
+                  onClick={() => onNavigate(f.id)}
+                  onRename={(name) => onRename(f.id, name).then(() => showToast("Renamed"))}
+                  onDelete={() => { onDelete(f.id); showToast("Folder deleted"); }}
+                />
+              ))}
+            </div>
+          )
         )}
       </section>
 
@@ -183,18 +228,34 @@ function Overview({
           </div>
         )}
         {setlistList.length > 0 && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {setlistList.map((f) => (
-              <ItemCard
-                key={f.id}
-                item={f}
-                count={countSongs(f.id)}
-                onClick={() => onNavigate(f.id)}
-                onRename={(name) => onRename(f.id, name).then(() => showToast("Renamed"))}
-                onDelete={() => { onDelete(f.id); showToast("Setlist deleted"); }}
-              />
-            ))}
-          </div>
+          viewMode === "grid" ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {setlistList.map((f) => (
+                <ItemCard
+                  key={f.id}
+                  item={f}
+                  count={countSongs(f.id)}
+                  onClick={() => onNavigate(f.id)}
+                  onRename={(name) => onRename(f.id, name).then(() => showToast("Renamed"))}
+                  onDelete={() => { onDelete(f.id); showToast("Setlist deleted"); }}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden">
+              {setlistList.map((f, idx) => (
+                <ItemRow
+                  key={f.id}
+                  item={f}
+                  count={countSongs(f.id)}
+                  isLast={idx === setlistList.length - 1}
+                  onClick={() => onNavigate(f.id)}
+                  onRename={(name) => onRename(f.id, name).then(() => showToast("Renamed"))}
+                  onDelete={() => { onDelete(f.id); showToast("Setlist deleted"); }}
+                />
+              ))}
+            </div>
+          )
         )}
       </section>
     </div>
@@ -545,6 +606,93 @@ function ItemCard({
       </button>
       {menuOpen && (
         <div className="absolute top-8 right-2 z-20 w-32 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl text-sm">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setMenuOpen(false); setRenaming(true); setNameVal(item.name); }}
+            className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
+          >
+            Rename
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete(); }}
+            className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-rose-600"
+          >
+            Delete
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── ItemRow ─────────────────────────────────────────────────────────────── */
+
+function ItemRow({
+  item, count, isLast, onClick, onRename, onDelete,
+}: {
+  item: Folder;
+  count: number;
+  isLast: boolean;
+  onClick: () => void;
+  onRename: (name: string) => void;
+  onDelete: () => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [nameVal, setNameVal] = useState(item.name);
+
+  const commit = () => {
+    if (nameVal.trim() && nameVal.trim() !== item.name) onRename(nameVal.trim());
+    setRenaming(false);
+  };
+
+  return (
+    <div className={"relative flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors " + (isLast ? "" : "border-b border-slate-100 dark:border-slate-800")}>
+      <div className={"w-8 h-8 rounded-lg flex items-center justify-center shrink-0 " + (item.type === "setlist" ? "bg-violet-50 dark:bg-violet-950/60 text-violet-500 dark:text-violet-400" : "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-500 dark:text-indigo-400")}>
+        {item.type === "setlist" ? <ListIconSm /> : <FolderIconSm />}
+      </div>
+      <div className="flex-1 min-w-0 cursor-pointer" onClick={!renaming ? onClick : undefined}>
+        {renaming ? (
+          <input
+            autoFocus
+            type="text"
+            value={nameVal}
+            onChange={(e) => setNameVal(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commit();
+              if (e.key === "Escape") { setRenaming(false); setNameVal(item.name); }
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="w-full text-sm font-semibold bg-transparent border-b border-indigo-400 outline-none pb-0.5"
+          />
+        ) : (
+          <div className="text-sm font-semibold truncate">{item.name}</div>
+        )}
+        <div className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-2 mt-0.5">
+          <span>{count} {count === 1 ? "song" : "songs"}</span>
+          {item.type === "setlist" && item.date && (
+            <>
+              <span aria-hidden>·</span>
+              <span className="text-indigo-500 dark:text-indigo-400">
+                {new Date(item.date + "T00:00:00").toLocaleDateString("en-GB", { weekday:"short", day:"numeric", month:"short", year:"numeric" })}
+              </span>
+            </>
+          )}
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o); }}
+        className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+          <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
+        </svg>
+      </button>
+      {menuOpen && (
+        <div className="absolute top-10 right-2 z-20 w-32 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl text-sm">
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); setMenuOpen(false); setRenaming(true); setNameVal(item.name); }}

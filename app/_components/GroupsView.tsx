@@ -17,6 +17,7 @@ export type GroupsViewProps = {
   onRemoveMember: (memberId: string) => Promise<boolean>;
   onShareSong: (groupId: string, songId: string) => Promise<void>;
   onUnshareSong: (groupId: string, songId: string) => void;
+  onDeleteGroup: (groupId: string) => Promise<boolean>;
   onOpenSong: (id: string) => void;
   onOpenSetlist: (id: string) => void;
   showToast: (msg: string) => void;
@@ -182,11 +183,17 @@ function TeamListView({ memberships, onSelect, onCreateGroup, showToast }: {
   );
 }
 
-function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, folders, onAddMember, onRemoveMember, onShareSong, onUnshareSong, onOpenSong, onOpenSetlist, showToast }: { group: Group; onBack: () => void } & GroupsViewProps) {
+function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, folders, onAddMember, onRemoveMember, onShareSong, onUnshareSong, onDeleteGroup, onOpenSong, onOpenSetlist, showToast }: { group: Group; onBack: () => void } & GroupsViewProps) {
   const [tab, setTab] = useState<"members"|"songs">("members");
   const [addOpen, setAddOpen] = useState(false);
   const [addSongsOpen, setAddSongsOpen] = useState(false);
   const members = groupMembers.filter(m => m.groupId === group.id);
+  const isOwner = members.find(m => m.userId === userId)?.role === "owner";
+  const handleDelete = async () => {
+    if (!window.confirm(`Delete ${group.name}? This cannot be undone.`)) return;
+    const ok = await onDeleteGroup(group.id);
+    if (ok) { showToast("Team deleted"); onBack(); }
+  };
   const sharedSongIds = new Set(groupSongs.filter(gs => gs.groupId === group.id).map(gs => gs.songId));
   const sharedSongs = songs.filter(s => sharedSongIds.has(s.id));
   const teamSetlists = folders.filter(f => f.type === "setlist" && f.groupId === group.id);
@@ -292,6 +299,14 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
         </div>
       )}
       <TeamSetlistList setlists={teamSetlists} onOpen={onOpenSetlist} />
+      {isOwner && (
+        <div className="mt-10 pt-6 border-t border-slate-200 dark:border-slate-800">
+          <button type="button" onClick={handleDelete}
+            className="h-9 px-4 rounded-xl text-sm font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors">
+            Delete team
+          </button>
+        </div>
+      )}
       {addOpen && <AddMemberModal groupId={group.id} onAdd={onAddMember} onClose={() => setAddOpen(false)} showToast={showToast} />}
       {addSongsOpen && <AddSongsModal songs={songs.filter(s => s.userId === userId)} alreadyShared={sharedSongIds} groupId={group.id} onShare={onShareSong} onClose={() => setAddSongsOpen(false)} showToast={showToast} />}
     </div>
