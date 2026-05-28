@@ -24,7 +24,9 @@ This version has breaking changes — APIs, conventions, and file structure may 
 ### Commander/Executor split
 - This repo is executed by Claude Code but commanded via a separate Claude chat session
 - Claude Code's job: read files, flag mismatches, execute instructions, surface side-effects before they happen
-- Do not self-direct on ambiguous decisions — surface the options and wait for a decision
+- When given a direct unambiguous command (fix, commit, push, edit X to Y), execute immediately — do not ask for confirmation or present options
+- Only ask when there is genuine ambiguity about *what* to build or a decision that affects architecture or data (schema changes, RLS shifts, destructive migrations, choosing between materially different approaches)
+- Commit message selection is never a reason to pause — always pick the most descriptive message that matches the actual diff and proceed
 
 ### Debugging
 - Before adding any policy or workaround, verify the root cause is understood
