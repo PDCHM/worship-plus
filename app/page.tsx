@@ -119,7 +119,7 @@ function logErr(label: string, err: { message?: string; details?: string; hint?:
   console.error(label, err.message, err.details, err.hint);
 }
 
-async function saveSongToDb(supabase: SupabaseClient, song: Song, userId: string) {
+async function saveSongToDb(supabase: SupabaseClient, song: Song, userId: string): Promise<{ ok: true } | { ok: false; message: string }> {
   const songRow = {
     id: song.id,
     user_id: userId,
@@ -132,10 +132,10 @@ async function saveSongToDb(supabase: SupabaseClient, song: Song, userId: string
     updated_at: new Date(song.updatedAt).toISOString(),
   };
   const { error: songError } = await supabase.from("songs").upsert(songRow).select();
-  if (songError) { logErr("save song failed", songError); return; }
+  if (songError) { logErr("save song failed", songError); return { ok: false, message: songError.message }; }
 
   const { error: delError } = await supabase.from("sections").delete().eq("song_id", song.id).select();
-  if (delError) { logErr("delete old sections failed", delError); return; }
+  if (delError) { logErr("delete old sections failed", delError); return { ok: false, message: delError.message }; }
 
   const sectionRows: Array<{ id: string; song_id: string; label: string; type: string; position: number }> = [];
   const lineRows: Array<{ id: string; section_id: string; lyric: string; position: number }> = [];
@@ -153,16 +153,17 @@ async function saveSongToDb(supabase: SupabaseClient, song: Song, userId: string
 
   if (sectionRows.length) {
     const { error } = await supabase.from("sections").insert(sectionRows).select();
-    if (error) { logErr("insert sections failed", error); return; }
+    if (error) { logErr("insert sections failed", error); return { ok: false, message: error.message }; }
   }
   if (lineRows.length) {
     const { error } = await supabase.from("lines").insert(lineRows).select();
-    if (error) { logErr("insert lines failed", error); return; }
+    if (error) { logErr("insert lines failed", error); return { ok: false, message: error.message }; }
   }
   if (chordRows.length) {
     const { error } = await supabase.from("chords").insert(chordRows).select();
-    if (error) { logErr("insert chords failed", error); return; }
+    if (error) { logErr("insert chords failed", error); return { ok: false, message: error.message }; }
   }
+  return { ok: true };
 }
 
 export default function Home() {
@@ -411,7 +412,11 @@ export default function Home() {
 
   const saveSong = async (song: Song) => {
     if (!user) return;
-    await saveSongToDb(supabase, song, user.id);
+    const result = await saveSongToDb(supabase, song, user.id);
+    if (!result.ok) {
+      showToast("Save failed: " + result.message);
+      return;
+    }
     lastSavedRef.current.set(song.id, song);
     setDirtyIds(prev => { const n = new Set(prev); n.delete(song.id); return n; });
     newSongIdsRef.current.delete(song.id);
@@ -513,7 +518,7 @@ export default function Home() {
           if (user) {
             let failed = 0;
             for (const s of imported) {
-              try { await saveSongToDb(supabase, s, user.id); } catch { failed++; }
+              try { const r = await saveSongToDb(supabase, s, user.id); if (!r.ok) failed++; } catch { failed++; }
             }
             if (failed) showToast(failed + " of " + imported.length + " failed to save");
           }

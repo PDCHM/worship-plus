@@ -4,33 +4,34 @@ import { Fragment, useEffect, useRef, useState } from "react";
 import PrintPreviewModal from "@/app/_components/PrintPreviewModal";
 import QuickActionsPanel from "@/app/_components/QuickActionsPanel";
 import {
+  CHORD_FONT_SIZE_PX,
+  EDITOR_FONT_FAMILY,
   KEYS,
+  LINE_SPACING,
+  LYRIC_FONT_SIZE_PX,
   PREFER_FLAT_KEYS,
   SECTION_PRESETS,
-  SECTION_STYLE_KEYS,
-  SECTION_STYLE_LABELS,
+  collectStyleKeys,
   cloneSection,
+  defaultStyleForKey,
   findLine,
+  getEffectiveStyle,
   getSectionColorKey,
   getSectionStyleKey,
   mapLine,
   noteToIndex,
+  styleLabelFor,
   transposeChord,
   uid,
+  type EditorPrefs,
   type Section,
+  type SectionStyle,
   type SectionStyles,
-  type SectionStyleKey,
   type Settings,
   type Song,
 } from "@/lib/song";
 
 type ViewMode = "standard" | "split-2" | "split-3";
-
-const FONT_FAMILY_CSS: Record<Settings["fontFamily"], string> = {
-  system: "ui-sans-serif, system-ui, sans-serif",
-  mono: "ui-monospace, Menlo, Consolas, monospace",
-  serif: "ui-serif, Georgia, serif",
-};
 
 type Props = {
   song: Song;
@@ -308,13 +309,10 @@ function SongFlowBar({
           const isActive = s.id === activeId;
           const isEditing = editingId === s.id;
           const isDragging = dragId === s.id;
-          const chipStyleKey = getSectionStyleKey(s.label);
-          const chipColor = chipStyleKey ? sectionStyles[chipStyleKey].chordColor : null;
+          const chipColor = getEffectiveStyle(getSectionStyleKey(s.label), sectionStyles.styles).chordColor;
           const chipStyle: React.CSSProperties = { touchAction: readOnly || isEditing ? "auto" : "none" };
-          if (chipColor) {
-            if (isActive) { chipStyle.backgroundColor = chipColor; chipStyle.color = "#fff"; }
-            else { chipStyle.backgroundColor = hexAlpha(chipColor, 0.15); chipStyle.color = chipColor; }
-          }
+          if (isActive) { chipStyle.backgroundColor = chipColor; chipStyle.color = "#fff"; }
+          else { chipStyle.backgroundColor = hexAlpha(chipColor, 0.15); chipStyle.color = chipColor; }
           return (
             <div
               key={s.id}
@@ -327,11 +325,7 @@ function SongFlowBar({
               className={
                 "shrink-0 h-7 px-3 rounded-full text-xs font-semibold transition-all select-none flex items-center justify-center text-center " +
                 (readOnly ? "cursor-pointer " : "cursor-grab active:cursor-grabbing ") +
-                (chipColor
-                  ? (isActive ? "shadow-sm" : "hover:opacity-80")
-                  : (isActive
-                    ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/30"
-                    : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700")) +
+                (isActive ? "shadow-sm" : "hover:opacity-80") +
                 (isDragging ? " opacity-60 scale-105" : "")
               }
             >
@@ -369,16 +363,38 @@ function SongFlowBar({
   );
 }
 
+function SegBtn({ active, onClick, children, disabled }: { active: boolean; onClick: () => void; children: React.ReactNode; disabled?: boolean }) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled}
+      className={
+        "h-7 px-2.5 text-xs font-medium transition-colors flex-1 " +
+        (disabled ? "opacity-40 cursor-not-allowed " : "") +
+        (active
+          ? "bg-indigo-600 text-white"
+          : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")
+      }>
+      {children}
+    </button>
+  );
+}
+
 function SectionStylesPanel({
-  styles, onChange, onSave, onClose,
+  song, settings, onChange, onSave, onClose,
 }: {
-  styles: SectionStyles;
+  song: Song;
+  settings: SectionStyles;
   onChange: (s: SectionStyles) => void;
   onSave: (s: SectionStyles) => void | Promise<void>;
   onClose: () => void;
 }) {
-  const update = (key: SectionStyleKey, patch: Partial<{ chordColor: string; bold: boolean }>) => {
-    onChange({ ...styles, [key]: { ...styles[key], ...patch } });
+  const allKeys = collectStyleKeys(song.sections, settings.styles);
+
+  const updateStyle = (key: string, patch: Partial<SectionStyle>) => {
+    const existing = settings.styles[key] ?? defaultStyleForKey(key);
+    onChange({ ...settings, styles: { ...settings.styles, [key]: { ...existing, ...patch } } });
+  };
+  const updatePrefs = (patch: Partial<EditorPrefs>) => {
+    onChange({ ...settings, prefs: { ...settings.prefs, ...patch } });
   };
 
   return (
@@ -386,45 +402,101 @@ function SectionStylesPanel({
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <aside className="absolute right-0 top-0 bottom-0 w-full sm:w-[26rem] bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col">
         <header className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-          <h2 className="font-semibold text-base">Section styles</h2>
+          <h2 className="font-semibold text-base">Editor styles</h2>
           <button type="button" onClick={onClose} aria-label="Close"
             className="w-8 h-8 rounded-md flex items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </header>
-        <div className="flex-1 overflow-y-auto p-5 space-y-2.5">
-          {SECTION_STYLE_KEYS.map((key) => {
-            const v = styles[key];
-            return (
-              <div key={key} className="flex items-center gap-3 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2.5">
-                <input
-                  type="color"
-                  value={v.chordColor}
-                  onChange={(e) => update(key, { chordColor: e.target.value })}
-                  className="w-10 h-10 rounded-md cursor-pointer bg-transparent border border-slate-200 dark:border-slate-700"
-                  title="Chord color"
-                  aria-label={`${SECTION_STYLE_LABELS[key]} chord color`}
-                />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate" style={{ color: v.chordColor }}>
-                    {SECTION_STYLE_LABELS[key]}
-                  </div>
-                  <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{v.chordColor.toUpperCase()}</div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-6">
+          <section>
+            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2.5">Preferences</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs text-slate-500 dark:text-slate-400 mb-1.5 block">Lyric font size</label>
+                <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden w-full">
+                  {(["small","medium","large"] as const).map(v => (
+                    <SegBtn key={v} active={settings.prefs.lyricFontSize === v} onClick={() => updatePrefs({ lyricFontSize: v })}>
+                      {v === "small" ? "S" : v === "medium" ? "M" : "L"}
+                    </SegBtn>
+                  ))}
                 </div>
-                <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 cursor-pointer select-none shrink-0">
-                  <input type="checkbox" checked={v.bold} onChange={(e) => update(key, { bold: e.target.checked })} className="w-4 h-4 accent-indigo-600" />
-                  Bold
-                </label>
               </div>
-            );
-          })}
+              <div>
+                <label className="text-xs text-slate-500 dark:text-slate-400 mb-1.5 block">Font family</label>
+                <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden w-full">
+                  <SegBtn active={settings.prefs.fontFamily === "mono"} onClick={() => updatePrefs({ fontFamily: "mono" })}>Monospace</SegBtn>
+                  <SegBtn active={settings.prefs.fontFamily === "sans"} onClick={() => updatePrefs({ fontFamily: "sans" })}>Sans-serif</SegBtn>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 dark:text-slate-400 mb-1.5 block">Chord font size</label>
+                <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden w-full">
+                  {(["small","medium","large"] as const).map(v => (
+                    <SegBtn key={v} active={settings.prefs.chordFontSize === v} onClick={() => updatePrefs({ chordFontSize: v })}>
+                      {v === "small" ? "S" : v === "medium" ? "M" : "L"}
+                    </SegBtn>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 dark:text-slate-400 mb-1.5 block">Line spacing</label>
+                <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden w-full">
+                  {(["compact","normal","relaxed"] as const).map(v => (
+                    <SegBtn key={v} active={settings.prefs.lineSpacing === v} onClick={() => updatePrefs({ lineSpacing: v })}>
+                      {v === "compact" ? "Compact" : v === "normal" ? "Normal" : "Relaxed"}
+                    </SegBtn>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 opacity-50">
+                <div>
+                  <div className="text-sm text-slate-600 dark:text-slate-300">Chord diagrams</div>
+                  <div className="text-[11px] text-slate-400">Coming soon</div>
+                </div>
+                <input type="checkbox" disabled checked={settings.prefs.showChordDiagrams} className="w-4 h-4 accent-indigo-600 cursor-not-allowed" />
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2.5">Section colors</h3>
+            <div className="space-y-2.5">
+              {allKeys.map((key) => {
+                const v = getEffectiveStyle(key, settings.styles);
+                const label = styleLabelFor(key);
+                return (
+                  <div key={key} className="flex items-center gap-3 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2.5">
+                    <input
+                      type="color"
+                      value={v.chordColor}
+                      onChange={(e) => updateStyle(key, { chordColor: e.target.value })}
+                      className="w-10 h-10 rounded-md cursor-pointer bg-transparent border border-slate-200 dark:border-slate-700"
+                      title="Chord color"
+                      aria-label={`${label} chord color`}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium truncate" style={{ color: v.chordColor }}>{label}</div>
+                      <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{v.chordColor.toUpperCase()}</div>
+                    </div>
+                    <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 cursor-pointer select-none shrink-0">
+                      <input type="checkbox" checked={v.bold} onChange={(e) => updateStyle(key, { bold: e.target.checked })} className="w-4 h-4 accent-indigo-600" />
+                      Bold
+                    </label>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
         </div>
+
         <footer className="px-5 py-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2">
           <button type="button" onClick={onClose}
             className="h-9 px-3 rounded-lg text-sm font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors">
             Close
           </button>
-          <button type="button" onClick={() => { void onSave(styles); onClose(); }}
+          <button type="button" onClick={() => { void onSave(settings); onClose(); }}
             className="h-9 px-4 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-colors shadow-sm shadow-indigo-600/30">
             Save
           </button>
@@ -479,14 +551,18 @@ export default function SongEditor({
   const colors = isDark ? settings.sectionColorsDark : settings.sectionColorsLight;
   const readOnly = false;
   const columnView = viewMode !== "standard";
-  const lyricFontFamily = FONT_FAMILY_CSS[settings.fontFamily ?? "system"];
+  const prefs = sectionStyles.prefs;
+  const lyricFontFamily = EDITOR_FONT_FAMILY[prefs.fontFamily];
   const showChords = settings.showChords ?? true;
-  const baseFontSize = settings.fontSize + zoomOffset;
+  const baseFontSize = LYRIC_FONT_SIZE_PX[prefs.lyricFontSize] + zoomOffset;
   const effectiveFontSize =
     viewMode === "split-3"
       ? Math.max(11, Math.round(baseFontSize * 0.78))
       : baseFontSize;
-  const chordFontSize = Math.round(effectiveFontSize * 0.85);
+  const chordFontSize = viewMode === "split-3"
+    ? Math.max(10, Math.round(CHORD_FONT_SIZE_PX[prefs.chordFontSize] * 0.85))
+    : CHORD_FONT_SIZE_PX[prefs.chordFontSize];
+  const lineHeight = LINE_SPACING[prefs.lineSpacing];
 
   useEffect(() => {
     const measure = () => {
@@ -1053,7 +1129,8 @@ export default function SongEditor({
 
       {stylesPanelOpen && (
         <SectionStylesPanel
-          styles={sectionStyles}
+          song={song}
+          settings={sectionStyles}
           onChange={onSectionStylesChange}
           onSave={onSectionStylesSave}
           onClose={() => setStylesPanelOpen(false)}
@@ -1069,9 +1146,9 @@ export default function SongEditor({
             const colorKey = getSectionColorKey(section.label);
             const c = colors[colorKey];
             const styleKey = getSectionStyleKey(section.label);
-            const sectionStyle = styleKey ? sectionStyles[styleKey] : null;
-            const chordColor = sectionStyle?.chordColor;
-            const labelWeightClass = sectionStyle?.bold ? "font-extrabold" : "font-semibold";
+            const sectionStyle = getEffectiveStyle(styleKey, sectionStyles.styles);
+            const chordColor = sectionStyle.chordColor;
+            const labelWeightClass = sectionStyle.bold ? "font-extrabold" : "font-semibold";
             const sectionClassName = columnView
               ? "group/section break-inside-avoid mb-6 last:mb-0"
               : "group/section";
@@ -1306,9 +1383,9 @@ export default function SongEditor({
                               else if (e.key === "Escape") setEditingLine(null);
                             }}
                             onBlur={(e) => commitLine(line.id, e.target.value)}
-                            className="font-mono bg-slate-50 dark:bg-slate-800/60 outline-none rounded px-1 py-0.5 ring-2 ring-indigo-500 w-full"
+                            className="bg-slate-50 dark:bg-slate-800/60 outline-none rounded px-1 py-0.5 ring-2 ring-indigo-500 w-full"
                             spellCheck={false}
-                            style={{ fontSize: `${effectiveFontSize}px`, fontFamily: lyricFontFamily }}
+                            style={{ fontSize: `${effectiveFontSize}px`, fontFamily: lyricFontFamily, lineHeight }}
                           />
                         ) : (
                           <div
@@ -1317,12 +1394,12 @@ export default function SongEditor({
                                 ? undefined
                                 : () => setEditingLine(line.id)
                             }
-                            className={`font-mono whitespace-pre leading-relaxed rounded px-1 py-0.5 -mx-1 transition-colors ${
+                            className={`whitespace-pre rounded px-1 py-0.5 -mx-1 transition-colors ${
                               readOnly
                                 ? "cursor-default"
                                 : "cursor-text hover:bg-slate-50 dark:hover:bg-slate-800/40"
                             }`}
-                            style={{ fontSize: `${effectiveFontSize}px`, fontFamily: lyricFontFamily }}
+                            style={{ fontSize: `${effectiveFontSize}px`, fontFamily: lyricFontFamily, lineHeight }}
                           >
                             {line.lyric || " "}
                           </div>

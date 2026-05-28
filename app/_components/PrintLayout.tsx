@@ -10,16 +10,18 @@ const FONT_CSS: Record<string, string> = {
   serif:  "ui-serif, Georgia, Cambria, 'Times New Roman', serif",
 };
 
-function buildChordLine(chords: Chord[], pxPerChar: number): string {
+function buildChordLine(chords: Chord[]): string {
   if (!chords.length) return "";
   const sorted = [...chords].sort((a, b) => a.pos - b.pos);
   let result = "";
   for (const c of sorted) {
-    const target = Math.max(result.length + 1, Math.round(c.pos / pxPerChar));
+    const target = Math.max(result.length + 1, Math.round(c.pos));
     result = result.padEnd(target) + c.chord;
   }
   return result;
 }
+
+const MONO_FAMILY = "ui-monospace, Menlo, Consolas, 'Courier New', monospace";
 
 type Props = { song: Song; settings: Settings };
 
@@ -34,9 +36,6 @@ export default function PrintLayout({ song, settings }: Props) {
   const colorMap     = settings.darkMode
     ? settings.sectionColorsDark
     : settings.sectionColorsLight;
-
-  // px width one character takes at the current font size (rough heuristic)
-  const pxPerChar = fontSize * 0.55;
 
   if (!mounted) return null;
 
@@ -130,7 +129,7 @@ export default function PrintLayout({ song, settings }: Props) {
                     {showChords && hasChords && (
                       <pre style={{
                         margin: 0,
-                        fontFamily: "ui-monospace, Menlo, Consolas, monospace",
+                        fontFamily: MONO_FAMILY,
                         fontSize: `${fontSize * 0.82}px`,
                         fontWeight: 700,
                         color: "#1e3a8a",
@@ -138,15 +137,16 @@ export default function PrintLayout({ song, settings }: Props) {
                         whiteSpace: "pre",
                         overflow: "visible",
                       }}>
-                        {buildChordLine(line.chords, pxPerChar)}
+                        {buildChordLine(line.chords)}
                       </pre>
                     )}
-                    {/* Lyric line */}
+                    {/* Lyric line \u2014 forced monospace so chord columns align */}
                     <div style={{
                       whiteSpace: "pre",
                       lineHeight: 1.4,
                       minHeight: `${fontSize * 1.4}px`,
                       fontSize: `${fontSize}px`,
+                      fontFamily: MONO_FAMILY,
                     }}>
                       {line.lyric || "\u00a0"}
                     </div>

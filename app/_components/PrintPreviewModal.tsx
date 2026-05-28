@@ -9,16 +9,18 @@ const FONT_CSS: Record<string, string> = {
   serif:  "ui-serif, Georgia, Cambria, 'Times New Roman', serif",
 };
 
-function buildChordLine(chords: Chord[], pxPerChar: number): string {
+function buildChordLine(chords: Chord[]): string {
   if (!chords.length) return "";
   const sorted = [...chords].sort((a, b) => a.pos - b.pos);
   let result = "";
   for (const c of sorted) {
-    const target = Math.max(result.length + 1, Math.round(c.pos / pxPerChar));
+    const target = Math.max(result.length + 1, Math.round(c.pos));
     result = result.padEnd(target) + c.chord;
   }
   return result;
 }
+
+const MONO_FAMILY = "ui-monospace, Menlo, Consolas, 'Courier New', monospace";
 
 type Props = {
   song: Song;
@@ -141,7 +143,6 @@ function PaperContent({ song, settings, cols, paperW, paperH }: {
   const fontSize    = settings.fontSize ?? 17;
   const showChords  = settings.showChords ?? true;
   const colorMap    = settings.darkMode ? settings.sectionColorsDark : settings.sectionColorsLight;
-  const pxPerChar   = fontSize * 0.55;
 
   return (
     <div style={{
@@ -205,14 +206,14 @@ function PaperContent({ song, settings, cols, paperW, paperH }: {
                 <div key={line.id} style={{ marginBottom: "0.05em" }}>
                   {showChords && line.chords.length > 0 && (
                     <pre style={{
-                      margin: 0, fontFamily: "ui-monospace, Menlo, monospace",
+                      margin: 0, fontFamily: MONO_FAMILY,
                       fontSize: `${fontSize * 0.8}px`, fontWeight: 700,
-                      color: "#1e3a8a", lineHeight: 1.3, whiteSpace: "pre-wrap", overflow: "hidden",
+                      color: "#1e3a8a", lineHeight: 1.3, whiteSpace: "pre", overflow: "visible",
                     }}>
-                      {buildChordLine(line.chords, pxPerChar)}
+                      {buildChordLine(line.chords)}
                     </pre>
                   )}
-                  <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.4, minHeight: `${fontSize * 1.4}px`, overflow: "hidden", wordBreak: "break-word" }}>
+                  <div style={{ whiteSpace: "pre", lineHeight: 1.4, minHeight: `${fontSize * 1.4}px`, overflow: "visible", fontFamily: MONO_FAMILY }}>
                     {line.lyric || "\u00a0"}
                   </div>
                 </div>

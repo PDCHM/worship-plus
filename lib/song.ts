@@ -218,7 +218,19 @@ export type SectionStyleKey =
   | "end";
 
 export type SectionStyle = { chordColor: string; bold: boolean };
-export type SectionStyles = Record<SectionStyleKey, SectionStyle>;
+
+export type EditorPrefs = {
+  lyricFontSize: "small" | "medium" | "large";
+  fontFamily: "mono" | "sans";
+  chordFontSize: "small" | "medium" | "large";
+  showChordDiagrams: boolean;
+  lineSpacing: "compact" | "normal" | "relaxed";
+};
+
+export type SectionStyles = {
+  styles: Record<string, SectionStyle>;
+  prefs: EditorPrefs;
+};
 
 export const SECTION_STYLE_KEYS: SectionStyleKey[] = [
   "intro", "verse", "chorus", "prechorus", "bridge", "outro", "tag", "instrumental", "end",
@@ -236,7 +248,7 @@ export const SECTION_STYLE_LABELS: Record<SectionStyleKey, string> = {
   end: "End",
 };
 
-export const DEFAULT_SECTION_STYLES: SectionStyles = {
+export const DEFAULT_CANONICAL_STYLES: Record<SectionStyleKey, SectionStyle> = {
   intro:        { chordColor: "#22c55e", bold: false },
   verse:        { chordColor: "#3b82f6", bold: false },
   chorus:       { chordColor: "#a855f7", bold: false },
@@ -248,7 +260,34 @@ export const DEFAULT_SECTION_STYLES: SectionStyles = {
   end:          { chordColor: "#64748b", bold: false },
 };
 
-export function getSectionStyleKey(label: string): SectionStyleKey | null {
+export const DEFAULT_EDITOR_PREFS: EditorPrefs = {
+  lyricFontSize: "medium",
+  fontFamily: "mono",
+  chordFontSize: "medium",
+  showChordDiagrams: false,
+  lineSpacing: "normal",
+};
+
+export const DEFAULT_SECTION_STYLES: SectionStyles = {
+  styles: { ...DEFAULT_CANONICAL_STYLES },
+  prefs: { ...DEFAULT_EDITOR_PREFS },
+};
+
+const CUSTOM_PALETTE = [
+  "#0ea5e9", "#8b5cf6", "#ec4899", "#f97316", "#10b981",
+  "#eab308", "#06b6d4", "#84cc16", "#d946ef",
+];
+
+export function defaultStyleForKey(key: string): SectionStyle {
+  if (key in DEFAULT_CANONICAL_STYLES) {
+    return DEFAULT_CANONICAL_STYLES[key as SectionStyleKey];
+  }
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0;
+  return { chordColor: CUSTOM_PALETTE[Math.abs(h) % CUSTOM_PALETTE.length], bold: false };
+}
+
+export function getSectionStyleKey(label: string): string {
   const t = label.trim().toLowerCase();
   if (/^pre[\s-]?chorus\b/.test(t)) return "prechorus";
   if (/^intro\b/.test(t)) return "intro";
@@ -259,24 +298,85 @@ export function getSectionStyleKey(label: string): SectionStyleKey | null {
   if (/^chorus\b/.test(t)) return "chorus";
   if (/^verse\b/.test(t)) return "verse";
   if (/^bridge\b/.test(t)) return "bridge";
-  return null;
+  const normalized = t.replace(/\s*\d+\s*$/, "").trim();
+  return normalized || "default";
 }
 
-export function mergeSectionStyles(stored: unknown): SectionStyles {
-  const out = { ...DEFAULT_SECTION_STYLES };
-  if (!stored || typeof stored !== "object") return out;
-  const s = stored as Partial<Record<string, Partial<SectionStyle>>>;
-  for (const key of SECTION_STYLE_KEYS) {
-    const v = s[key];
-    if (v && typeof v === "object") {
-      out[key] = {
-        chordColor: typeof v.chordColor === "string" ? v.chordColor : out[key].chordColor,
-        bold: typeof v.bold === "boolean" ? v.bold : out[key].bold,
+export function styleLabelFor(key: string): string {
+  if (key in SECTION_STYLE_LABELS) return SECTION_STYLE_LABELS[key as SectionStyleKey];
+  return key.split(/\s+/).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+}
+
+export function getEffectiveStyle(key: string, styles: Record<string, SectionStyle>): SectionStyle {
+  return styles[key] ?? defaultStyleForKey(key);
+}
+
+function parseStylesObject(v: unknown, fallback: Record<string, SectionStyle>): Record<string, SectionStyle> {
+  if (!v || typeof v !== "object") return { ...fallback };
+  const out: Record<string, SectionStyle> = { ...fallback };
+  const s = v as Record<string, unknown>;
+  for (const [k, raw] of Object.entries(s)) {
+    if (raw && typeof raw === "object") {
+      const r = raw as Partial<SectionStyle>;
+      out[k] = {
+        chordColor: typeof r.chordColor === "string" ? r.chordColor : (fallback[k]?.chordColor ?? defaultStyleForKey(k).chordColor),
+        bold: typeof r.bold === "boolean" ? r.bold : (fallback[k]?.bold ?? false),
       };
     }
   }
   return out;
 }
+
+function parsePrefs(v: unknown): EditorPrefs {
+  const out = { ...DEFAULT_EDITOR_PREFS };
+  if (!v || typeof v !== "object") return out;
+  const s = v as Partial<EditorPrefs>;
+  if (s.lyricFontSize === "small" || s.lyricFontSize === "medium" || s.lyricFontSize === "large") out.lyricFontSize = s.lyricFontSize;
+  if (s.fontFamily === "mono" || s.fontFamily === "sans") out.fontFamily = s.fontFamily;
+  if (s.chordFontSize === "small" || s.chordFontSize === "medium" || s.chordFontSize === "large") out.chordFontSize = s.chordFontSize;
+  if (typeof s.showChordDiagrams === "boolean") out.showChordDiagrams = s.showChordDiagrams;
+  if (s.lineSpacing === "compact" || s.lineSpacing === "normal" || s.lineSpacing === "relaxed") out.lineSpacing = s.lineSpacing;
+  return out;
+}
+
+export function mergeSectionStyles(stored: unknown): SectionStyles {
+  if (!stored || typeof stored !== "object") return { styles: { ...DEFAULT_CANONICAL_STYLES }, prefs: { ...DEFAULT_EDITOR_PREFS } };
+  const s = stored as Record<string, unknown>;
+  // New format: { styles: {...}, prefs: {...} }
+  if (s.styles && typeof s.styles === "object") {
+    return {
+      styles: parseStylesObject(s.styles, DEFAULT_CANONICAL_STYLES),
+      prefs: parsePrefs(s.prefs),
+    };
+  }
+  // Old format: top-level keys are section style entries (no styles/prefs wrapper)
+  return {
+    styles: parseStylesObject(s, DEFAULT_CANONICAL_STYLES),
+    prefs: { ...DEFAULT_EDITOR_PREFS },
+  };
+}
+
+export function collectStyleKeys(sections: Section[], styles: Record<string, SectionStyle>): string[] {
+  const seen = new Set<string>(SECTION_STYLE_KEYS);
+  const customKeys = new Set<string>();
+  for (const sec of sections) {
+    const k = getSectionStyleKey(sec.label);
+    if (!seen.has(k)) customKeys.add(k);
+  }
+  for (const k of Object.keys(styles)) {
+    if (!seen.has(k)) customKeys.add(k);
+  }
+  return [...SECTION_STYLE_KEYS, ...[...customKeys].sort()];
+}
+
+// Numeric mappings for the prefs enum values.
+export const LYRIC_FONT_SIZE_PX: Record<EditorPrefs["lyricFontSize"], number> = { small: 14, medium: 17, large: 20 };
+export const CHORD_FONT_SIZE_PX: Record<EditorPrefs["chordFontSize"], number> = { small: 11, medium: 13, large: 16 };
+export const LINE_SPACING: Record<EditorPrefs["lineSpacing"], number> = { compact: 1.25, normal: 1.55, relaxed: 1.95 };
+export const EDITOR_FONT_FAMILY: Record<EditorPrefs["fontFamily"], string> = {
+  mono: "ui-monospace, Menlo, Consolas, 'Courier New', monospace",
+  sans: "ui-sans-serif, system-ui, -apple-system, sans-serif",
+};
 
 export function cloneLine(line: Line): Line {
   return {
