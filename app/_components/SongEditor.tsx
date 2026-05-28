@@ -547,9 +547,29 @@ export default function SongEditor({
   const sectionRefs = useRef<Map<string, HTMLElement>>(new Map());
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
   const [stylesPanelOpen, setStylesPanelOpen] = useState(false);
+  const [isTouchDevice, setIsTouchDevice] = useState(false);
+  const [editMode, setEditMode] = useState(true);
+
+  useEffect(() => {
+    const touch = typeof navigator !== "undefined" && (navigator.maxTouchPoints ?? 0) > 0;
+    setIsTouchDevice(touch);
+    if (touch) {
+      try {
+        const saved = localStorage.getItem("wp-edit-mode-v1");
+        setEditMode(saved === "true");
+      } catch {
+        setEditMode(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isTouchDevice) return;
+    try { localStorage.setItem("wp-edit-mode-v1", String(editMode)); } catch {}
+  }, [editMode, isTouchDevice]);
 
   const colors = isDark ? settings.sectionColorsDark : settings.sectionColorsLight;
-  const readOnly = false;
+  const readOnly = isTouchDevice && !editMode;
   const columnView = viewMode !== "standard";
   const prefs = sectionStyles.prefs;
   const lyricFontFamily = EDITOR_FONT_FAMILY[prefs.fontFamily];
@@ -1070,6 +1090,29 @@ export default function SongEditor({
       <div className="mb-5 flex items-center justify-between gap-3 flex-wrap print:hidden">
         <ViewToggle viewMode={viewMode} onChange={switchView} />
         <div className="flex items-center gap-2">
+          {isTouchDevice && (
+            <button type="button" onClick={() => setEditMode((m) => !m)}
+              title={editMode ? "Read mode" : "Edit mode"}
+              aria-pressed={editMode}
+              className={
+                "h-9 w-9 rounded-lg flex items-center justify-center transition-colors " +
+                (editMode
+                  ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-600/30"
+                  : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300")
+              }>
+              {editMode ? (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 20h9"/>
+                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z"/>
+                </svg>
+              ) : (
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 20h9"/>
+                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z"/>
+                </svg>
+              )}
+            </button>
+          )}
           <button type="button" onClick={() => setStylesPanelOpen(true)} title="Section styles"
             className="h-9 w-9 rounded-lg flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1363,7 +1406,7 @@ export default function SongEditor({
                                         : "cursor-grab hover:bg-indigo-50 dark:hover:bg-indigo-950/60"
                                   }`}
                                   style={{
-                                    touchAction: "none",
+                                    touchAction: readOnly ? "auto" : "none",
                                     fontSize: `${chordFontSize}px`,
                                     color: chordColor,
                                   }}
