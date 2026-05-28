@@ -65,6 +65,15 @@ create table if not exists public.folders (
   created_at  timestamptz not null default now()
 );
 
+-- App stores both plain folders and dated setlists in this table,
+-- discriminated by type. group_id ties a setlist to a worship team so
+-- members can read it via RLS; null for personal folders/setlists.
+alter table public.folders add column if not exists type     text not null default 'folder'
+  check (type in ('folder', 'setlist'));
+alter table public.folders add column if not exists date     date;
+alter table public.folders add column if not exists group_id uuid references public.groups(id) on delete set null;
+create index if not exists folders_group_id_idx on public.folders(group_id);
+
 create table if not exists public.folder_songs (
   id         uuid primary key default gen_random_uuid(),
   folder_id  uuid not null references public.folders(id) on delete cascade,
@@ -258,6 +267,40 @@ revoke all on function public.is_group_admin(uuid)  from public;
 grant execute on function public.is_group_member(uuid) to authenticated;
 grant execute on function public.is_group_admin(uuid)  to authenticated;
 
+-- True if the calling user can read the song: as owner, or because it's
+-- shared via group_songs, or because it sits in a setlist (folder with
+-- type='setlist') shared with one of their groups. Used by the SELECT
+-- policies on sections / lines / chords so non-owner team members can
+-- view a shared song's content.
+create or replace function public.can_read_song(p_song uuid)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.songs s
+    where s.id = p_song and s.user_id = auth.uid()
+  )
+  or exists (
+    select 1 from public.group_songs gs
+    where gs.song_id = p_song and public.is_group_member(gs.group_id)
+  )
+  or exists (
+    select 1
+    from public.folder_songs fs
+    join public.folders f on f.id = fs.folder_id
+    where fs.song_id = p_song
+      and f.type = 'setlist'
+      and f.group_id is not null
+      and public.is_group_member(f.group_id)
+  );
+$$;
+
+revoke all on function public.can_read_song(uuid) from public;
+grant execute on function public.can_read_song(uuid) to authenticated;
+
 -- Auto-add the creator as 'owner' when a group is inserted.
 create or replace function public.handle_new_group()
 returns trigger
@@ -423,6 +466,22 @@ create policy songs_group_read on public.songs
     )
   );
 
+-- Songs reachable only via a setlist shared with the user's group.
+drop policy if exists songs_setlist_group_read on public.songs;
+create policy songs_setlist_group_read on public.songs
+  for select to authenticated
+  using (
+    exists (
+      select 1
+      from public.folder_songs fs
+      join public.folders f on f.id = fs.folder_id
+      where fs.song_id = songs.id
+        and f.type = 'setlist'
+        and f.group_id is not null
+        and public.is_group_member(f.group_id)
+    )
+  );
+
 -- Sections / lines / chords inherit ownership from the parent song.
 drop policy if exists sections_via_song on public.sections;
 create policy sections_via_song on public.sections
@@ -439,6 +498,13 @@ create policy sections_via_song on public.sections
       where s.id = sections.song_id and s.user_id = (select auth.uid())
     )
   );
+
+-- SELECT-only widening: group members can read sections of any song
+-- they can read via can_read_song (group_songs or shared setlist).
+drop policy if exists sections_group_read on public.sections;
+create policy sections_group_read on public.sections
+  for select to authenticated
+  using (public.can_read_song(sections.song_id));
 
 drop policy if exists lines_via_section on public.lines;
 create policy lines_via_section on public.lines
@@ -457,6 +523,17 @@ create policy lines_via_section on public.lines
       from public.sections sec
       join public.songs s on s.id = sec.song_id
       where sec.id = lines.section_id and s.user_id = (select auth.uid())
+    )
+  );
+
+drop policy if exists lines_group_read on public.lines;
+create policy lines_group_read on public.lines
+  for select to authenticated
+  using (
+    exists (
+      select 1 from public.sections sec
+      where sec.id = lines.section_id
+        and public.can_read_song(sec.song_id)
     )
   );
 
@@ -482,12 +559,34 @@ create policy chords_via_line on public.chords
     )
   );
 
+drop policy if exists chords_group_read on public.chords;
+create policy chords_group_read on public.chords
+  for select to authenticated
+  using (
+    exists (
+      select 1 from public.lines ln
+      join public.sections sec on sec.id = ln.section_id
+      where ln.id = chords.line_id
+        and public.can_read_song(sec.song_id)
+    )
+  );
+
 -- Folders: owner has full access.
 drop policy if exists folders_owner_all on public.folders;
 create policy folders_owner_all on public.folders
   for all to authenticated
   using (user_id = (select auth.uid()))
   with check (user_id = (select auth.uid()));
+
+-- Setlists shared with a worship team: any group member can read.
+drop policy if exists folders_setlist_group_read on public.folders;
+create policy folders_setlist_group_read on public.folders
+  for select to authenticated
+  using (
+    type = 'setlist'
+    and group_id is not null
+    and public.is_group_member(group_id)
+  );
 
 drop policy if exists folder_songs_via_folder on public.folder_songs;
 create policy folder_songs_via_folder on public.folder_songs
@@ -502,6 +601,20 @@ create policy folder_songs_via_folder on public.folder_songs
     exists (
       select 1 from public.folders f
       where f.id = folder_songs.folder_id and f.user_id = (select auth.uid())
+    )
+  );
+
+-- Read-only access to the song list of a setlist shared with the user's group.
+drop policy if exists folder_songs_setlist_group_read on public.folder_songs;
+create policy folder_songs_setlist_group_read on public.folder_songs
+  for select to authenticated
+  using (
+    exists (
+      select 1 from public.folders f
+      where f.id = folder_songs.folder_id
+        and f.type = 'setlist'
+        and f.group_id is not null
+        and public.is_group_member(f.group_id)
     )
   );
 

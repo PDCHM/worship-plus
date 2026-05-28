@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import type { Song } from "@/lib/song";
+import type { Folder } from "@/app/_components/FoldersView";
 
 export type Group = { id: string; name: string; inviteToken: string; createdAt: number; };
 export type GroupMember = {
@@ -10,13 +11,14 @@ export type GroupMember = {
 };
 export type GroupSong = { id: string; groupId: string; songId: string; };
 export type GroupsViewProps = {
-  userId: string; groups: Group[]; groupMembers: GroupMember[]; groupSongs: GroupSong[]; songs: Song[];
+  userId: string; groups: Group[]; groupMembers: GroupMember[]; groupSongs: GroupSong[]; songs: Song[]; folders: Folder[];
   onCreateGroup: (name: string) => Promise<Group | null>;
   onAddMember: (groupId: string, displayName: string, role: string, instrument: string, instrumentDetail: string) => Promise<void>;
   onRemoveMember: (memberId: string) => Promise<boolean>;
   onShareSong: (groupId: string, songId: string) => Promise<void>;
   onUnshareSong: (groupId: string, songId: string) => void;
   onOpenSong: (id: string) => void;
+  onOpenSetlist: (id: string) => void;
   showToast: (msg: string) => void;
 };
 
@@ -33,14 +35,33 @@ function insLabel(m: GroupMember) {
   return m.instrument === "sound_team" && m.instrumentDetail ? `${ins.emoji} ${m.instrumentDetail}` : `${ins.emoji} ${ins.label}`;
 }
 
+type Membership = { group: Group; role: GroupMember["role"]; memberCount: number };
+
 export default function GroupsView(props: GroupsViewProps) {
   const { userId, groups, groupMembers } = props;
-  const myGroups = groups.filter(g => groupMembers.some(m => m.groupId === g.id && (m.userId === userId || m.role === "owner" && groups.find(gg => gg.id === g.id))));
-  const leaderGroups = groups.filter(g => groupMembers.some(m => m.groupId === g.id && m.userId === userId && (m.role === "owner" || m.role === "admin")));
-  const memberGroups = groups.filter(g => groupMembers.some(m => m.groupId === g.id && m.userId === userId && m.role === "member"));
-  if (leaderGroups.length > 0) return <LeaderView group={leaderGroups[0]} {...props} />;
-  if (memberGroups.length > 0) return <MemberView group={memberGroups[0]} {...props} />;
-  return <NoGroupView {...props} />;
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const myMemberships: Membership[] = groups
+    .map(g => {
+      const me = groupMembers.find(m => m.groupId === g.id && m.userId === userId);
+      if (!me) return null;
+      return { group: g, role: me.role, memberCount: groupMembers.filter(m => m.groupId === g.id).length };
+    })
+    .filter((x): x is Membership => x !== null);
+
+  if (selectedId) {
+    const membership = myMemberships.find(m => m.group.id === selectedId);
+    if (membership) {
+      const isLeader = membership.role === "owner" || membership.role === "admin";
+      return isLeader
+        ? <LeaderView group={membership.group} onBack={() => setSelectedId(null)} {...props} />
+        : <MemberView group={membership.group} onBack={() => setSelectedId(null)} {...props} />;
+    }
+    // Selected group disappeared (left/removed). Fall through to list.
+  }
+
+  if (myMemberships.length === 0) return <NoGroupView {...props} />;
+  return <TeamListView memberships={myMemberships} onSelect={setSelectedId} onCreateGroup={props.onCreateGroup} showToast={props.showToast} />;
 }
 
 function NoGroupView({ onCreateGroup, showToast }: GroupsViewProps) {
@@ -89,13 +110,86 @@ function NoGroupView({ onCreateGroup, showToast }: GroupsViewProps) {
   );
 }
 
-function LeaderView({ group, userId, groupMembers, groupSongs, songs, onAddMember, onRemoveMember, onShareSong, onUnshareSong, onOpenSong, showToast }: { group: Group } & GroupsViewProps) {
+function TeamListView({ memberships, onSelect, onCreateGroup, showToast }: {
+  memberships: Membership[];
+  onSelect: (groupId: string) => void;
+  onCreateGroup: GroupsViewProps["onCreateGroup"];
+  showToast: GroupsViewProps["showToast"];
+}) {
+  const [creating, setCreating] = useState(false);
+  const [name, setName] = useState("");
+  const [loading, setLoading] = useState(false);
+  const handleCreate = async () => {
+    if (!name.trim()) return;
+    setLoading(true);
+    const result = await onCreateGroup(name.trim());
+    setLoading(false);
+    if (result) { showToast("Team created!"); setName(""); setCreating(false); }
+  };
+  return (
+    <div className="max-w-3xl w-full mx-auto px-4 sm:px-6 py-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-2xl font-bold">Your Teams</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{memberships.length} team{memberships.length!==1?"s":""}</p>
+        </div>
+        {!creating && (
+          <button type="button" onClick={() => setCreating(true)}
+            className="h-9 px-4 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 flex items-center gap-1.5">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            New Team
+          </button>
+        )}
+      </div>
+      {creating && (
+        <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 mb-4 space-y-3">
+          <input autoFocus type="text" placeholder="e.g. PDCHM Worship Team" value={name}
+            onChange={e => setName(e.target.value)}
+            onKeyDown={e => { if(e.key==="Enter") handleCreate(); if(e.key==="Escape") { setCreating(false); setName(""); } }}
+            className="w-full h-10 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-indigo-400" />
+          <div className="flex gap-2">
+            <button type="button" onClick={handleCreate} disabled={loading||!name.trim()}
+              className="flex-1 h-10 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50">
+              {loading ? "Creating…" : "Create Team"}
+            </button>
+            <button type="button" onClick={() => { setCreating(false); setName(""); }}
+              className="h-10 px-4 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm">Cancel</button>
+          </div>
+        </div>
+      )}
+      <div className="space-y-2">
+        {memberships.map(({ group, role, memberCount }) => {
+          const isLeader = role === "owner" || role === "admin";
+          return (
+            <button key={group.id} type="button" onClick={() => onSelect(group.id)}
+              className="w-full flex items-center gap-3 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-300 transition-colors text-left">
+              <div className="w-11 h-11 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-semibold shrink-0">
+                {group.name.charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold truncate">{group.name}</div>
+                <div className="text-xs text-slate-500 mt-0.5">{memberCount} member{memberCount!==1?"s":""}</div>
+              </div>
+              <span className={"text-xs font-semibold px-2.5 py-1 rounded-lg shrink-0 "+(isLeader?"bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400":"bg-slate-100 dark:bg-slate-800 text-slate-500")}>
+                {isLeader?"Leader":"Musician"}
+              </span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="text-slate-300 shrink-0"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, folders, onAddMember, onRemoveMember, onShareSong, onUnshareSong, onOpenSong, onOpenSetlist, showToast }: { group: Group; onBack: () => void } & GroupsViewProps) {
   const [tab, setTab] = useState<"members"|"songs">("members");
   const [addOpen, setAddOpen] = useState(false);
   const [addSongsOpen, setAddSongsOpen] = useState(false);
   const members = groupMembers.filter(m => m.groupId === group.id);
   const sharedSongIds = new Set(groupSongs.filter(gs => gs.groupId === group.id).map(gs => gs.songId));
   const sharedSongs = songs.filter(s => sharedSongIds.has(s.id));
+  const teamSetlists = folders.filter(f => f.type === "setlist" && f.groupId === group.id);
   const inviteUrl = (memberId: string) => typeof window !== "undefined"
     ? `${window.location.origin}/join/${group.inviteToken}?slot=${memberId}`
     : `https://worshipplus.vercel.app/join/${group.inviteToken}?slot=${memberId}`;
@@ -105,6 +199,10 @@ function LeaderView({ group, userId, groupMembers, groupSongs, songs, onAddMembe
   };
   return (
     <div className="max-w-3xl w-full mx-auto px-4 sm:px-6 py-6">
+      <button type="button" onClick={onBack} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 mb-3 transition-colors">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        Teams
+      </button>
       <div className="flex items-start justify-between mb-6">
         <div><h1 className="text-2xl font-bold">{group.name}</h1><p className="text-sm text-slate-500 mt-0.5">{members.length} member{members.length!==1?"s":""}</p></div>
         <span className="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 text-xs font-semibold mt-1">Leader</span>
@@ -193,21 +291,28 @@ function LeaderView({ group, userId, groupMembers, groupSongs, songs, onAddMembe
           )}
         </div>
       )}
+      <TeamSetlistList setlists={teamSetlists} onOpen={onOpenSetlist} />
       {addOpen && <AddMemberModal groupId={group.id} onAdd={onAddMember} onClose={() => setAddOpen(false)} showToast={showToast} />}
       {addSongsOpen && <AddSongsModal songs={songs} alreadyShared={sharedSongIds} groupId={group.id} onShare={onShareSong} onClose={() => setAddSongsOpen(false)} showToast={showToast} />}
     </div>
   );
 }
 
-function MemberView({ group, groupSongs, songs, onOpenSong, showToast }: { group: Group } & GroupsViewProps) {
+function MemberView({ group, onBack, groupSongs, songs, folders, onOpenSong, onOpenSetlist }: { group: Group; onBack: () => void } & GroupsViewProps) {
   const sharedSongIds = new Set(groupSongs.filter(gs => gs.groupId === group.id).map(gs => gs.songId));
   const sharedSongs = songs.filter(s => sharedSongIds.has(s.id));
+  const teamSetlists = folders.filter(f => f.type === "setlist" && f.groupId === group.id);
   return (
     <div className="max-w-3xl w-full mx-auto px-4 sm:px-6 py-6">
+      <button type="button" onClick={onBack} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 mb-3 transition-colors">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+        Teams
+      </button>
       <div className="flex items-start justify-between mb-6">
         <div><h1 className="text-2xl font-bold">{group.name}</h1><p className="text-sm text-slate-500 mt-0.5">{sharedSongs.length} shared song{sharedSongs.length!==1?"s":""}</p></div>
         <span className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 text-xs font-semibold mt-1">Musician</span>
       </div>
+      <TeamSetlistList setlists={teamSetlists} onOpen={onOpenSetlist} />
       {sharedSongs.length===0 ? (
         <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-16 text-center text-sm text-slate-400">Your team leader hasn't shared any songs yet.</div>
       ) : (
@@ -220,6 +325,27 @@ function MemberView({ group, groupSongs, songs, onOpenSong, showToast }: { group
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function TeamSetlistList({ setlists, onOpen }: { setlists: Folder[]; onOpen: (id: string) => void }) {
+  if (setlists.length === 0) return null;
+  return (
+    <div className="mt-8">
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Setlists</h2>
+      <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden">
+        {setlists.map((sl, idx) => (
+          <button key={sl.id} type="button" onClick={() => onOpen(sl.id)}
+            className={"w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-left "+(idx<setlists.length-1?"border-b border-slate-100 dark:border-slate-800":"")}>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium truncate">{sl.name}</div>
+              {sl.date && <div className="text-xs text-slate-400">{sl.date}</div>}
+            </div>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="text-slate-300 shrink-0"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

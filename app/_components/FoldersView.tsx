@@ -11,6 +11,7 @@ export type Folder = {
   type: "folder" | "setlist";
   createdAt: number;
   date?: string;
+  groupId?: string | null;
 };
 
 export type FolderSong = {
@@ -20,13 +21,16 @@ export type FolderSong = {
   position: number;
 };
 
+export type TeamOption = { id: string; name: string };
+
 export type FoldersViewProps = {
   subview: "all" | string;
   folders: Folder[];
   folderSongs: FolderSong[];
   songs: Song[];
+  teams: TeamOption[];
   onNavigate: (to: "all" | string) => void;
-  onCreate: (name: string, type: "folder" | "setlist") => Promise<Folder | null>;
+  onCreate: (name: string, type: "folder" | "setlist", groupId: string | null) => Promise<Folder | null>;
   onRename: (id: string, name: string) => Promise<void>;
   onDelete: (id: string) => void;
   onAddSong: (folderId: string, songId: string) => Promise<void>;
@@ -76,24 +80,25 @@ export default function FoldersView(props: FoldersViewProps) {
 /* ─── Overview ────────────────────────────────────────────────────────────── */
 
 function Overview({
-  folders, folderSongs, onNavigate, onCreate, onRename, onDelete, showToast,
+  folders, folderSongs, teams, onNavigate, onCreate, onRename, onDelete, showToast,
 }: FoldersViewProps) {
   const [newFolderName, setNewFolderName] = useState("");
   const [newSetlistName, setNewSetlistName] = useState("");
+  const [newSetlistTeam, setNewSetlistTeam] = useState<string>("");
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [showNewSetlist, setShowNewSetlist] = useState(false);
 
   const folderList = folders.filter((f) => f.type === "folder");
-  const setlistList = folders.filter((f) => f.type === "setlist");
+  const setlistList = folders.filter((f) => f.type === "setlist" && !f.groupId);
   const countSongs = (id: string) => folderSongs.filter((fs) => fs.folderId === id).length;
 
-  const submit = async (name: string, type: "folder" | "setlist") => {
+  const submit = async (name: string, type: "folder" | "setlist", groupId: string | null) => {
     if (!name.trim()) return;
-    const r = await onCreate(name.trim(), type);
+    const r = await onCreate(name.trim(), type, groupId);
     if (r) {
       showToast(type === "folder" ? "Folder created" : "Setlist created");
       if (type === "folder") { setNewFolderName(""); setShowNewFolder(false); }
-      else { setNewSetlistName(""); setShowNewSetlist(false); }
+      else { setNewSetlistName(""); setNewSetlistTeam(""); setShowNewSetlist(false); }
     }
   };
 
@@ -110,7 +115,7 @@ function Overview({
             placeholder="Folder name"
             value={newFolderName}
             onChange={setNewFolderName}
-            onSubmit={() => submit(newFolderName, "folder")}
+            onSubmit={() => submit(newFolderName, "folder", null)}
             onCancel={() => { setShowNewFolder(false); setNewFolderName(""); }}
           />
         )}
@@ -137,13 +142,45 @@ function Overview({
           <span className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-sm font-bold group-hover:bg-indigo-600 group-hover:text-white transition-colors">+</span>
         </div>
         {showNewSetlist && (
-          <NewNameInput
-            placeholder="e.g. Sunday 1 Jun"
-            value={newSetlistName}
-            onChange={setNewSetlistName}
-            onSubmit={() => submit(newSetlistName, "setlist")}
-            onCancel={() => { setShowNewSetlist(false); setNewSetlistName(""); }}
-          />
+          <div className="mb-4 flex flex-col sm:flex-row gap-2">
+            <input
+              autoFocus
+              type="text"
+              placeholder="e.g. Sunday 1 Jun"
+              value={newSetlistName}
+              onChange={(e) => setNewSetlistName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submit(newSetlistName, "setlist", newSetlistTeam || null);
+                if (e.key === "Escape") { setShowNewSetlist(false); setNewSetlistName(""); setNewSetlistTeam(""); }
+              }}
+              className="flex-1 h-10 px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-indigo-400"
+            />
+            <select
+              value={newSetlistTeam}
+              onChange={(e) => setNewSetlistTeam(e.target.value)}
+              className="h-10 px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-indigo-400"
+            >
+              <option value="">Personal</option>
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => submit(newSetlistName, "setlist", newSetlistTeam || null)}
+              disabled={!newSetlistName.trim()}
+              className="h-10 px-4 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+            >
+              Create
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowNewSetlist(false); setNewSetlistName(""); setNewSetlistTeam(""); }}
+              className="h-10 px-4 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm"
+            >
+              Cancel
+            </button>
+          </div>
         )}
         {setlistList.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">

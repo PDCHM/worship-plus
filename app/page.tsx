@@ -241,7 +241,7 @@ export default function Home() {
         ] = await Promise.all([
           supabase.from("profiles").select("id, email, full_name, avatar_url").eq("id", u.id).maybeSingle(),
           supabase.from("songs").select("*, sections(*, lines(*, chords(*)))").eq("user_id", u.id).order("created_at", { ascending: false }),
-          supabase.from("folders").select("id, name, type, created_at, date").eq("user_id", u.id).order("created_at"),
+          supabase.from("folders").select("id, name, type, created_at, date, group_id").order("created_at"),
           supabase.from("folder_songs").select("id, folder_id, song_id, position").order("position"),
         ]);
         if (cancelled) return;
@@ -276,12 +276,13 @@ export default function Home() {
           } catch {}
         }
 
-        const loadedFolders = (folderRows ?? []).map((r: { id: string; name: string; type: string | null; created_at: string; date?: string | null }) => ({
+        const loadedFolders = (folderRows ?? []).map((r: { id: string; name: string; type: string | null; created_at: string; date?: string | null; group_id?: string | null }) => ({
           id: r.id,
           name: r.name,
           type: (r.type === "setlist" ? "setlist" : "folder") as "folder" | "setlist",
           createdAt: new Date(r.created_at).getTime(),
           date: r.date ?? undefined,
+          groupId: r.group_id ?? null,
         }));
         setFolders(loadedFolders);
 
@@ -531,12 +532,13 @@ export default function Home() {
 
   // ─── Folder / Setlist CRUD ────────────────────────────────────────────────
 
-  const createFolder = async (name: string, type: "folder" | "setlist"): Promise<Folder | null> => {
+  const createFolder = async (name: string, type: "folder" | "setlist", groupId: string | null = null): Promise<Folder | null> => {
     showToast("Creating...");
     if (!user) return null;
     try {
       const insertData: Record<string, unknown> = { user_id: user.id, name, type };
       if (type === "setlist") insertData.date = new Date().toISOString().split("T")[0];
+      if (type === "setlist" && groupId) insertData.group_id = groupId;
       const { data, error } = await supabase
         .from("folders")
         .insert(insertData)
@@ -549,6 +551,7 @@ export default function Home() {
         type: data.type ?? "folder",
         createdAt: new Date(data.created_at).getTime(),
         date: data.date ?? undefined,
+        groupId: data.group_id ?? null,
       };
       setFolders((prev) => [...prev, f]);
       return f;
@@ -731,6 +734,7 @@ export default function Home() {
               folders={folders}
               folderSongs={folderSongs}
               songs={songs}
+              teams={groups.filter(g => groupMembers.some(m => m.groupId === g.id && m.userId === user.id)).map(g => ({ id: g.id, name: g.name }))}
               onNavigate={(to) => navigateTo({ kind: "folders", subview: to })}
               onCreate={createFolder}
               onRename={renameFolder}
@@ -750,7 +754,7 @@ export default function Home() {
             </div>
           )}
           {view.kind === "groups" && groupsLoaded && (
-            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={songs} onCreateGroup={createGroup} onAddMember={addGroupMember} onRemoveMember={removeGroupMember} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onOpenSong={openSong} showToast={showToast}/>
+            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={songs} folders={folders} onCreateGroup={createGroup} onAddMember={addGroupMember} onRemoveMember={removeGroupMember} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onOpenSong={openSong} onOpenSetlist={(id) => navigateTo({ kind: "folders", subview: id })} showToast={showToast}/>
           )}
         </main>
       </div>
@@ -930,7 +934,7 @@ function Sidebar({
     view.kind === "folders" && view.subview === id;
 
   const folderList = folders.filter((f) => f.type === "folder");
-  const setlistList = folders.filter((f) => f.type === "setlist");
+  const setlistList = folders.filter((f) => f.type === "setlist" && !f.groupId);
 
   return (
     <aside className={"fixed left-0 top-0 bottom-0 z-40 w-64 flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-3 gap-1 overflow-y-auto transition-transform duration-200 ease-in-out print:hidden shadow-xl" + (sidebarOpen ? " translate-x-0" : " -translate-x-full")}>
