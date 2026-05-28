@@ -122,7 +122,7 @@ function logErr(label: string, err: { message?: string; details?: string; hint?:
 async function saveSongToDb(supabase: SupabaseClient, song: Song, userId: string): Promise<{ ok: true } | { ok: false; message: string }> {
   const songRow = {
     id: song.id,
-    user_id: userId,
+    user_id: song.userId ?? userId,
     title: song.title,
     artist: song.artist || null,
     key: song.key,
@@ -414,7 +414,12 @@ export default function Home() {
     if (!user) return;
     const result = await saveSongToDb(supabase, song, user.id);
     if (!result.ok) {
-      showToast("Save failed: " + result.message);
+      const m = result.message || "";
+      if (/row-level security|violates.*policy|permission denied|insufficient.privilege/i.test(m)) {
+        showToast("Cannot save — ask the song owner to share editing access.");
+      } else {
+        showToast("Save failed: " + m);
+      }
       return;
     }
     lastSavedRef.current.set(song.id, song);
@@ -760,6 +765,7 @@ export default function Home() {
               onPasteSong={() => setPasteOpen(true)}
               isDirty={view.kind === "editor" && dirtyIds.has((view as { kind: "editor"; songId: string }).songId)}
               onSave={() => { const s = songs.find(x => view.kind === "editor" && x.id === (view as { kind: "editor"; songId: string }).songId); if (s) void saveSong(s); }}
+              currentUserId={user.id}
               sectionStyles={sectionStyles}
               onSectionStylesChange={setSectionStyles}
               onSectionStylesSave={async (next) => {

@@ -44,6 +44,7 @@ type Props = {
   onPasteSong: () => void;
   onSave: () => void;
   isDirty: boolean;
+  currentUserId: string;
   sectionStyles: SectionStyles;
   onSectionStylesChange: (s: SectionStyles) => void;
   onSectionStylesSave: (s: SectionStyles) => void | Promise<void>;
@@ -517,6 +518,7 @@ export default function SongEditor({
   onPasteSong,
   onSave,
   isDirty,
+  currentUserId,
   sectionStyles,
   onSectionStylesChange,
   onSectionStylesSave,
@@ -1001,15 +1003,25 @@ export default function SongEditor({
             className="text-2xl md:text-3xl font-bold tracking-tight bg-transparent outline-none w-full ring-2 ring-indigo-500 rounded-lg px-2 -mx-2 py-1"
           />
         ) : (
-          <button
-            type="button"
-            onClick={() => !readOnly && setEditingTitle(true)}
-            disabled={readOnly}
-            className="text-2xl md:text-3xl font-bold tracking-tight w-full text-left rounded-lg px-2 -mx-2 py-1 enabled:hover:bg-slate-50 dark:enabled:hover:bg-slate-900 transition-colors disabled:cursor-default"
-            title={readOnly ? undefined : "Click to rename song"}
-          >
-            {song.title}
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => !readOnly && setEditingTitle(true)}
+              disabled={readOnly}
+              className="text-2xl md:text-3xl font-bold tracking-tight text-left rounded-lg px-2 -mx-2 py-1 enabled:hover:bg-slate-50 dark:enabled:hover:bg-slate-900 transition-colors disabled:cursor-default"
+              title={readOnly ? undefined : "Click to rename song"}
+            >
+              {song.title}
+            </button>
+            {song.userId && song.userId !== currentUserId && (
+              <span
+                title="This song is shared with you. Saves apply for everyone with edit access."
+                className="px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 text-[11px] font-semibold uppercase tracking-wider"
+              >
+                Shared
+              </span>
+            )}
+          </div>
         )}
         <div className="text-sm text-slate-500 dark:text-slate-400 mt-1 px-0.5 flex items-center gap-2 flex-wrap">
           {readOnly ? (

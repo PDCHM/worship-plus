@@ -304,6 +304,38 @@ $$;
 revoke all on function public.can_read_song(uuid) from public;
 grant execute on function public.can_read_song(uuid) to authenticated;
 
+-- can_write_song: same auth surface as can_read_song. Used by the
+-- songs_group_write UPDATE policy so group members can edit shared
+-- songs in place, not just read them.
+create or replace function public.can_write_song(p_song uuid)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.songs s
+    where s.id = p_song and s.user_id = auth.uid()
+  )
+  or exists (
+    select 1 from public.group_songs gs
+    where gs.song_id = p_song and public.is_group_member(gs.group_id)
+  )
+  or exists (
+    select 1
+    from public.folder_songs fs
+    join public.folders f on f.id = fs.folder_id
+    where fs.song_id = p_song
+      and f.type = 'setlist'
+      and f.group_id is not null
+      and public.is_group_member(f.group_id)
+  );
+$$;
+
+revoke all on function public.can_write_song(uuid) from public;
+grant execute on function public.can_write_song(uuid) to authenticated;
+
 -- Auto-add the creator as 'owner' when a group is inserted.
 create or replace function public.handle_new_group()
 returns trigger
@@ -536,6 +568,15 @@ create policy songs_setlist_group_read on public.songs
         and public.is_group_member(f.group_id)
     )
   );
+
+-- Group members with read access can also UPDATE the song row in place.
+-- Owner UPDATEs still go through songs_owner_all; this just widens UPDATE
+-- to anyone can_write_song() returns true for.
+drop policy if exists songs_group_write on public.songs;
+create policy songs_group_write on public.songs
+  for update to authenticated
+  using (public.can_write_song(id))
+  with check (public.can_write_song(id));
 
 -- Sections / lines / chords inherit ownership from the parent song.
 drop policy if exists sections_via_song on public.sections;
