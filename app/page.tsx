@@ -235,88 +235,97 @@ export default function Home() {
         setUser(u);
         setAuthChecked(true);
 
-        const [
-          { data: profileRow },
-          { data: songRows, error: songsError },
-          { data: folderRows },
-          { data: folderSongRows },
-          { data: gRows },
-          { data: mRows, error: mErr },
-          { data: gsRows },
-        ] = await Promise.all([
-          supabase.from("profiles").select("id, email, full_name, avatar_url").eq("id", u.id).maybeSingle(),
-          // No user_id filter: RLS lets the user see their own songs PLUS songs
-          // shared via group_songs or via a setlist shared with their team.
-          // Setlist rendering needs the leader's songs to resolve, so we pull
-          // them all and let consumers filter on userId when they need personal-only.
-          supabase.from("songs").select("*, sections(*, lines(*, chords(*)))").order("created_at", { ascending: false }),
+        void supabase
+          .from("profiles")
+          .select("id, email, full_name, avatar_url")
+          .eq("id", u.id)
+          .maybeSingle()
+          .then(({ data: profileRow }) => {
+            if (cancelled) return;
+            if (profileRow) {
+              setProfile(profileRow as Profile);
+            } else {
+              setProfile({
+                id: u.id,
+                email: u.email ?? null,
+                full_name: (u.user_metadata?.full_name as string | undefined) ?? (u.user_metadata?.name as string | undefined) ?? null,
+                avatar_url: (u.user_metadata?.avatar_url as string | undefined) ?? null,
+              });
+            }
+          });
+
+        // No user_id filter: RLS lets the user see their own songs PLUS songs
+        // shared via group_songs or via a setlist shared with their team.
+        // Setlist rendering needs the leader's songs to resolve, so we pull
+        // them all and let consumers filter on userId when they need personal-only.
+        void supabase
+          .from("songs")
+          .select("*, sections(*, lines(*, chords(*)))")
+          .order("created_at", { ascending: false })
+          .then(({ data: songRows, error: songsError }) => {
+            if (cancelled) return;
+            if (songsError) console.error("load songs failed", songsError.message);
+            const loadedSongs = (songRows ?? []).map((r) => rowToSong(r as SongRow));
+            setSongs(loadedSongs);
+            setSongsLoaded(true);
+
+            for (const song of loadedSongs) {
+              lastSavedRef.current.set(song.id, song);
+              try {
+                const raw = localStorage.getItem("wp-backup-" + song.id);
+                if (raw) {
+                  const bs = JSON.parse(raw) as Song;
+                  if (bs.updatedAt > song.updatedAt) {
+                    setSongs(prev => prev.map(s => s.id === song.id ? bs : s));
+                    setDirtyIds(prev => new Set(prev).add(song.id));
+                  }
+                }
+              } catch {}
+            }
+          });
+
+        void Promise.all([
           supabase.from("folders").select("id, name, type, created_at, date, group_id").order("created_at"),
           supabase.from("folder_songs").select("id, folder_id, song_id, position").order("position"),
+        ]).then(([{ data: folderRows }, { data: folderSongRows }]) => {
+          if (cancelled) return;
+          const loadedFolders = (folderRows ?? []).map((r: { id: string; name: string; type: string | null; created_at: string; date?: string | null; group_id?: string | null }) => ({
+            id: r.id,
+            name: r.name,
+            type: (r.type === "setlist" ? "setlist" : "folder") as "folder" | "setlist",
+            createdAt: new Date(r.created_at).getTime(),
+            date: r.date ?? undefined,
+            groupId: r.group_id ?? null,
+          }));
+          setFolders(loadedFolders);
+
+          const loadedFolderSongs = (folderSongRows ?? []).map((r: { id: string; folder_id: string; song_id: string; position: number }) => ({
+            id: r.id,
+            folderId: r.folder_id,
+            songId: r.song_id,
+            position: r.position ?? 0,
+          }));
+          setFolderSongs(loadedFolderSongs);
+        });
+
+        /* eslint-disable @typescript-eslint/no-explicit-any */
+        void Promise.all([
           supabase.from("groups").select("id,name,invite_token,created_at"),
           supabase.from("group_members").select("id,group_id,user_id,role,display_name,status,instrument,instrument_detail,email"),
           supabase.from("group_songs").select("id,group_id,song_id"),
-        ]);
-        if (cancelled) return;
-
-        if (profileRow) {
-          setProfile(profileRow as Profile);
-        } else {
-          setProfile({
-            id: u.id,
-            email: u.email ?? null,
-            full_name: (u.user_metadata?.full_name as string | undefined) ?? (u.user_metadata?.name as string | undefined) ?? null,
-            avatar_url: (u.user_metadata?.avatar_url as string | undefined) ?? null,
-          });
-        }
-
-        if (songsError) console.error("load songs failed", songsError.message);
-        const loadedSongs = (songRows ?? []).map((r) => rowToSong(r as SongRow));
-        setSongs(loadedSongs);
-        setSongsLoaded(true);
-
-        for (const song of loadedSongs) {
-          lastSavedRef.current.set(song.id, song);
-          try {
-            const raw = localStorage.getItem("wp-backup-" + song.id);
-            if (raw) {
-              const bs = JSON.parse(raw) as Song;
-              if (bs.updatedAt > song.updatedAt) {
-                setSongs(prev => prev.map(s => s.id === song.id ? bs : s));
-                setDirtyIds(prev => new Set(prev).add(song.id));
-              }
-            }
-          } catch {}
-        }
-
-        const loadedFolders = (folderRows ?? []).map((r: { id: string; name: string; type: string | null; created_at: string; date?: string | null; group_id?: string | null }) => ({
-          id: r.id,
-          name: r.name,
-          type: (r.type === "setlist" ? "setlist" : "folder") as "folder" | "setlist",
-          createdAt: new Date(r.created_at).getTime(),
-          date: r.date ?? undefined,
-          groupId: r.group_id ?? null,
-        }));
-        setFolders(loadedFolders);
-
-        const loadedFolderSongs = (folderSongRows ?? []).map((r: { id: string; folder_id: string; song_id: string; position: number }) => ({
-          id: r.id,
-          folderId: r.folder_id,
-          songId: r.song_id,
-          position: r.position ?? 0,
-        }));
-        setFolderSongs(loadedFolderSongs);
-
-        if (mErr) showToast("Members error: " + mErr.message);
-        /* eslint-disable @typescript-eslint/no-explicit-any */
-        setGroups((gRows??[]).map((r:any)=>({id:r.id,name:r.name,inviteToken:r.invite_token??"",createdAt:new Date(r.created_at).getTime()})));
-        setGroupMembers((mRows??[]).map((r:any)=>({
-          id:r.id, groupId:r.group_id, userId:r.user_id??null, role:r.role,
-          displayName:r.display_name??null, status:r.status??"pending",
-          instrument:r.instrument??null, instrumentDetail:r.instrument_detail??null,
-          email:r.email??null
-        })));
-        setGroupSongs((gsRows??[]).map((r:any)=>({id:r.id,groupId:r.group_id,songId:r.song_id})));
-        setGroupsLoaded(true);
+        ]).then(([{ data: gRows }, { data: mRows, error: mErr }, { data: gsRows }]) => {
+          if (cancelled) return;
+          if (mErr) showToast("Members error: " + mErr.message);
+          setGroups((gRows??[]).map((r:any)=>({id:r.id,name:r.name,inviteToken:r.invite_token??"",createdAt:new Date(r.created_at).getTime()})));
+          setGroupMembers((mRows??[]).map((r:any)=>({
+            id:r.id, groupId:r.group_id, userId:r.user_id??null, role:r.role,
+            displayName:r.display_name??null, status:r.status??"pending",
+            instrument:r.instrument??null, instrumentDetail:r.instrument_detail??null,
+            email:r.email??null
+          })));
+          setGroupSongs((gsRows??[]).map((r:any)=>({id:r.id,groupId:r.group_id,songId:r.song_id})));
+          setGroupsLoaded(true);
+        });
         /* eslint-enable @typescript-eslint/no-explicit-any */
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
