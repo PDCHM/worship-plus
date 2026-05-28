@@ -592,7 +592,7 @@ export default function Home() {
   const unshareGroupSong=(groupId:string,songId:string):void=>{setGroupSongs(p=>p.filter(gs=>!(gs.groupId===groupId&&gs.songId===songId)));void supabase.from("group_songs").delete().eq("group_id",groupId).eq("song_id",songId);};
   const removeGroupMember=(memberId:string):void=>{
     setGroupMembers(p=>p.filter(m=>m.id!==memberId));
-    void supabase.rpc("remove_group_member",{p_member_id:memberId});
+    void supabase.from("group_members").delete().eq("id",memberId);
   };
 
   const renameFolder = async (id: string, name: string): Promise<void> => {
