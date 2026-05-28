@@ -596,7 +596,7 @@ export default function SongEditor({
       if (!chord) return;
       const startX = e.clientX;
       const startPos = chord.pos;
-      const maxPos = Math.max(line.lyric.length, 0);
+      const maxPos = line.lyric.length > 0 ? line.lyric.length : 40;
       let moved = false;
       const onMove = (ev: PointerEvent) => {
         if (!moved && Math.abs(ev.clientX - startX) > 2) {
@@ -673,17 +673,20 @@ export default function SongEditor({
   const addChordAt = (lineId: string, pos: number) => {
     const newId = uid();
     update((s) =>
-      mapLine(s, lineId, (line) => ({
-        ...line,
-        chords: [
-          ...line.chords,
-          {
-            id: newId,
-            pos: Math.max(0, Math.min(line.lyric.length, pos)),
-            chord: "C",
-          },
-        ],
-      })),
+      mapLine(s, lineId, (line) => {
+        const maxPos = line.lyric.length > 0 ? line.lyric.length : 40;
+        return {
+          ...line,
+          chords: [
+            ...line.chords,
+            {
+              id: newId,
+              pos: Math.max(0, Math.min(maxPos, pos)),
+              chord: "C",
+            },
+          ],
+        };
+      }),
     );
     setEditingChord(newId);
   };
@@ -1176,7 +1179,10 @@ export default function SongEditor({
                       <div
                         key={line.id}
                         className="relative"
-                        style={{ paddingTop: showChords ? chordRowHeight : 0 }}
+                        style={{
+                          paddingTop: showChords ? chordRowHeight : 0,
+                          minWidth: line.lyric.length === 0 ? `${40 * charWidth}px` : undefined,
+                        }}
                       >
                         {showChords && (
                         <div
