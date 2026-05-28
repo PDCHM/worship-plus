@@ -192,60 +192,127 @@ function SongFlowBar({
   activeId: string | null;
   readOnly: boolean;
   onScrollTo: (id: string) => void;
-  onReorder: (fromId: string, toId: string) => void;
+  onReorder: (fromId: string, toIndex: number) => void;
   onRename: (id: string, label: string) => void;
 }) {
   const [dragId, setDragId] = useState<string | null>(null);
-  const [overId, setOverId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const suppressClickRef = useRef(false);
+  const clickTimerRef = useRef<number | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const sectionsRef = useRef(sections);
+  useEffect(() => { sectionsRef.current = sections; }, [sections]);
   const labels = flowLabels(sections);
 
   if (sections.length === 0) return null;
 
+  const startDrag = (e: React.PointerEvent<HTMLDivElement>, chipId: string) => {
+    if (readOnly || editingId === chipId) return;
+    if (e.button !== undefined && e.button !== 0) return;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const pointerId = e.pointerId;
+    let didDrag = false;
+
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      if (!didDrag && Math.hypot(dx, dy) > 6) {
+        didDrag = true;
+        setDragId(chipId);
+      }
+      if (!didDrag) return;
+      ev.preventDefault();
+
+      const container = containerRef.current;
+      if (!container) return;
+      const current = sectionsRef.current;
+      const curIdx = current.findIndex((s) => s.id === chipId);
+      if (curIdx === -1) return;
+
+      const others: HTMLElement[] = [];
+      container.querySelectorAll<HTMLElement>("[data-chip-id]").forEach((el) => {
+        if (el.dataset.chipId && el.dataset.chipId !== chipId) others.push(el);
+      });
+
+      let targetIdx = others.length;
+      for (let k = 0; k < others.length; k++) {
+        const r = others[k].getBoundingClientRect();
+        if (ev.clientX < r.left + r.width / 2) { targetIdx = k; break; }
+      }
+
+      if (targetIdx !== curIdx) onReorder(chipId, targetIdx);
+    };
+
+    const finish = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      if (didDrag) {
+        suppressClickRef.current = true;
+        window.setTimeout(() => { suppressClickRef.current = false; }, 100);
+      }
+      setDragId(null);
+    };
+
+    window.addEventListener("pointermove", move, { passive: false });
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+  };
+
+  const handleClick = (chipId: string) => {
+    if (suppressClickRef.current) return;
+    if (editingId === chipId) return;
+    if (clickTimerRef.current !== null) {
+      window.clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+    }
+    clickTimerRef.current = window.setTimeout(() => {
+      onScrollTo(chipId);
+      clickTimerRef.current = null;
+    }, 220);
+  };
+
+  const handleDoubleClick = (chipId: string) => {
+    if (clickTimerRef.current !== null) {
+      window.clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+    }
+    if (!readOnly) setEditingId(chipId);
+  };
+
   return (
     <div className="mb-4 print:hidden">
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 -mx-1 px-1">
+      <div ref={containerRef} className="flex items-center gap-1.5 overflow-x-auto pb-1.5 -mx-1 px-1">
         {sections.map((s, i) => {
           const isActive = s.id === activeId;
           const isEditing = editingId === s.id;
           const isDragging = dragId === s.id;
-          const isOver = overId === s.id && dragId && dragId !== s.id;
           return (
             <div
               key={s.id}
-              draggable={!readOnly && !isEditing}
-              onDragStart={(e) => {
-                if (readOnly) return;
-                setDragId(s.id);
-                e.dataTransfer.effectAllowed = "move";
-                e.dataTransfer.setData("text/plain", s.id);
-              }}
-              onDragEnd={() => { setDragId(null); setOverId(null); }}
-              onDragEnter={() => { if (dragId && dragId !== s.id) setOverId(s.id); }}
-              onDragOver={(e) => { if (dragId && dragId !== s.id) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; } }}
-              onDragLeave={() => { if (overId === s.id) setOverId(null); }}
-              onDrop={(e) => {
-                e.preventDefault();
-                if (dragId && dragId !== s.id) onReorder(dragId, s.id);
-                setDragId(null); setOverId(null);
-              }}
-              onClick={() => { if (!isEditing) onScrollTo(s.id); }}
-              onDoubleClick={(e) => { e.preventDefault(); if (!readOnly) setEditingId(s.id); }}
+              data-chip-id={s.id}
+              onPointerDown={(e) => startDrag(e, s.id)}
+              onClick={() => handleClick(s.id)}
+              onDoubleClick={(e) => { e.preventDefault(); handleDoubleClick(s.id); }}
               title={readOnly ? s.label : `${s.label} — double-click to rename, drag to reorder`}
+              style={{ touchAction: readOnly || isEditing ? "auto" : "none" }}
               className={
-                "shrink-0 h-7 px-3 rounded-full text-xs font-semibold transition-all select-none " +
+                "shrink-0 h-7 px-3 rounded-full text-xs font-semibold transition-all select-none flex items-center justify-center text-center " +
                 (readOnly ? "cursor-pointer " : "cursor-grab active:cursor-grabbing ") +
                 (isActive
                   ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/30"
                   : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700") +
-                (isDragging ? " opacity-40" : "") +
-                (isOver ? " ring-2 ring-indigo-400 ring-offset-1 dark:ring-offset-slate-950" : "")
+                (isDragging ? " opacity-60 scale-105" : "")
               }
             >
               {isEditing ? (
                 <input
                   autoFocus
                   defaultValue={s.label}
+                  onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => e.stopPropagation()}
                   onFocus={(e) => e.target.select()}
                   onBlur={(e) => {
@@ -262,7 +329,7 @@ function SongFlowBar({
                       setEditingId(null);
                     }
                   }}
-                  className="bg-transparent outline-none text-xs font-semibold w-24 placeholder:text-current"
+                  className="bg-transparent outline-none text-xs font-semibold w-24 text-center placeholder:text-current"
                 />
               ) : (
                 labels[i]
@@ -567,15 +634,15 @@ export default function SongEditor({
     });
   };
 
-  const reorderSections = (fromId: string, toId: string) => {
+  const reorderSections = (fromId: string, toIndex: number) => {
     update((s) => {
       const i = s.sections.findIndex((x) => x.id === fromId);
-      const j = s.sections.findIndex((x) => x.id === toId);
-      if (i === -1 || j === -1 || i === j) return s;
+      if (i === -1) return s;
+      const clamped = Math.max(0, Math.min(s.sections.length - 1, toIndex));
+      if (i === clamped) return s;
       const next = [...s.sections];
       const [moved] = next.splice(i, 1);
-      const insertAt = i < j ? j - 1 : j;
-      next.splice(insertAt, 0, moved);
+      next.splice(clamped, 0, moved);
       return { ...s, sections: next };
     });
   };
@@ -592,7 +659,7 @@ export default function SongEditor({
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  const sectionIdsKey = song.sections.map((s) => s.id).join("|");
+  const sectionIdsKey = song.sections.map((s) => s.id).sort().join("|");
   useEffect(() => {
     if (typeof IntersectionObserver === "undefined") return;
     const ratios = new Map<string, number>();
