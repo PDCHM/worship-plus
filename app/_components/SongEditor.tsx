@@ -159,6 +159,122 @@ function ViewToggle({
   );
 }
 
+function flowPrefix(label: string): string {
+  const t = label.trim().toLowerCase();
+  if (/^pre[\s-]?chorus\b/.test(t)) return "PC";
+  if (/^intro\b/.test(t)) return "Intro";
+  if (/^outro\b/.test(t)) return "Outro";
+  if (/^tag\b/.test(t)) return "Tag";
+  if (/^interlude\b/.test(t)) return "Int";
+  if (/^instrumental\b/.test(t)) return "Inst";
+  if (/^chorus\b/.test(t)) return "C";
+  if (/^verse\b/.test(t)) return "V";
+  if (/^bridge\b/.test(t)) return "B";
+  const word = label.trim().split(/\s+/)[0] ?? "?";
+  return word.slice(0, 4);
+}
+
+function flowLabels(sections: Section[]): string[] {
+  const prefixes = sections.map((s) => flowPrefix(s.label));
+  const counts: Record<string, number> = {};
+  prefixes.forEach((p) => { counts[p] = (counts[p] || 0) + 1; });
+  const seen: Record<string, number> = {};
+  return prefixes.map((p) => {
+    seen[p] = (seen[p] || 0) + 1;
+    return counts[p] > 1 ? `${p}${seen[p]}` : p;
+  });
+}
+
+function SongFlowBar({
+  sections, activeId, readOnly, onScrollTo, onReorder, onRename,
+}: {
+  sections: Section[];
+  activeId: string | null;
+  readOnly: boolean;
+  onScrollTo: (id: string) => void;
+  onReorder: (fromId: string, toId: string) => void;
+  onRename: (id: string, label: string) => void;
+}) {
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const labels = flowLabels(sections);
+
+  if (sections.length === 0) return null;
+
+  return (
+    <div className="mb-4 print:hidden">
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 -mx-1 px-1">
+        {sections.map((s, i) => {
+          const isActive = s.id === activeId;
+          const isEditing = editingId === s.id;
+          const isDragging = dragId === s.id;
+          const isOver = overId === s.id && dragId && dragId !== s.id;
+          return (
+            <div
+              key={s.id}
+              draggable={!readOnly && !isEditing}
+              onDragStart={(e) => {
+                if (readOnly) return;
+                setDragId(s.id);
+                e.dataTransfer.effectAllowed = "move";
+                e.dataTransfer.setData("text/plain", s.id);
+              }}
+              onDragEnd={() => { setDragId(null); setOverId(null); }}
+              onDragEnter={() => { if (dragId && dragId !== s.id) setOverId(s.id); }}
+              onDragOver={(e) => { if (dragId && dragId !== s.id) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; } }}
+              onDragLeave={() => { if (overId === s.id) setOverId(null); }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (dragId && dragId !== s.id) onReorder(dragId, s.id);
+                setDragId(null); setOverId(null);
+              }}
+              onClick={() => { if (!isEditing) onScrollTo(s.id); }}
+              onDoubleClick={(e) => { e.preventDefault(); if (!readOnly) setEditingId(s.id); }}
+              title={readOnly ? s.label : `${s.label} — double-click to rename, drag to reorder`}
+              className={
+                "shrink-0 h-7 px-3 rounded-full text-xs font-semibold transition-all select-none " +
+                (readOnly ? "cursor-pointer " : "cursor-grab active:cursor-grabbing ") +
+                (isActive
+                  ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/30"
+                  : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700") +
+                (isDragging ? " opacity-40" : "") +
+                (isOver ? " ring-2 ring-indigo-400 ring-offset-1 dark:ring-offset-slate-950" : "")
+              }
+            >
+              {isEditing ? (
+                <input
+                  autoFocus
+                  defaultValue={s.label}
+                  onClick={(e) => e.stopPropagation()}
+                  onFocus={(e) => e.target.select()}
+                  onBlur={(e) => {
+                    const v = e.target.value.trim();
+                    if (v && v !== s.label) onRename(s.id, v);
+                    setEditingId(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      const v = (e.target as HTMLInputElement).value.trim();
+                      if (v && v !== s.label) onRename(s.id, v);
+                      setEditingId(null);
+                    } else if (e.key === "Escape") {
+                      setEditingId(null);
+                    }
+                  }}
+                  className="bg-transparent outline-none text-xs font-semibold w-24 placeholder:text-current"
+                />
+              ) : (
+                labels[i]
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function SongEditor({
   song,
   onChange,
@@ -194,6 +310,8 @@ export default function SongEditor({
   const [zoomOffset, setZoomOffset] = useState(0);
   const scrollRafRef = useRef<number | null>(null);
   const rulerRef = useRef<HTMLSpanElement>(null);
+  const sectionRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
 
   const colors = isDark ? settings.sectionColorsDark : settings.sectionColorsLight;
   const readOnly = viewMode !== "standard";
@@ -449,6 +567,54 @@ export default function SongEditor({
     });
   };
 
+  const reorderSections = (fromId: string, toId: string) => {
+    update((s) => {
+      const i = s.sections.findIndex((x) => x.id === fromId);
+      const j = s.sections.findIndex((x) => x.id === toId);
+      if (i === -1 || j === -1 || i === j) return s;
+      const next = [...s.sections];
+      const [moved] = next.splice(i, 1);
+      const insertAt = i < j ? j - 1 : j;
+      next.splice(insertAt, 0, moved);
+      return { ...s, sections: next };
+    });
+  };
+
+  const renameSection = (id: string, label: string) => {
+    update((s) => ({
+      ...s,
+      sections: s.sections.map((sec) => (sec.id === id ? { ...sec, label } : sec)),
+    }));
+  };
+
+  const scrollToSection = (id: string) => {
+    const el = sectionRefs.current.get(id);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const sectionIdsKey = song.sections.map((s) => s.id).join("|");
+  useEffect(() => {
+    if (typeof IntersectionObserver === "undefined") return;
+    const ratios = new Map<string, number>();
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const id = (entry.target as HTMLElement).dataset.sectionId;
+          if (id) ratios.set(id, entry.intersectionRatio);
+        }
+        let bestId: string | null = null;
+        let bestRatio = 0;
+        for (const [id, r] of ratios) {
+          if (r > bestRatio) { bestRatio = r; bestId = id; }
+        }
+        if (bestId) setActiveFlowId(bestId);
+      },
+      { rootMargin: "-80px 0px -40% 0px", threshold: [0, 0.25, 0.5, 0.75, 1] },
+    );
+    for (const el of sectionRefs.current.values()) observer.observe(el);
+    return () => observer.disconnect();
+  }, [sectionIdsKey]);
+
   const copySection = (sectionId: string) => {
     const sec = song.sections.find((x) => x.id === sectionId);
     if (!sec) return;
@@ -695,6 +861,15 @@ export default function SongEditor({
         </div>
       </div>
 
+      <SongFlowBar
+        sections={song.sections}
+        activeId={activeFlowId}
+        readOnly={readOnly}
+        onScrollTo={scrollToSection}
+        onReorder={reorderSections}
+        onRename={renameSection}
+      />
+
       <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-4 sm:p-6 md:p-8 overflow-x-auto print:border-0 print:shadow-none print:p-0">
         <div
           className={readOnly ? "" : "space-y-8 min-w-fit"}
@@ -708,7 +883,14 @@ export default function SongEditor({
               : "group/section";
             return (
               <Fragment key={section.id}>
-              <section className={sectionClassName}>
+              <section
+                ref={(el) => {
+                  if (el) sectionRefs.current.set(section.id, el);
+                  else sectionRefs.current.delete(section.id);
+                }}
+                data-section-id={section.id}
+                className={sectionClassName}
+              >
                 <div className="flex items-center gap-2 mb-3 flex-wrap">
                   {editingSection === section.id && !readOnly ? (
                     <input
