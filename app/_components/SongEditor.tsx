@@ -477,7 +477,8 @@ export default function SongEditor({
   const [stylesPanelOpen, setStylesPanelOpen] = useState(false);
 
   const colors = isDark ? settings.sectionColorsDark : settings.sectionColorsLight;
-  const readOnly = viewMode !== "standard";
+  const readOnly = false;
+  const columnView = viewMode !== "standard";
   const lyricFontFamily = FONT_FAMILY_CSS[settings.fontFamily ?? "system"];
   const showChords = settings.showChords ?? true;
   const baseFontSize = settings.fontSize + zoomOffset;
@@ -502,19 +503,25 @@ export default function SongEditor({
     return () => window.removeEventListener("resize", measure);
   }, [effectiveFontSize]);
 
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!contextMenu) return;
-    const close = () => setContextMenu(null);
+    const close = (e: Event) => {
+      const target = e.target as Node | null;
+      if (target && contextMenuRef.current?.contains(target)) return;
+      setContextMenu(null);
+    };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setContextMenu(null);
     };
+    const onBlur = () => setContextMenu(null);
     document.addEventListener("mousedown", close);
     document.addEventListener("keydown", onKey);
-    window.addEventListener("blur", close);
+    window.addEventListener("blur", onBlur);
     return () => {
       document.removeEventListener("mousedown", close);
       document.removeEventListener("keydown", onKey);
-      window.removeEventListener("blur", close);
+      window.removeEventListener("blur", onBlur);
     };
   }, [contextMenu]);
 
@@ -835,7 +842,7 @@ export default function SongEditor({
     setEditingSection(newId);
   };
 
-  const sectionsContainerStyle: React.CSSProperties = readOnly
+  const sectionsContainerStyle: React.CSSProperties = columnView
     ? {
         columnCount: viewMode === "split-2" ? 2 : 3,
         columnGap: viewMode === "split-2" ? "2rem" : "1.5rem",
@@ -1055,7 +1062,7 @@ export default function SongEditor({
 
       <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-4 sm:p-6 md:p-8 overflow-x-auto print:border-0 print:shadow-none print:p-0">
         <div
-          className={readOnly ? "" : "space-y-8 min-w-fit"}
+          className={columnView ? "" : "space-y-8 min-w-fit"}
           style={sectionsContainerStyle}
         >
           {song.sections.map((section, sIdx) => {
@@ -1065,7 +1072,7 @@ export default function SongEditor({
             const sectionStyle = styleKey ? sectionStyles[styleKey] : null;
             const chordColor = sectionStyle?.chordColor;
             const labelWeightClass = sectionStyle?.bold ? "font-extrabold" : "font-semibold";
-            const sectionClassName = readOnly
+            const sectionClassName = columnView
               ? "group/section break-inside-avoid mb-6 last:mb-0"
               : "group/section";
             return (
@@ -1169,7 +1176,7 @@ export default function SongEditor({
 
                 <div
                   className={
-                    readOnly ? "pl-3 space-y-2" : "pl-4 space-y-3"
+                    columnView ? "pl-3 space-y-2" : "pl-4 space-y-3"
                   }
                   style={{ borderLeft: `3px solid ${c.bg}` }}
                 >
@@ -1396,6 +1403,7 @@ export default function SongEditor({
 
       {contextMenu && !readOnly && (
         <div
+          ref={contextMenuRef}
           role="menu"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onMouseDown={(e) => e.stopPropagation()}
