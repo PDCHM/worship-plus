@@ -78,6 +78,17 @@ create table if not exists public.groups (
   created_at  timestamptz not null default now()
 );
 
+-- invite_token: secret slug embedded in /join/[token] links. Default uses
+-- 9 random bytes encoded as base64 (12 chars). Backfill existing rows
+-- before flipping NOT NULL so re-runs on populated DBs succeed.
+alter table public.groups
+  add column if not exists invite_token text default encode(gen_random_bytes(9), 'base64');
+update public.groups
+  set invite_token = encode(gen_random_bytes(9), 'base64')
+  where invite_token is null;
+alter table public.groups alter column invite_token set not null;
+create unique index if not exists groups_invite_token_idx on public.groups(invite_token);
+
 create table if not exists public.group_members (
   id        uuid primary key default gen_random_uuid(),
   group_id  uuid not null references public.groups(id) on delete cascade,
@@ -85,6 +96,23 @@ create table if not exists public.group_members (
   role      text not null default 'member' check (role in ('owner', 'admin', 'member')),
   unique (group_id, user_id)
 );
+
+-- A leader can pre-create a "pending slot" (display_name/instrument set,
+-- user_id null) and share its UUID via /join/[token]?slot=<id>. The slot
+-- gets claimed when the invitee opens the link, flipping user_id and
+-- status. user_id must therefore be nullable, and the (group_id, user_id)
+-- uniqueness has to be a partial index so multiple pending slots coexist.
+alter table public.group_members alter column user_id drop not null;
+alter table public.group_members add column if not exists display_name      text;
+alter table public.group_members add column if not exists instrument        text;
+alter table public.group_members add column if not exists instrument_detail text;
+alter table public.group_members add column if not exists email             text;
+alter table public.group_members add column if not exists status            text not null default 'pending'
+  check (status in ('pending', 'joined'));
+
+alter table public.group_members drop constraint if exists group_members_group_id_user_id_key;
+create unique index if not exists group_members_group_user_key
+  on public.group_members(group_id, user_id) where user_id is not null;
 
 create table if not exists public.group_songs (
   id          uuid primary key default gen_random_uuid(),
@@ -237,12 +265,125 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  v_email     text;
+  v_full_name text;
 begin
-  insert into public.group_members (group_id, user_id, role)
-  values (new.id, auth.uid(), 'owner');
+  select email, full_name into v_email, v_full_name
+    from public.profiles where id = auth.uid();
+  insert into public.group_members (group_id, user_id, role, status, display_name, email)
+  values (
+    new.id, auth.uid(), 'owner', 'joined',
+    coalesce(v_full_name, v_email), v_email
+  );
   return new;
 end;
 $$;
+
+-- ============================================================
+-- Invite RPCs
+--
+-- RLS cannot inspect URL parameters, so the join flow cannot be
+-- expressed as direct SELECT/UPDATE/INSERT on groups & group_members
+-- without either (a) letting any authenticated user enumerate every
+-- group's invite_token and every pending slot UUID, or (b) routing
+-- the lookup through SECURITY DEFINER functions that gate access on
+-- the token itself. These RPCs do (b).
+-- ============================================================
+
+-- Look up just enough info to render /join/[token] without exposing
+-- the rest of groups / group_members.
+create or replace function public.lookup_invite(p_token text, p_slot uuid default null)
+returns table (
+  group_id          uuid,
+  group_name        text,
+  slot_display_name text,
+  slot_status       text,
+  slot_user_id      uuid
+)
+language plpgsql
+security definer
+stable
+set search_path = public
+as $$
+declare
+  v_group public.groups;
+begin
+  select * into v_group from public.groups where invite_token = p_token;
+  if not found then
+    return;
+  end if;
+  group_id   := v_group.id;
+  group_name := v_group.name;
+  if p_slot is not null then
+    select gm.display_name, gm.status, gm.user_id
+      into slot_display_name, slot_status, slot_user_id
+      from public.group_members gm
+      where gm.id = p_slot and gm.group_id = v_group.id;
+  end if;
+  return next;
+end;
+$$;
+
+-- Claim a pending slot, or self-insert a new 'member' row, scoped to
+-- the group named by the invite token.
+create or replace function public.accept_invite(p_token text, p_slot uuid default null)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_group_id  uuid;
+  v_user      uuid := auth.uid();
+  v_email     text;
+  v_full_name text;
+  v_member_id uuid;
+begin
+  if v_user is null then
+    raise exception 'not authenticated';
+  end if;
+
+  select id into v_group_id from public.groups where invite_token = p_token;
+  if v_group_id is null then
+    raise exception 'invalid invite token';
+  end if;
+
+  select email, full_name into v_email, v_full_name
+    from public.profiles where id = v_user;
+
+  if p_slot is not null then
+    update public.group_members
+       set user_id = v_user,
+           status  = 'joined',
+           email   = coalesce(email, v_email)
+     where id = p_slot
+       and group_id = v_group_id
+       and user_id is null
+     returning id into v_member_id;
+    if v_member_id is null then
+      raise exception 'slot already claimed or not found';
+    end if;
+  else
+    select id into v_member_id from public.group_members
+      where group_id = v_group_id and user_id = v_user;
+    if v_member_id is null then
+      insert into public.group_members
+        (group_id, user_id, role, status, display_name, email)
+      values
+        (v_group_id, v_user, 'member', 'joined',
+         coalesce(v_full_name, v_email), v_email)
+      returning id into v_member_id;
+    end if;
+  end if;
+  return v_member_id;
+end;
+$$;
+
+revoke all on function public.lookup_invite(text, uuid) from public;
+revoke all on function public.accept_invite(text, uuid) from public;
+grant execute on function public.lookup_invite(text, uuid) to authenticated;
+grant execute on function public.accept_invite(text, uuid) to authenticated;
 
 drop trigger if exists groups_after_insert_owner on public.groups;
 create trigger groups_after_insert_owner

@@ -296,7 +296,7 @@ export default function Home() {
         const { data: gRows } = await supabase.from("groups").select("id,name,invite_token,created_at");
         const { data: mRows, error: mErr } = await supabase
           .from("group_members")
-          .select("id,group_id,user_id,role,display_name,status,instrument,instrument_detail");
+          .select("id,group_id,user_id,role,display_name,status,instrument,instrument_detail,email");
         const { data: gsRows } = await supabase.from("group_songs").select("id,group_id,song_id");
         if (mErr) showToast("Members error: " + mErr.message);
         /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -305,7 +305,7 @@ export default function Home() {
           id:r.id, groupId:r.group_id, userId:r.user_id??null, role:r.role,
           displayName:r.display_name??null, status:r.status??"pending",
           instrument:r.instrument??null, instrumentDetail:r.instrument_detail??null,
-          email:null
+          email:r.email??null
         })));
         setGroupSongs((gsRows??[]).map((r:any)=>({id:r.id,groupId:r.group_id,songId:r.song_id})));
         setGroupsLoaded(true);
@@ -590,9 +590,17 @@ export default function Home() {
     setGroupSongs(prev=>[...prev,{id:r.id,groupId:r.group_id,songId:r.song_id}]);
   };
   const unshareGroupSong=(groupId:string,songId:string):void=>{setGroupSongs(p=>p.filter(gs=>!(gs.groupId===groupId&&gs.songId===songId)));void supabase.from("group_songs").delete().eq("group_id",groupId).eq("song_id",songId);};
-  const removeGroupMember=(memberId:string):void=>{
+  const removeGroupMember=async(memberId:string):Promise<boolean>=>{
+    const snapshot=groupMembers;
     setGroupMembers(p=>p.filter(m=>m.id!==memberId));
-    void supabase.from("group_members").delete().eq("id",memberId);
+    const{error}=await supabase.from("group_members").delete().eq("id",memberId);
+    if(error){
+      logErr("remove member",error);
+      setGroupMembers(snapshot);
+      showToast("Could not remove: "+error.message);
+      return false;
+    }
+    return true;
   };
 
   const renameFolder = async (id: string, name: string): Promise<void> => {
