@@ -416,7 +416,7 @@ export default function Home() {
     if (!result.ok) {
       const m = result.message || "";
       if (/row-level security|violates.*policy|permission denied|insufficient.privilege/i.test(m)) {
-        showToast("Cannot save — ask the song owner to share editing access.");
+        showToast("Cannot save — song owner needs to share editing access.");
       } else {
         showToast("Save failed: " + m);
       }
