@@ -342,12 +342,13 @@ $$;
 drop function if exists public.lookup_invite(text, uuid);
 create or replace function public.lookup_invite(p_token text, p_slot uuid default null)
 returns table (
-  group_id          uuid,
-  group_name        text,
-  slot_display_name text,
-  slot_status       text,
-  slot_user_id      uuid,
-  is_member         boolean
+  group_id           uuid,
+  group_name         text,
+  slot_display_name  text,
+  slot_status        text,
+  slot_user_id       uuid,
+  is_member          boolean,
+  has_pending_slots  boolean
 )
 language plpgsql
 security definer
@@ -361,12 +362,18 @@ begin
   if not found then
     return;
   end if;
-  group_id   := v_group.id;
-  group_name := v_group.name;
-  is_member  := exists (
+  group_id          := v_group.id;
+  group_name        := v_group.name;
+  is_member         := exists (
     select 1 from public.group_members
     where group_members.group_id = v_group.id
       and group_members.user_id  = auth.uid()
+  );
+  has_pending_slots := exists (
+    select 1 from public.group_members
+    where group_members.group_id = v_group.id
+      and group_members.user_id  is null
+      and group_members.status   = 'pending'
   );
   if p_slot is not null then
     select gm.display_name, gm.status, gm.user_id
@@ -392,6 +399,7 @@ declare
   v_email     text;
   v_full_name text;
   v_member_id uuid;
+  v_slot_id   uuid;
 begin
   if v_user is null then
     raise exception 'not authenticated';
@@ -431,12 +439,36 @@ begin
     select id into v_member_id from public.group_members
       where group_id = v_group_id and user_id = v_user;
     if v_member_id is null then
-      insert into public.group_members
-        (group_id, user_id, role, status, display_name, email)
-      values
-        (v_group_id, v_user, 'member', 'joined',
-         coalesce(v_full_name, v_email), v_email)
-      returning id into v_member_id;
+      -- Smart matching: if the leader pre-created a pending slot whose
+      -- display_name matches the joining user's name (case-insensitive),
+      -- claim that slot instead of inserting a duplicate row. Common
+      -- case: leader sets up "John Tan" as a pending slot, but John
+      -- joins via the team token rather than the slot link.
+      select id into v_slot_id from public.group_members
+        where group_id = v_group_id
+          and user_id is null
+          and status = 'pending'
+          and lower(display_name) = lower(coalesce(v_full_name, v_email))
+        limit 1;
+      if v_slot_id is not null then
+        update public.group_members
+           set user_id = v_user,
+               status  = 'joined',
+               email   = coalesce(email, v_email)
+         where id = v_slot_id
+           and user_id is null
+         returning id into v_member_id;
+      end if;
+      -- No matching slot, or a concurrent claim won the race -- fall
+      -- back to inserting a fresh member row.
+      if v_member_id is null then
+        insert into public.group_members
+          (group_id, user_id, role, status, display_name, email)
+        values
+          (v_group_id, v_user, 'member', 'joined',
+           coalesce(v_full_name, v_email), v_email)
+        returning id into v_member_id;
+      end if;
     end if;
   end if;
   return v_member_id;
