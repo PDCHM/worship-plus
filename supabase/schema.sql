@@ -144,6 +144,9 @@ create table if not exists public.profiles (
   updated_at  timestamptz not null default now()
 );
 
+-- Per-user UI preferences. Maps SectionStyleKey -> { chordColor: hex, bold: bool }.
+alter table public.profiles add column if not exists section_styles jsonb default '{}'::jsonb;
+
 alter table public.profiles enable row level security;
 
 drop policy if exists profiles_self_read on public.profiles;

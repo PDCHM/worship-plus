@@ -16,11 +16,14 @@ import {
   DEFAULT_SETTINGS,
   DEFAULT_SECTION_COLORS_DARK,
   DEFAULT_SECTION_COLORS_LIGHT,
+  DEFAULT_SECTION_STYLES,
   cloneSection,
   getSectionColorKey,
   makeNewSong,
+  mergeSectionStyles,
   parseSongText,
   uid,
+  type SectionStyles,
   type Settings,
   type Song,
 } from "@/lib/song";
@@ -42,6 +45,7 @@ type Profile = {
   email: string | null;
   full_name: string | null;
   avatar_url: string | null;
+  section_styles?: unknown;
 };
 
 type SongRow = {
@@ -178,6 +182,7 @@ export default function Home() {
   const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
   const [groupSongs, setGroupSongs] = useState<GroupSong[]>([]);
   const [groupsLoaded, setGroupsLoaded] = useState(false);
+  const [sectionStyles, setSectionStyles] = useState<SectionStyles>(DEFAULT_SECTION_STYLES);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [view, setView] = useState<View>(() => {
     if (typeof window === "undefined") return { kind: "library", filter: "all" };
@@ -237,13 +242,14 @@ export default function Home() {
 
         void supabase
           .from("profiles")
-          .select("id, email, full_name, avatar_url")
+          .select("id, email, full_name, avatar_url, section_styles")
           .eq("id", u.id)
           .maybeSingle()
           .then(({ data: profileRow }) => {
             if (cancelled) return;
             if (profileRow) {
               setProfile(profileRow as Profile);
+              setSectionStyles(mergeSectionStyles((profileRow as Profile).section_styles));
             } else {
               setProfile({
                 id: u.id,
@@ -749,6 +755,15 @@ export default function Home() {
               onPasteSong={() => setPasteOpen(true)}
               isDirty={view.kind === "editor" && dirtyIds.has((view as { kind: "editor"; songId: string }).songId)}
               onSave={() => { const s = songs.find(x => view.kind === "editor" && x.id === (view as { kind: "editor"; songId: string }).songId); if (s) void saveSong(s); }}
+              sectionStyles={sectionStyles}
+              onSectionStylesChange={setSectionStyles}
+              onSectionStylesSave={async (next) => {
+                if (!user) return;
+                setSectionStyles(next);
+                const { error } = await supabase.from("profiles").update({ section_styles: next, updated_at: new Date().toISOString() }).eq("id", user.id);
+                if (error) { logErr("save section styles", error); showToast("Could not save styles: " + error.message); }
+                else showToast("Styles saved");
+              }}
               showToast={showToast}
             />
           )}

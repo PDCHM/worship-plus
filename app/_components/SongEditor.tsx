@@ -7,14 +7,19 @@ import {
   KEYS,
   PREFER_FLAT_KEYS,
   SECTION_PRESETS,
+  SECTION_STYLE_KEYS,
+  SECTION_STYLE_LABELS,
   cloneSection,
   findLine,
   getSectionColorKey,
+  getSectionStyleKey,
   mapLine,
   noteToIndex,
   transposeChord,
   uid,
   type Section,
+  type SectionStyles,
+  type SectionStyleKey,
   type Settings,
   type Song,
 } from "@/lib/song";
@@ -38,6 +43,9 @@ type Props = {
   onPasteSong: () => void;
   onSave: () => void;
   isDirty: boolean;
+  sectionStyles: SectionStyles;
+  onSectionStylesChange: (s: SectionStyles) => void;
+  onSectionStylesSave: (s: SectionStyles) => void | Promise<void>;
   showToast: (msg: string) => void;
 };
 
@@ -185,10 +193,20 @@ function flowLabels(sections: Section[]): string[] {
   });
 }
 
+function hexAlpha(hex: string, alpha: number): string {
+  const h = hex.replace("#", "");
+  if (h.length !== 6) return hex;
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
 function SongFlowBar({
-  sections, activeId, readOnly, onScrollTo, onReorder, onRename,
+  sections, sectionStyles, activeId, readOnly, onScrollTo, onReorder, onRename,
 }: {
   sections: Section[];
+  sectionStyles: SectionStyles;
   activeId: string | null;
   readOnly: boolean;
   onScrollTo: (id: string) => void;
@@ -290,6 +308,13 @@ function SongFlowBar({
           const isActive = s.id === activeId;
           const isEditing = editingId === s.id;
           const isDragging = dragId === s.id;
+          const chipStyleKey = getSectionStyleKey(s.label);
+          const chipColor = chipStyleKey ? sectionStyles[chipStyleKey].chordColor : null;
+          const chipStyle: React.CSSProperties = { touchAction: readOnly || isEditing ? "auto" : "none" };
+          if (chipColor) {
+            if (isActive) { chipStyle.backgroundColor = chipColor; chipStyle.color = "#fff"; }
+            else { chipStyle.backgroundColor = hexAlpha(chipColor, 0.15); chipStyle.color = chipColor; }
+          }
           return (
             <div
               key={s.id}
@@ -298,13 +323,15 @@ function SongFlowBar({
               onClick={() => handleClick(s.id)}
               onDoubleClick={(e) => { e.preventDefault(); handleDoubleClick(s.id); }}
               title={readOnly ? s.label : `${s.label} — double-click to rename, drag to reorder`}
-              style={{ touchAction: readOnly || isEditing ? "auto" : "none" }}
+              style={chipStyle}
               className={
                 "shrink-0 h-7 px-3 rounded-full text-xs font-semibold transition-all select-none flex items-center justify-center text-center " +
                 (readOnly ? "cursor-pointer " : "cursor-grab active:cursor-grabbing ") +
-                (isActive
-                  ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/30"
-                  : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700") +
+                (chipColor
+                  ? (isActive ? "shadow-sm" : "hover:opacity-80")
+                  : (isActive
+                    ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/30"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700")) +
                 (isDragging ? " opacity-60 scale-105" : "")
               }
             >
@@ -342,6 +369,71 @@ function SongFlowBar({
   );
 }
 
+function SectionStylesPanel({
+  styles, onChange, onSave, onClose,
+}: {
+  styles: SectionStyles;
+  onChange: (s: SectionStyles) => void;
+  onSave: (s: SectionStyles) => void | Promise<void>;
+  onClose: () => void;
+}) {
+  const update = (key: SectionStyleKey, patch: Partial<{ chordColor: string; bold: boolean }>) => {
+    onChange({ ...styles, [key]: { ...styles[key], ...patch } });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 print:hidden">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <aside className="absolute right-0 top-0 bottom-0 w-full sm:w-[26rem] bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col">
+        <header className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+          <h2 className="font-semibold text-base">Section styles</h2>
+          <button type="button" onClick={onClose} aria-label="Close"
+            className="w-8 h-8 rounded-md flex items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </header>
+        <div className="flex-1 overflow-y-auto p-5 space-y-2.5">
+          {SECTION_STYLE_KEYS.map((key) => {
+            const v = styles[key];
+            return (
+              <div key={key} className="flex items-center gap-3 rounded-xl border border-slate-200 dark:border-slate-700 px-3 py-2.5">
+                <input
+                  type="color"
+                  value={v.chordColor}
+                  onChange={(e) => update(key, { chordColor: e.target.value })}
+                  className="w-10 h-10 rounded-md cursor-pointer bg-transparent border border-slate-200 dark:border-slate-700"
+                  title="Chord color"
+                  aria-label={`${SECTION_STYLE_LABELS[key]} chord color`}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate" style={{ color: v.chordColor }}>
+                    {SECTION_STYLE_LABELS[key]}
+                  </div>
+                  <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{v.chordColor.toUpperCase()}</div>
+                </div>
+                <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 cursor-pointer select-none shrink-0">
+                  <input type="checkbox" checked={v.bold} onChange={(e) => update(key, { bold: e.target.checked })} className="w-4 h-4 accent-indigo-600" />
+                  Bold
+                </label>
+              </div>
+            );
+          })}
+        </div>
+        <footer className="px-5 py-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2">
+          <button type="button" onClick={onClose}
+            className="h-9 px-3 rounded-lg text-sm font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors">
+            Close
+          </button>
+          <button type="button" onClick={() => { void onSave(styles); onClose(); }}
+            className="h-9 px-4 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-colors shadow-sm shadow-indigo-600/30">
+            Save
+          </button>
+        </footer>
+      </aside>
+    </div>
+  );
+}
+
 export default function SongEditor({
   song,
   onChange,
@@ -353,6 +445,9 @@ export default function SongEditor({
   onPasteSong,
   onSave,
   isDirty,
+  sectionStyles,
+  onSectionStylesChange,
+  onSectionStylesSave,
   showToast,
 }: Props) {
   const [editingChord, setEditingChord] = useState<string | null>(null);
@@ -379,6 +474,7 @@ export default function SongEditor({
   const rulerRef = useRef<HTMLSpanElement>(null);
   const sectionRefs = useRef<Map<string, HTMLElement>>(new Map());
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
+  const [stylesPanelOpen, setStylesPanelOpen] = useState(false);
 
   const colors = isDark ? settings.sectionColorsDark : settings.sectionColorsLight;
   const readOnly = viewMode !== "standard";
@@ -881,6 +977,13 @@ export default function SongEditor({
       <div className="mb-5 flex items-center justify-between gap-3 flex-wrap print:hidden">
         <ViewToggle viewMode={viewMode} onChange={switchView} />
         <div className="flex items-center gap-2">
+          <button type="button" onClick={() => setStylesPanelOpen(true)} title="Section styles"
+            className="h-9 w-9 rounded-lg flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </button>
           <div className="relative">
             <button type="button" onClick={() => setPreviewOpen(true)}
               className="h-9 px-3 rounded-lg text-sm font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5">
@@ -930,12 +1033,22 @@ export default function SongEditor({
 
       <SongFlowBar
         sections={song.sections}
+        sectionStyles={sectionStyles}
         activeId={activeFlowId}
         readOnly={readOnly}
         onScrollTo={scrollToSection}
         onReorder={reorderSections}
         onRename={renameSection}
       />
+
+      {stylesPanelOpen && (
+        <SectionStylesPanel
+          styles={sectionStyles}
+          onChange={onSectionStylesChange}
+          onSave={onSectionStylesSave}
+          onClose={() => setStylesPanelOpen(false)}
+        />
+      )}
 
       <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-4 sm:p-6 md:p-8 overflow-x-auto print:border-0 print:shadow-none print:p-0">
         <div
@@ -945,6 +1058,10 @@ export default function SongEditor({
           {song.sections.map((section, sIdx) => {
             const colorKey = getSectionColorKey(section.label);
             const c = colors[colorKey];
+            const styleKey = getSectionStyleKey(section.label);
+            const sectionStyle = styleKey ? sectionStyles[styleKey] : null;
+            const chordColor = sectionStyle?.chordColor;
+            const labelWeightClass = sectionStyle?.bold ? "font-extrabold" : "font-semibold";
             const sectionClassName = readOnly
               ? "group/section break-inside-avoid mb-6 last:mb-0"
               : "group/section";
@@ -977,12 +1094,12 @@ export default function SongEditor({
                       onBlur={(e) =>
                         commitSectionLabel(section.id, e.target.value)
                       }
-                      className="font-semibold text-xs uppercase tracking-wider outline-none rounded-md px-2.5 py-1 ring-2 ring-indigo-500"
+                      className={`text-xs uppercase tracking-wider outline-none rounded-md px-2.5 py-1 ring-2 ring-indigo-500 ${labelWeightClass}`}
                       style={{ background: c.bg, color: c.fg }}
                     />
                   ) : readOnly ? (
                     <span
-                      className="px-2.5 py-1 rounded-md text-xs font-semibold uppercase tracking-wider"
+                      className={`px-2.5 py-1 rounded-md text-xs uppercase tracking-wider ${labelWeightClass}`}
                       style={{ background: c.bg, color: c.fg }}
                     >
                       {section.label}
@@ -991,7 +1108,7 @@ export default function SongEditor({
                     <button
                       type="button"
                       onClick={() => setEditingSection(section.id)}
-                      className="px-2.5 py-1 rounded-md text-xs font-semibold uppercase tracking-wider transition-opacity hover:opacity-80"
+                      className={`px-2.5 py-1 rounded-md text-xs uppercase tracking-wider transition-opacity hover:opacity-80 ${labelWeightClass}`}
                       style={{ background: c.bg, color: c.fg }}
                       title="Click to rename section"
                     >
@@ -1151,6 +1268,7 @@ export default function SongEditor({
                                   style={{
                                     touchAction: "none",
                                     fontSize: `${chordFontSize}px`,
+                                    color: chordColor,
                                   }}
                                 >
                                   {ch.chord}

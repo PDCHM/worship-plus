@@ -206,6 +206,78 @@ export function getSectionColorKey(label: string): SectionColorKey {
   return "default";
 }
 
+export type SectionStyleKey =
+  | "intro"
+  | "verse"
+  | "chorus"
+  | "prechorus"
+  | "bridge"
+  | "outro"
+  | "tag"
+  | "instrumental"
+  | "end";
+
+export type SectionStyle = { chordColor: string; bold: boolean };
+export type SectionStyles = Record<SectionStyleKey, SectionStyle>;
+
+export const SECTION_STYLE_KEYS: SectionStyleKey[] = [
+  "intro", "verse", "chorus", "prechorus", "bridge", "outro", "tag", "instrumental", "end",
+];
+
+export const SECTION_STYLE_LABELS: Record<SectionStyleKey, string> = {
+  intro: "Intro",
+  verse: "Verse",
+  chorus: "Chorus",
+  prechorus: "Pre-Chorus",
+  bridge: "Bridge",
+  outro: "Outro",
+  tag: "Tag",
+  instrumental: "Instrumental",
+  end: "End",
+};
+
+export const DEFAULT_SECTION_STYLES: SectionStyles = {
+  intro:        { chordColor: "#22c55e", bold: false },
+  verse:        { chordColor: "#3b82f6", bold: false },
+  chorus:       { chordColor: "#a855f7", bold: false },
+  prechorus:    { chordColor: "#14b8a6", bold: false },
+  bridge:       { chordColor: "#f59e0b", bold: false },
+  outro:        { chordColor: "#6b7280", bold: false },
+  tag:          { chordColor: "#f43f5e", bold: false },
+  instrumental: { chordColor: "#6366f1", bold: false },
+  end:          { chordColor: "#64748b", bold: false },
+};
+
+export function getSectionStyleKey(label: string): SectionStyleKey | null {
+  const t = label.trim().toLowerCase();
+  if (/^pre[\s-]?chorus\b/.test(t)) return "prechorus";
+  if (/^intro\b/.test(t)) return "intro";
+  if (/^outro\b/.test(t)) return "outro";
+  if (/^tag\b/.test(t)) return "tag";
+  if (/^instrumental\b/.test(t)) return "instrumental";
+  if (/^end(ing)?\b/.test(t)) return "end";
+  if (/^chorus\b/.test(t)) return "chorus";
+  if (/^verse\b/.test(t)) return "verse";
+  if (/^bridge\b/.test(t)) return "bridge";
+  return null;
+}
+
+export function mergeSectionStyles(stored: unknown): SectionStyles {
+  const out = { ...DEFAULT_SECTION_STYLES };
+  if (!stored || typeof stored !== "object") return out;
+  const s = stored as Partial<Record<string, Partial<SectionStyle>>>;
+  for (const key of SECTION_STYLE_KEYS) {
+    const v = s[key];
+    if (v && typeof v === "object") {
+      out[key] = {
+        chordColor: typeof v.chordColor === "string" ? v.chordColor : out[key].chordColor,
+        bold: typeof v.bold === "boolean" ? v.bold : out[key].bold,
+      };
+    }
+  }
+  return out;
+}
+
 export function cloneLine(line: Line): Line {
   return {
     id: uid(),
