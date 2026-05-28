@@ -335,14 +335,19 @@ $$;
 -- ============================================================
 
 -- Look up just enough info to render /join/[token] without exposing
--- the rest of groups / group_members.
+-- the rest of groups / group_members. Includes is_member so the page
+-- can short-circuit to "already joined" without a second round-trip.
+-- Return type changed (added is_member) so we drop the old signature
+-- before recreating; keeps the schema re-runnable.
+drop function if exists public.lookup_invite(text, uuid);
 create or replace function public.lookup_invite(p_token text, p_slot uuid default null)
 returns table (
   group_id          uuid,
   group_name        text,
   slot_display_name text,
   slot_status       text,
-  slot_user_id      uuid
+  slot_user_id      uuid,
+  is_member         boolean
 )
 language plpgsql
 security definer
@@ -358,6 +363,11 @@ begin
   end if;
   group_id   := v_group.id;
   group_name := v_group.name;
+  is_member  := exists (
+    select 1 from public.group_members
+    where group_members.group_id = v_group.id
+      and group_members.user_id  = auth.uid()
+  );
   if p_slot is not null then
     select gm.display_name, gm.status, gm.user_id
       into slot_display_name, slot_status, slot_user_id
@@ -396,6 +406,16 @@ begin
     from public.profiles where id = v_user;
 
   if p_slot is not null then
+    -- Idempotent: if the user already has a row in this group (claimed
+    -- a different slot, or joined via a token-only link earlier), return
+    -- the existing membership without touching the requested slot.
+    -- Avoids the (group_id, user_id) partial unique conflict and keeps
+    -- the slot available for the intended invitee.
+    select id into v_member_id from public.group_members
+      where group_id = v_group_id and user_id = v_user;
+    if v_member_id is not null then
+      return v_member_id;
+    end if;
     update public.group_members
        set user_id = v_user,
            status  = 'joined',
