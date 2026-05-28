@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { getSectionColorKey, type Chord, type Song, type Settings } from "@/lib/song";
+import { getEffectiveStyle, getSectionColorKey, getSectionStyleKey, type Chord, type SectionStyles, type Song, type Settings } from "@/lib/song";
 
 const FONT_CSS: Record<string, string> = {
   system: "ui-sans-serif, system-ui, -apple-system, sans-serif",
@@ -23,9 +23,9 @@ function buildChordLine(chords: Chord[]): string {
 
 const MONO_FAMILY = "ui-monospace, Menlo, Consolas, 'Courier New', monospace";
 
-type Props = { song: Song; settings: Settings };
+type Props = { song: Song; settings: Settings; sectionStyles: SectionStyles };
 
-export default function PrintLayout({ song, settings }: Props) {
+export default function PrintLayout({ song, settings, sectionStyles }: Props) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -95,6 +95,7 @@ export default function PrintLayout({ song, settings }: Props) {
         {song.sections.map((section) => {
           const colorKey = getSectionColorKey(section.label);
           const color    = colorMap[colorKey];
+          const chordColor = getEffectiveStyle(getSectionStyleKey(section.label), sectionStyles.styles).chordColor;
 
           return (
             <div
@@ -136,7 +137,7 @@ export default function PrintLayout({ song, settings }: Props) {
                         fontFamily: MONO_FAMILY,
                         fontSize: `${fontSize * 0.82}px`,
                         fontWeight: 700,
-                        color: "#1e3a8a",
+                        color: chordColor,
                         lineHeight: 1.3,
                         whiteSpace: "pre",
                         overflow: "hidden",

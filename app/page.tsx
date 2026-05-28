@@ -815,7 +815,7 @@ export default function Home() {
 
       <BottomTabs view={view} onNavigate={navigateTo} />
 
-      {activeSong && <PrintLayout song={activeSong} settings={settings} />}
+      {activeSong && <PrintLayout song={activeSong} settings={settings} sectionStyles={sectionStyles} />}
 
       <PasteSongModal
         open={pasteOpen}

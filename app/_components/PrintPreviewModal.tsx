@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { getSectionColorKey, type Chord, type EditorPrefs, type Song, type Settings } from "@/lib/song";
+import { getEffectiveStyle, getSectionColorKey, getSectionStyleKey, type Chord, type SectionStyles, type Song, type Settings } from "@/lib/song";
 
 const FONT_CSS: Record<string, string> = {
   system: "ui-sans-serif, system-ui, -apple-system, sans-serif",
@@ -25,7 +25,7 @@ const MONO_FAMILY = "ui-monospace, Menlo, Consolas, 'Courier New', monospace";
 type Props = {
   song: Song;
   settings: Settings;
-  editorPrefs: EditorPrefs;
+  sectionStyles: SectionStyles;
   viewMode: "standard" | "split-2" | "split-3";
   onSettingsChange: (s: Settings) => void;
   onPrint: () => void;
@@ -33,11 +33,11 @@ type Props = {
 };
 
 export default function PrintPreviewModal({
-  song, settings, editorPrefs, viewMode, onSettingsChange, onPrint, onClose,
+  song, settings, sectionStyles, viewMode, onSettingsChange, onPrint, onClose,
 }: Props) {
   const update = (patch: Partial<Settings>) => onSettingsChange({ ...settings, ...patch });
 
-  const largeFont = editorPrefs.lyricFontSize !== "small";
+  const largeFont = sectionStyles.prefs.lyricFontSize !== "small";
   const maxCols: 1 | 2 | 3 = largeFont ? 2 : 3;
 
   // Auto-match columns to the editor split view on first open, capped at maxCols.
@@ -76,6 +76,7 @@ export default function PrintPreviewModal({
         <PaperContent
           song={song}
           settings={settings}
+          sectionStyles={sectionStyles}
           cols={cols}
           paperW={paperW}
           paperH={paperH}
@@ -151,8 +152,8 @@ export default function PrintPreviewModal({
 
 /* ─── Paper preview ──────────────────────────────────────────────────────── */
 
-function PaperContent({ song, settings, cols, paperW, paperH }: {
-  song: Song; settings: Settings; cols: 1|2|3; paperW: number; paperH: number;
+function PaperContent({ song, settings, sectionStyles, cols, paperW, paperH }: {
+  song: Song; settings: Settings; sectionStyles: SectionStyles; cols: 1|2|3; paperW: number; paperH: number;
 }) {
   const fontFamily  = FONT_CSS[settings.fontFamily ?? "system"];
   const fontSize    = settings.fontSize ?? 17;
@@ -207,6 +208,7 @@ function PaperContent({ song, settings, cols, paperW, paperH }: {
       } : {}}>
         {song.sections.map((section) => {
           const color = colorMap[getSectionColorKey(section.label)];
+          const chordColor = getEffectiveStyle(getSectionStyleKey(section.label), sectionStyles.styles).chordColor;
           return (
             <div key={section.id} style={{
               breakInside: "avoid",
@@ -231,7 +233,7 @@ function PaperContent({ song, settings, cols, paperW, paperH }: {
                     <pre style={{
                       margin: 0, fontFamily: MONO_FAMILY,
                       fontSize: `${fontSize * 0.8}px`, fontWeight: 700,
-                      color: "#1e3a8a", lineHeight: 1.3, whiteSpace: "pre", overflow: "hidden", width: "100%",
+                      color: chordColor, lineHeight: 1.3, whiteSpace: "pre", overflow: "hidden", width: "100%",
                     }}>
                       {buildChordLine(line.chords)}
                     </pre>
