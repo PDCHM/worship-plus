@@ -199,11 +199,12 @@ function PaperContent({ song, settings, cols, paperW, paperH }: {
       </div>
 
       {/* Sections */}
-      <div style={{
-        columnCount: cols > 1 ? cols : undefined,
-        columnGap:   cols > 1 ? "2.5em" : undefined,
-        columnFill: "auto",
-      }}>
+      <div style={cols > 1 ? {
+        display: "grid",
+        gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+        gap: cols === 3 ? "1.5rem" : "2rem",
+        alignItems: "start",
+      } : {}}>
         {song.sections.map((section) => {
           const color = colorMap[getSectionColorKey(section.label)];
           return (
@@ -212,7 +213,8 @@ function PaperContent({ song, settings, cols, paperW, paperH }: {
               pageBreakInside: "avoid",
               marginBottom: "1em",
               overflow: "hidden",
-              width: "100%",
+              minWidth: 0,
+              wordBreak: "break-word",
             }}>
               <div style={{
                 display: "inline-block",

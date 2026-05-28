@@ -918,11 +918,18 @@ export default function SongEditor({
     setEditingSection(newId);
   };
 
+  const numCols = viewMode === "split-2" ? 2 : viewMode === "split-3" ? 3 : 1;
+  const colGap = numCols === 3 ? "1.5rem" : "2rem";
   const sectionsContainerStyle: React.CSSProperties = columnView
     ? {
-        columnCount: viewMode === "split-2" ? 2 : 3,
-        columnGap: viewMode === "split-2" ? "2rem" : "1.5rem",
+        display: "grid",
+        gridTemplateColumns: `repeat(${numCols}, minmax(0, 1fr))`,
+        gap: colGap,
+        alignItems: "start",
       }
+    : {};
+  const sectionInColumnStyle: React.CSSProperties = columnView
+    ? { minWidth: 0, overflow: "hidden", wordBreak: "break-word" }
     : {};
 
   return (
@@ -1150,9 +1157,7 @@ export default function SongEditor({
             const sectionStyle = getEffectiveStyle(styleKey, sectionStyles.styles);
             const chordColor = sectionStyle.chordColor;
             const labelWeightClass = sectionStyle.bold ? "font-extrabold" : "font-semibold";
-            const sectionClassName = columnView
-              ? "group/section break-inside-avoid mb-6 last:mb-0"
-              : "group/section";
+            const sectionClassName = "group/section";
             return (
               <Fragment key={section.id}>
               <section
@@ -1162,6 +1167,7 @@ export default function SongEditor({
                 }}
                 data-section-id={section.id}
                 className={sectionClassName}
+                style={sectionInColumnStyle}
               >
                 <div className="flex items-center gap-2 mb-3 flex-wrap">
                   {editingSection === section.id && !readOnly ? (
