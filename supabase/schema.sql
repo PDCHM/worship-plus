@@ -602,6 +602,15 @@ create policy sections_group_read on public.sections
   for select to authenticated
   using (public.can_read_song(sections.song_id));
 
+-- Group writers can also INSERT/UPDATE/DELETE sections. Lets a group
+-- member's saveSongToDb run the delete-then-reinsert flow on a song
+-- owned by someone else.
+drop policy if exists sections_group_write on public.sections;
+create policy sections_group_write on public.sections
+  for all to authenticated
+  using (public.can_write_song(sections.song_id))
+  with check (public.can_write_song(sections.song_id));
+
 drop policy if exists lines_via_section on public.lines;
 create policy lines_via_section on public.lines
   for all to authenticated
@@ -630,6 +639,24 @@ create policy lines_group_read on public.lines
       select 1 from public.sections sec
       where sec.id = lines.section_id
         and public.can_read_song(sec.song_id)
+    )
+  );
+
+drop policy if exists lines_group_write on public.lines;
+create policy lines_group_write on public.lines
+  for all to authenticated
+  using (
+    exists (
+      select 1 from public.sections sec
+      where sec.id = lines.section_id
+        and public.can_write_song(sec.song_id)
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.sections sec
+      where sec.id = lines.section_id
+        and public.can_write_song(sec.song_id)
     )
   );
 
@@ -664,6 +691,26 @@ create policy chords_group_read on public.chords
       join public.sections sec on sec.id = ln.section_id
       where ln.id = chords.line_id
         and public.can_read_song(sec.song_id)
+    )
+  );
+
+drop policy if exists chords_group_write on public.chords;
+create policy chords_group_write on public.chords
+  for all to authenticated
+  using (
+    exists (
+      select 1 from public.lines ln
+      join public.sections sec on sec.id = ln.section_id
+      where ln.id = chords.line_id
+        and public.can_write_song(sec.song_id)
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.lines ln
+      join public.sections sec on sec.id = ln.section_id
+      where ln.id = chords.line_id
+        and public.can_write_song(sec.song_id)
     )
   );
 
