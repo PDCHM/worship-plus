@@ -996,9 +996,8 @@ export default function SongEditor({
         <div className="mb-3 -mt-2 print:hidden">
           <div className="flex items-center justify-between gap-2 rounded-lg bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 px-3 py-1.5">
             <div className="text-xs text-indigo-700 dark:text-indigo-300 truncate min-w-0 flex-1">
-              <span className="font-semibold">Setlist:</span>{" "}
-              <span className="truncate">{setlistContext.setlistName}</span>
-              <span className="text-indigo-400 dark:text-indigo-500"> · Song {setlistContext.currentIndex + 1} of {setlistContext.total}</span>
+              <span className="font-semibold truncate">{setlistContext.setlistName}</span>
+              <span className="text-indigo-400 dark:text-indigo-500"> · {setlistContext.currentIndex + 1} of {setlistContext.total}</span>
             </div>
             <div className="flex items-center gap-1 shrink-0">
               <button type="button"
