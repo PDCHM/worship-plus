@@ -894,6 +894,13 @@ create policy bubbles_delete on public.song_bubbles
 create index if not exists song_bubbles_song_id_idx on public.song_bubbles(song_id);
 create index if not exists song_bubbles_parent_id_idx on public.song_bubbles(parent_id);
 
+-- Bubbles now anchor to a specific line (section_id + 0-based line_index) and
+-- render inline below it, which is position-stable across devices. pos_x/pos_y
+-- are kept for backwards compat but no longer written for new bubbles.
+alter table public.song_bubbles add column if not exists section_id uuid references public.sections(id) on delete cascade;
+alter table public.song_bubbles add column if not exists line_index integer not null default 0;
+create index if not exists song_bubbles_section_id_idx on public.song_bubbles(section_id);
+
 -- ============================================================
 -- get_song_content: returns a song's full content (sections → lines →
 -- chords) as one JSON blob in a single round trip. SECURITY DEFINER so

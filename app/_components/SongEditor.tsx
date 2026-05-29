@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useRef, useState } from "react";
 import PrintPreviewModal from "@/app/_components/PrintPreviewModal";
 import QuickActionsPanel from "@/app/_components/QuickActionsPanel";
-import SongBubbles, { type SongBubblesHandle } from "@/app/_components/SongBubbles";
+import { LineBubbles, useSongBubbles } from "@/app/_components/SongBubbles";
 import {
   CHORD_FONT_CLAMP,
   EDITOR_FONT_FAMILY,
@@ -541,8 +541,8 @@ export default function SongEditor({
   bubbleAuthors,
   onBack,
 }: Props) {
-  const bubblesRef = useRef<SongBubblesHandle>(null);
   const [moreOpen, setMoreOpen] = useState(false);
+  const bubbles = useSongBubbles(song.id, currentUserId, bubbleAuthors, showToast);
   const [editingChord, setEditingChord] = useState<string | null>(null);
   const [editingLine, setEditingLine] = useState<string | null>(null);
   const [editingSection, setEditingSection] = useState<string | null>(null);
@@ -982,7 +982,7 @@ export default function SongEditor({
       }
     : {};
   const sectionInColumnStyle: React.CSSProperties = columnView
-    ? { minWidth: 0, overflow: "hidden", wordBreak: "break-word" }
+    ? { minWidth: 0, wordBreak: "break-word" }
     : {};
 
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -1009,16 +1009,6 @@ export default function SongEditor({
   return (
     <div className="relative max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 md:py-8"
       style={{ "--lyric-font-size": `${lyricCeiling}px` } as React.CSSProperties}
-      onDoubleClick={(e) => {
-        // Double-click/double-tap empty editor background → new sticky note.
-        const t = e.target as HTMLElement;
-        if (t.closest("input, textarea, button, select, a, [data-bubble-skip], [data-song-bubble]")) return;
-        const rect = e.currentTarget.getBoundingClientRect();
-        bubblesRef.current?.createAt(
-          ((e.clientX - rect.left) / rect.width) * 100,
-          ((e.clientY - rect.top) / rect.height) * 100,
-        );
-      }}
       onTouchStart={onSwipeStart}
       onTouchEnd={onSwipeEnd}
       onTouchCancel={() => { swipeStartRef.current = null; }}
@@ -1073,17 +1063,6 @@ export default function SongEditor({
           <option key={p} value={p} />
         ))}
       </datalist>
-
-      <button
-        type="button"
-        onClick={onBack}
-        title="Back"
-        aria-label="Back"
-        className="mb-3 -ml-2 inline-flex items-center gap-1.5 h-9 px-2 rounded-lg text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors print:hidden"
-      >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-        <span>Back</span>
-      </button>
 
       <div className="mb-5">
         {editingTitle && !readOnly ? (
@@ -1208,7 +1187,13 @@ export default function SongEditor({
       </div>
 
       <div className="mb-5 flex items-center justify-between gap-3 flex-wrap print:hidden">
-        <ViewToggle viewMode={viewMode} onChange={switchView} />
+        <div className="flex items-center gap-2">
+          <button type="button" onClick={onBack} title="Back" aria-label="Back"
+            className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+          </button>
+          <ViewToggle viewMode={viewMode} onChange={switchView} />
+        </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
           {isTouchDevice && (
             <button type="button" onClick={() => setEditMode((m) => !m)}
@@ -1427,8 +1412,8 @@ export default function SongEditor({
                     const chordRowHeight = `calc(${CHORD_FONT_CLAMP} + 12px)`;
                     const isFirstLine = sIdx === 0 && lIdx === 0;
                     return (
+                      <div key={line.id} className="group/line">
                       <div
-                        key={line.id}
                         className="relative"
                         style={{
                           paddingTop: showChords ? chordRowHeight : 0,
@@ -1467,7 +1452,7 @@ export default function SongEditor({
                               key={ch.id}
                               style={{
                                 left: columnView && colWidth > 0
-                                  ? `${Math.min(100, (ch.pos * charWidth / colWidth) * 100)}%`
+                                  ? `${(ch.pos * charWidth / colWidth) * 100}%`
                                   : ch.pos * charWidth,
                                 top: 0,
                               }}
@@ -1593,6 +1578,8 @@ export default function SongEditor({
                             )}
                           </div>
                         )}
+                      </div>
+                      <LineBubbles sectionId={section.id} lineIndex={lIdx} api={bubbles} readOnly={readOnly} />
                       </div>
                     );
                   })}
@@ -1788,14 +1775,6 @@ export default function SongEditor({
         </div>
       )}
 
-      <SongBubbles
-        ref={bubblesRef}
-        key={song.id}
-        songId={song.id}
-        currentUserId={currentUserId}
-        authorNames={bubbleAuthors}
-        showToast={showToast}
-      />
     </div>
   );
 }
