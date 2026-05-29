@@ -566,6 +566,17 @@ export default function SongEditor({
   const [stylesPanelOpen, setStylesPanelOpen] = useState(false);
   const [isTouchDevice, setIsTouchDevice] = useState(false);
   const [editMode, setEditMode] = useState(true);
+  const [isNarrow, setIsNarrow] = useState(false);
+
+  // Track narrow (mobile) viewports so we can force a compact font size.
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(max-width: 639px)");
+    const update = () => setIsNarrow(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
 
   useEffect(() => {
     const touch = typeof navigator !== "undefined" && (navigator.maxTouchPoints ?? 0) > 0;
@@ -595,13 +606,17 @@ export default function SongEditor({
   // "Click to add a chord" hint on the first line of a new song.
   const songHasNoChords = song.sections.every((sec) => sec.lines.every((l) => l.chords.length === 0));
   const baseFontSize = LYRIC_FONT_SIZE_PX[prefs.lyricFontSize] + zoomOffset;
-  const effectiveFontSize =
+  const desktopLyricSize =
     viewMode === "split-3"
       ? Math.max(11, Math.round(baseFontSize * 0.78))
       : baseFontSize;
-  const chordFontSize = viewMode === "split-3"
+  const desktopChordSize = viewMode === "split-3"
     ? Math.max(10, Math.round(CHORD_FONT_SIZE_PX[prefs.chordFontSize] * 0.85))
     : CHORD_FONT_SIZE_PX[prefs.chordFontSize];
+  // On mobile (<640px) clamp to a compact size regardless of settings so
+  // lines fit without horizontal overflow.
+  const effectiveFontSize = isNarrow ? 13 : desktopLyricSize;
+  const chordFontSize = isNarrow ? 11 : desktopChordSize;
   const lineHeight = LINE_SPACING[prefs.lineSpacing];
 
   useEffect(() => {
@@ -1548,12 +1563,12 @@ export default function SongEditor({
                                 ? undefined
                                 : () => setEditingLine(line.id)
                             }
-                            className={`whitespace-pre rounded px-1 py-0.5 -mx-1 transition-colors ${
+                            className={`rounded px-1 py-0.5 -mx-1 transition-colors ${
                               readOnly
                                 ? "cursor-default"
                                 : "cursor-text hover:bg-slate-50 dark:hover:bg-slate-800/40"
                             }`}
-                            style={{ fontSize: `${effectiveFontSize}px`, fontFamily: lyricFontFamily, lineHeight }}
+                            style={{ fontSize: `${effectiveFontSize}px`, fontFamily: lyricFontFamily, lineHeight, whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "break-word" }}
                           >
                             {isFirstLine && !line.lyric && !readOnly ? (
                               <span className="text-[13px] text-slate-300 dark:text-slate-600">

@@ -238,7 +238,7 @@ function PaperContent({ song, settings, sectionStyles, cols, paperW, paperH }: {
                       {buildChordLine(line.chords)}
                     </pre>
                   )}
-                  <div style={{ whiteSpace: "pre", lineHeight: 1.4, minHeight: `${fontSize * 1.4}px`, overflow: "hidden", fontFamily: MONO_FAMILY, width: "100%" }}>
+                  <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "break-word", lineHeight: 1.4, minHeight: `${fontSize * 1.4}px`, overflow: "hidden", fontFamily: MONO_FAMILY, width: "100%" }}>
                     {line.lyric || "\u00a0"}
                   </div>
                 </div>
