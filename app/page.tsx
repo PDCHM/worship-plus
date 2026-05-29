@@ -364,8 +364,6 @@ export default function Home() {
           { data: folderSongRows, error: folderSongsError },
         ]) => {
           if (cancelled) return;
-          console.log("[debug] folder_songs raw response:", { data: folderSongRows, error: folderSongsError });
-          console.log("[debug] folders raw response:", { data: folderRows, error: foldersError });
           if (foldersError) {
             console.error("load folders failed", foldersError.message, foldersError.details, foldersError.hint);
             showToast("Folders error: " + foldersError.message);
@@ -390,8 +388,6 @@ export default function Home() {
             songId: r.song_id,
             position: r.position ?? 0,
           }));
-          console.log("[debug] folder_songs mapped length:", loadedFolderSongs.length);
-          console.log("[debug] folder_songs mapped sample:", loadedFolderSongs.slice(0, 5));
           setFolderSongs(loadedFolderSongs);
         });
 
