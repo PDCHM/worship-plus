@@ -560,7 +560,7 @@ export function makeNewSong(): Song {
   const now = Date.now();
   return {
     id: songUid(),
-    title: "Untitled Song",
+    title: "",
     artist: "",
     key: "C",
     capo: null,

@@ -1049,15 +1049,15 @@ export default function SongEditor({
             autoFocus
             defaultValue={song.title}
             onFocus={(e) => e.target.select()}
+            placeholder="Untitled Song"
             onBlur={(e) => {
-              const v = e.target.value.trim() || "Untitled Song";
+              const v = e.target.value.trim();
               update((s) => ({ ...s, title: v }));
               setEditingTitle(false);
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
-                const v =
-                  (e.target as HTMLInputElement).value.trim() || "Untitled Song";
+                const v = (e.target as HTMLInputElement).value.trim();
                 update((s) => ({ ...s, title: v }));
                 setEditingTitle(false);
               } else if (e.key === "Escape") {
@@ -1075,7 +1075,9 @@ export default function SongEditor({
               className="text-2xl md:text-3xl font-bold tracking-tight text-left rounded-lg px-2 -mx-2 py-1 enabled:hover:bg-slate-50 dark:enabled:hover:bg-slate-900 transition-colors disabled:cursor-default"
               title={readOnly ? undefined : "Click to rename song"}
             >
-              {song.title}
+              {song.title || (
+                <span className="text-slate-400 dark:text-slate-500">Untitled Song</span>
+              )}
             </button>
             {song.userId && song.userId !== currentUserId && (
               <span
@@ -1386,8 +1388,9 @@ export default function SongEditor({
                   }
                   style={{ borderLeft: `3px solid ${c.bg}` }}
                 >
-                  {section.lines.map((line) => {
+                  {section.lines.map((line, lIdx) => {
                     const chordRowHeight = chordFontSize + 12;
+                    const isFirstLine = sIdx === 0 && lIdx === 0;
                     return (
                       <div
                         key={line.id}
@@ -1519,6 +1522,11 @@ export default function SongEditor({
                           />
                         ) : (
                           <div
+                            onClick={
+                              !readOnly && isFirstLine && !line.lyric
+                                ? () => setEditingLine(line.id)
+                                : undefined
+                            }
                             onDoubleClick={
                               readOnly
                                 ? undefined
@@ -1531,7 +1539,13 @@ export default function SongEditor({
                             }`}
                             style={{ fontSize: `${effectiveFontSize}px`, fontFamily: lyricFontFamily, lineHeight }}
                           >
-                            {line.lyric || " "}
+                            {isFirstLine && !line.lyric && !readOnly ? (
+                              <span className="text-slate-400 dark:text-slate-500">
+                                Start typing your lyrics here...
+                              </span>
+                            ) : (
+                              line.lyric || " "
+                            )}
                           </div>
                         )}
                       </div>
