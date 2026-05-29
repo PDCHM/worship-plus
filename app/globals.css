@@ -23,6 +23,15 @@ html, body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  /* Disable per-block text autosizing (font boosting). Tailwind's preflight
+     only sets the -webkit- prefix on <html>; the standard property is left at
+     auto, so engines that honor it inflate CJK-heavy lines more than short
+     ones — which made chord glyphs (children of each line block) render at
+     different sizes line to line. Pin to 100% so every explicit px font size,
+     including chords, renders uniformly regardless of lyric content. */
+  -webkit-text-size-adjust: 100%;
+  -moz-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 ::selection {
