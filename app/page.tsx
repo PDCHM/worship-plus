@@ -229,6 +229,7 @@ export default function Home() {
       }
     }
     let cancelled = false;
+    const aborts: AbortController[] = [];
     (async () => {
       try {
         const { data: { user: u } } = await supabase.auth.getUser();
@@ -261,37 +262,99 @@ export default function Home() {
             }
           });
 
-        // No user_id filter: RLS lets the user see their own songs PLUS songs
-        // shared via group_songs or via a setlist shared with their team.
-        // Setlist rendering needs the leader's songs to resolve, so we pull
-        // them all and let consumers filter on userId when they need personal-only.
+        // Split the songs fetch into two phases so the heavy RLS path for
+        // shared songs (group_songs + setlist folder_songs) doesn't block
+        // the library on first paint. Each phase has its own AbortController
+        // with a 15s timeout — if shared songs hang, owned songs still load.
+        const restoreBackups = (batch: Song[]) => {
+          for (const song of batch) {
+            lastSavedRef.current.set(song.id, song);
+            try {
+              const raw = localStorage.getItem("wp-backup-" + song.id);
+              if (raw) {
+                const bs = JSON.parse(raw) as Song;
+                if (bs.updatedAt > song.updatedAt) {
+                  setSongs(prev => prev.map(s => s.id === song.id ? bs : s));
+                  setDirtyIds(prev => new Set(prev).add(song.id));
+                }
+              }
+            } catch {}
+          }
+        };
+
+        // Phase 1: own songs. Fast path — songs_owner_all RLS matches via
+        // the songs_user_id_idx index. Library renders as soon as this returns.
+        const ownAbort = new AbortController();
+        const ownTimeoutId = setTimeout(() => ownAbort.abort(), 15000);
         void supabase
           .from("songs")
           .select("*, sections(*, lines(*, chords(*)))")
+          .eq("user_id", u.id)
           .order("created_at", { ascending: false })
-          .then(({ data: songRows, error: songsError }) => {
-            if (cancelled) return;
-            console.log("[debug] songs raw response:", { rowCount: songRows?.length ?? null, error: songsError });
-            if (songsError) console.error("load songs failed", songsError.message);
-            const loadedSongs = (songRows ?? []).map((r) => rowToSong(r as SongRow));
-            console.log("[debug] songs mapped length:", loadedSongs.length);
-            setSongs(loadedSongs);
-            setSongsLoaded(true);
+          .abortSignal(ownAbort.signal)
+          .then(
+            ({ data: songRows, error: songsError }) => {
+              clearTimeout(ownTimeoutId);
+              if (cancelled) return;
+              if (songsError) {
+                console.error("load own songs failed", songsError.message);
+                showToast("Songs error: " + songsError.message);
+                setSongsLoaded(true);
+                return;
+              }
+              const own = (songRows ?? []).map((r) => rowToSong(r as SongRow));
+              setSongs(own);
+              setSongsLoaded(true);
+              restoreBackups(own);
+            },
+            (err: unknown) => {
+              clearTimeout(ownTimeoutId);
+              if (cancelled) return;
+              const e = err as { message?: string; name?: string };
+              const msg = e?.message ?? String(err);
+              console.error("load own songs aborted/failed", msg);
+              if (e?.name !== "AbortError") showToast("Songs unavailable: " + msg);
+              setSongsLoaded(true);
+            },
+          );
 
-            for (const song of loadedSongs) {
-              lastSavedRef.current.set(song.id, song);
-              try {
-                const raw = localStorage.getItem("wp-backup-" + song.id);
-                if (raw) {
-                  const bs = JSON.parse(raw) as Song;
-                  if (bs.updatedAt > song.updatedAt) {
-                    setSongs(prev => prev.map(s => s.id === song.id ? bs : s));
-                    setDirtyIds(prev => new Set(prev).add(song.id));
-                  }
-                }
-              } catch {}
-            }
-          });
+        // Phase 2: shared songs (owned by other users, visible via group_songs
+        // or shared setlist). This hits the heavier RLS path; if it times out
+        // setlist rows referencing shared songs will appear empty until reload.
+        const sharedAbort = new AbortController();
+        const sharedTimeoutId = setTimeout(() => sharedAbort.abort(), 15000);
+        void supabase
+          .from("songs")
+          .select("*, sections(*, lines(*, chords(*)))")
+          .neq("user_id", u.id)
+          .order("created_at", { ascending: false })
+          .abortSignal(sharedAbort.signal)
+          .then(
+            ({ data: songRows, error: songsError }) => {
+              clearTimeout(sharedTimeoutId);
+              if (cancelled) return;
+              if (songsError) {
+                console.error("load shared songs failed", songsError.message);
+                return;
+              }
+              const shared = (songRows ?? []).map((r) => rowToSong(r as SongRow));
+              setSongs(prev => {
+                const have = new Set(prev.map(s => s.id));
+                const newOnes = shared.filter(s => !have.has(s.id));
+                return newOnes.length === 0 ? prev : [...prev, ...newOnes];
+              });
+              restoreBackups(shared);
+            },
+            (err: unknown) => {
+              clearTimeout(sharedTimeoutId);
+              if (cancelled) return;
+              const e = err as { message?: string };
+              console.error("load shared songs aborted/failed", e?.message ?? String(err));
+              // No user-facing toast — shared songs are best-effort.
+            },
+          );
+
+        aborts.push(ownAbort, sharedAbort);
 
         void Promise.all([
           supabase.from("folders").select("id, name, type, created_at, date, group_id").order("created_at"),
@@ -364,6 +427,7 @@ export default function Home() {
 
     return () => {
       cancelled = true;
+      for (const a of aborts) a.abort();
       subscription.subscription.unsubscribe();
     };
   }, [supabase, router]);
