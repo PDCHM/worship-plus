@@ -843,3 +843,53 @@ drop policy if exists group_songs_admin_delete on public.group_songs;
 create policy group_songs_admin_delete on public.group_songs
   for delete to authenticated
   using (public.is_group_admin(group_id));
+
+-- ============================================================
+-- Song Bubbles — collaborative, threaded annotations pinned to a
+-- song. Root bubbles (parent_id null) carry a pos_x/pos_y (percent of
+-- the editor container); replies share the root via parent_id. Anyone
+-- who can_read_song may read and post; only the author may edit
+-- (resolve / reposition) or delete their own bubble.
+-- ============================================================
+
+create table if not exists public.song_bubbles (
+  id         uuid primary key default gen_random_uuid(),
+  song_id    uuid not null references public.songs(id) on delete cascade,
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  message    text not null,
+  pos_x      numeric not null default 50,
+  pos_y      numeric not null default 50,
+  resolved   boolean not null default false,
+  parent_id  uuid references public.song_bubbles(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+alter table public.song_bubbles enable row level security;
+
+drop policy if exists bubbles_group_read on public.song_bubbles;
+create policy bubbles_group_read on public.song_bubbles
+  for select to authenticated
+  using (public.can_read_song(song_id));
+
+drop policy if exists bubbles_group_insert on public.song_bubbles;
+create policy bubbles_group_insert on public.song_bubbles
+  for insert to authenticated
+  with check (public.can_read_song(song_id) and user_id = auth.uid());
+
+-- Authors can resolve/reposition their own bubbles. Not in the original
+-- spec, but the UI's resolve toggle and drag-to-save both UPDATE these
+-- rows, which RLS would otherwise reject. Scoped owner-only to match the
+-- delete policy below.
+drop policy if exists bubbles_update on public.song_bubbles;
+create policy bubbles_update on public.song_bubbles
+  for update to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+drop policy if exists bubbles_delete on public.song_bubbles;
+create policy bubbles_delete on public.song_bubbles
+  for delete to authenticated
+  using (user_id = auth.uid());
+
+create index if not exists song_bubbles_song_id_idx on public.song_bubbles(song_id);
+create index if not exists song_bubbles_parent_id_idx on public.song_bubbles(parent_id);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
@@ -43,6 +43,15 @@ const LIBRARY_VIEW_KEY = "wp-library-view-v1";
 // when opened (hydrateSong) so the library scales to 500+ songs without a
 // nested-join timeout. rowToSong maps a metadata row to a Song with sections: [].
 const SONG_META_COLUMNS = "id, user_id, title, artist, key, bpm, capo, favorite, created_at, updated_at";
+
+// Full content for one song, fetched in a SINGLE nested-embed query on open
+// (PostgREST resource embedding — one round-trip, not separate section/line/
+// chord queries). Columns are narrowed to exactly what rowToSong maps so we
+// don't over-fetch unused fields (section.type, per-row created_at, …) across
+// hundreds of nested rows — keeps the open fast, especially on mobile.
+const SONG_FULL_COLUMNS =
+  "id, user_id, title, artist, key, bpm, capo, favorite, created_at, updated_at, " +
+  "sections(id, label, position, lines(id, lyric, position, chords(id, chord_name, position_px)))";
 
 type LibraryView = "grid" | "list";
 
@@ -535,7 +544,7 @@ export default function Home() {
     setHydratingId(songId);
     const { data, error } = await supabase
       .from("songs")
-      .select("*, sections(*, lines(*, chords(*)))")
+      .select(SONG_FULL_COLUMNS)
       .eq("id", songId)
       .maybeSingle();
     if (error) {
@@ -545,7 +554,7 @@ export default function Home() {
       return;
     }
     if (data) {
-      const full = rowToSong(data as SongRow);
+      const full = rowToSong(data as unknown as SongRow);
       hydratedIdsRef.current.add(songId);
       lastSavedRef.current.set(songId, full);
       setSongs((prev) => {
@@ -878,6 +887,17 @@ export default function Home() {
 
   // ─────────────────────────────────────────────────────────────────────────
 
+  // Display names for bubble authors. group_members is the only cross-user
+  // name source (profiles RLS is self-only), plus the current user from profile.
+  const bubbleAuthors = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const gm of groupMembers) {
+      if (gm.userId && gm.displayName) m[gm.userId] = gm.displayName;
+    }
+    if (user) m[user.id] = profile?.full_name || profile?.email?.split("@")[0] || m[user.id] || "You";
+    return m;
+  }, [groupMembers, user, profile]);
+
   const activeSong = view.kind === "editor" ? songs.find((s) => s.id === view.songId) : null;
 
   const setlistContext = (() => {
@@ -973,6 +993,7 @@ export default function Home() {
               onSave={() => { const s = songs.find(x => view.kind === "editor" && x.id === (view as { kind: "editor"; songId: string }).songId); if (s) void saveSong(s); }}
               currentUserId={user.id}
               setlistContext={setlistContext}
+              bubbleAuthors={bubbleAuthors}
               sectionStyles={sectionStyles}
               onSectionStylesChange={setSectionStyles}
               onSectionStylesSave={async (next) => {
