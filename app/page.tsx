@@ -271,8 +271,10 @@ export default function Home() {
           .order("created_at", { ascending: false })
           .then(({ data: songRows, error: songsError }) => {
             if (cancelled) return;
+            console.log("[debug] songs raw response:", { rowCount: songRows?.length ?? null, error: songsError });
             if (songsError) console.error("load songs failed", songsError.message);
             const loadedSongs = (songRows ?? []).map((r) => rowToSong(r as SongRow));
+            console.log("[debug] songs mapped length:", loadedSongs.length);
             setSongs(loadedSongs);
             setSongsLoaded(true);
 
@@ -293,9 +295,22 @@ export default function Home() {
 
         void Promise.all([
           supabase.from("folders").select("id, name, type, created_at, date, group_id").order("created_at"),
-          supabase.from("folder_songs").select("id, folder_id, song_id, position").order("position"),
-        ]).then(([{ data: folderRows }, { data: folderSongRows }]) => {
+          supabase.from("folder_songs").select("id, folder_id, song_id, position").order("position", { ascending: true }),
+        ]).then(([
+          { data: folderRows, error: foldersError },
+          { data: folderSongRows, error: folderSongsError },
+        ]) => {
           if (cancelled) return;
+          console.log("[debug] folder_songs raw response:", { data: folderSongRows, error: folderSongsError });
+          console.log("[debug] folders raw response:", { data: folderRows, error: foldersError });
+          if (foldersError) {
+            console.error("load folders failed", foldersError.message, foldersError.details, foldersError.hint);
+            showToast("Folders error: " + foldersError.message);
+          }
+          if (folderSongsError) {
+            console.error("load folder_songs failed", folderSongsError.message, folderSongsError.details, folderSongsError.hint);
+            showToast("Setlist songs error: " + folderSongsError.message);
+          }
           const loadedFolders = (folderRows ?? []).map((r: { id: string; name: string; type: string | null; created_at: string; date?: string | null; group_id?: string | null }) => ({
             id: r.id,
             name: r.name,
@@ -306,12 +321,14 @@ export default function Home() {
           }));
           setFolders(loadedFolders);
 
-          const loadedFolderSongs = (folderSongRows ?? []).map((r: { id: string; folder_id: string; song_id: string; position: number }) => ({
+          const loadedFolderSongs = (folderSongRows ?? []).map((r: { id: string; folder_id: string; song_id: string; position: number | null }) => ({
             id: r.id,
             folderId: r.folder_id,
             songId: r.song_id,
             position: r.position ?? 0,
           }));
+          console.log("[debug] folder_songs mapped length:", loadedFolderSongs.length);
+          console.log("[debug] folder_songs mapped sample:", loadedFolderSongs.slice(0, 5));
           setFolderSongs(loadedFolderSongs);
         });
 
