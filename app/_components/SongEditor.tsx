@@ -591,6 +591,9 @@ export default function SongEditor({
   const prefs = sectionStyles.prefs;
   const lyricFontFamily = EDITOR_FONT_FAMILY[prefs.fontFamily];
   const showChords = settings.showChords ?? true;
+  // True until the song has its first chord anywhere — drives the
+  // "Click to add a chord" hint on the first line of a new song.
+  const songHasNoChords = song.sections.every((sec) => sec.lines.every((l) => l.chords.length === 0));
   const baseFontSize = LYRIC_FONT_SIZE_PX[prefs.lyricFontSize] + zoomOffset;
   const effectiveFontSize =
     viewMode === "split-3"
@@ -1424,6 +1427,11 @@ export default function SongEditor({
                           }}
                           title={readOnly ? undefined : "Click to add a chord"}
                         >
+                          {isFirstLine && !readOnly && songHasNoChords && (
+                            <span className="pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 text-[12px] text-slate-300 dark:text-slate-600 select-none">
+                              Click to add a chord
+                            </span>
+                          )}
                           {line.chords
                             .filter(
                               (c) =>
@@ -1548,7 +1556,7 @@ export default function SongEditor({
                             style={{ fontSize: `${effectiveFontSize}px`, fontFamily: lyricFontFamily, lineHeight }}
                           >
                             {isFirstLine && !line.lyric && !readOnly ? (
-                              <span className="text-slate-400 dark:text-slate-500">
+                              <span className="text-[13px] text-slate-300 dark:text-slate-600">
                                 Start typing your lyrics here...
                               </span>
                             ) : (
