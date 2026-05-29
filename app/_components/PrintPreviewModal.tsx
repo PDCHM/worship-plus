@@ -69,10 +69,10 @@ export default function PrintPreviewModal({
   const paperH = isLandscape ? Math.round(paperW / ratio) : Math.round(paperW * ratio);
 
   return (
-    <div className="fixed inset-0 z-50 flex bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex flex-col-reverse sm:flex-row bg-black/60 backdrop-blur-sm">
 
       {/* ── Scrollable paper preview ── */}
-      <div className="flex-1 overflow-auto bg-slate-300 dark:bg-slate-800 p-10 flex justify-center">
+      <div className="flex-1 min-h-0 overflow-auto bg-slate-300 dark:bg-slate-800 p-4 sm:p-10 flex justify-center">
         <PaperContent
           song={song}
           settings={settings}
@@ -84,7 +84,7 @@ export default function PrintPreviewModal({
       </div>
 
       {/* ── Sidebar ── */}
-      <div className="w-52 shrink-0 bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 flex flex-col">
+      <div className="w-full sm:w-52 shrink-0 max-h-[45vh] sm:max-h-none overflow-y-auto bg-white dark:bg-slate-900 border-t sm:border-t-0 sm:border-l border-slate-200 dark:border-slate-800 flex flex-col">
 
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-100 dark:border-slate-800">
