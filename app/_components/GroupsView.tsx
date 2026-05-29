@@ -13,6 +13,7 @@ export type GroupSong = { id: string; groupId: string; songId: string; };
 export type GroupsViewProps = {
   userId: string; groups: Group[]; groupMembers: GroupMember[]; groupSongs: GroupSong[]; songs: Song[]; folders: Folder[];
   onCreateGroup: (name: string) => Promise<Group | null>;
+  onUpdateGroup: (groupId: string, name: string) => Promise<void>;
   onAddMember: (groupId: string, displayName: string, role: string, instrument: string, instrumentDetail: string) => Promise<void>;
   onRemoveMember: (memberId: string) => Promise<boolean>;
   onShareSong: (groupId: string, songId: string) => Promise<void>;
@@ -165,7 +166,9 @@ function TeamListView({ memberships, onSelect, onCreateGroup, showToast }: {
             <button key={group.id} type="button" onClick={() => onSelect(group.id)}
               className="w-full flex items-center gap-3 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-300 transition-colors text-left">
               <div className="w-11 h-11 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-semibold shrink-0">
-                {group.name.charAt(0).toUpperCase()}
+                {/^[0-9]/.test(group.name.trim()) ? (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                ) : group.name.charAt(0).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-semibold truncate">{group.name}</div>
@@ -183,11 +186,35 @@ function TeamListView({ memberships, onSelect, onCreateGroup, showToast }: {
   );
 }
 
-function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, folders, onAddMember, onRemoveMember, onShareSong, onUnshareSong, onDeleteGroup, onOpenSong, onOpenSetlist, showToast }: { group: Group; onBack: () => void } & GroupsViewProps) {
+function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, folders, onUpdateGroup, onAddMember, onRemoveMember, onShareSong, onUnshareSong, onDeleteGroup, onOpenSong, onOpenSetlist, showToast }: { group: Group; onBack: () => void } & GroupsViewProps) {
   const [tab, setTab] = useState<"members"|"songs">("members");
   const [addOpen, setAddOpen] = useState(false);
   const [addSongsOpen, setAddSongsOpen] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameVal, setNameVal] = useState(group.name);
   const members = groupMembers.filter(m => m.groupId === group.id);
+  // Members from the leader's other teams, de-duplicated by display name —
+  // used to autocomplete the Add Member form.
+  const memberSuggestions = (() => {
+    const seen = new Set<string>();
+    const out: GroupMember[] = [];
+    for (const m of groupMembers) {
+      if (m.groupId === group.id) continue;
+      const name = (m.displayName ?? "").trim();
+      if (!name) continue;
+      const key = name.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(m);
+    }
+    return out;
+  })();
+  const saveName = async () => {
+    const v = nameVal.trim();
+    if (v && v !== group.name) await onUpdateGroup(group.id, v);
+    else setNameVal(group.name);
+    setEditingName(false);
+  };
   const isOwner = members.find(m => m.userId === userId)?.role === "owner";
   const handleDelete = async () => {
     if (!window.confirm(`Delete ${group.name}? This cannot be undone.`)) return;
@@ -211,7 +238,22 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
         Teams
       </button>
       <div className="flex items-start justify-between mb-6">
-        <div><h1 className="text-2xl font-bold">{group.name}</h1><p className="text-sm text-slate-500 mt-0.5">{members.length} member{members.length!==1?"s":""}</p></div>
+        <div>
+          {editingName ? (
+            <input autoFocus type="text" value={nameVal} onChange={e => setNameVal(e.target.value)} onBlur={saveName}
+              onKeyDown={e => { if (e.key==="Enter") saveName(); if (e.key==="Escape") { setNameVal(group.name); setEditingName(false); } }}
+              className="text-2xl font-bold bg-transparent border-b-2 border-indigo-400 outline-none" />
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <h1 className="text-2xl font-bold">{group.name}</h1>
+              <button type="button" onClick={() => { setNameVal(group.name); setEditingName(true); }} title="Rename team" aria-label="Rename team"
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+              </button>
+            </div>
+          )}
+          <p className="text-sm text-slate-500 mt-0.5">{members.length} member{members.length!==1?"s":""}</p>
+        </div>
         <span className="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 text-xs font-semibold mt-1">Leader</span>
       </div>
       <div className="flex gap-1 mb-4 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl w-fit">
@@ -307,7 +349,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
           </button>
         </div>
       )}
-      {addOpen && <AddMemberModal groupId={group.id} onAdd={onAddMember} onClose={() => setAddOpen(false)} showToast={showToast} />}
+      {addOpen && <AddMemberModal groupId={group.id} suggestions={memberSuggestions} onAdd={onAddMember} onClose={() => setAddOpen(false)} showToast={showToast} />}
       {addSongsOpen && <AddSongsModal songs={songs.filter(s => s.userId === userId)} alreadyShared={sharedSongIds} groupId={group.id} onShare={onShareSong} onClose={() => setAddSongsOpen(false)} showToast={showToast} />}
     </div>
   );
@@ -365,12 +407,27 @@ function TeamSetlistList({ setlists, onOpen }: { setlists: Folder[]; onOpen: (id
   );
 }
 
-function AddMemberModal({ groupId, onAdd, onClose, showToast }: { groupId: string; onAdd: GroupsViewProps["onAddMember"]; onClose: () => void; showToast: (m: string) => void; }) {
+function AddMemberModal({ groupId, suggestions, onAdd, onClose, showToast }: { groupId: string; suggestions: GroupMember[]; onAdd: GroupsViewProps["onAddMember"]; onClose: () => void; showToast: (m: string) => void; }) {
   const [name, setName] = useState("");
   const [role, setRole] = useState("member");
   const [instrument, setInstrument] = useState("guitar");
   const [detail, setDetail] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showSuggest, setShowSuggest] = useState(false);
+
+  const matches = suggestions.filter(s => {
+    const n = (s.displayName ?? "").toLowerCase();
+    if (n === name.trim().toLowerCase()) return false; // already exactly filled
+    return !name.trim() || n.includes(name.trim().toLowerCase());
+  }).slice(0, 6);
+
+  const pick = (s: GroupMember) => {
+    setName(s.displayName ?? "");
+    setInstrument(s.instrument ?? "guitar");
+    setDetail(s.instrumentDetail ?? "");
+    setRole(s.role === "owner" ? "owner" : "member");
+    setShowSuggest(false);
+  };
   const handleAdd = async () => {
     if (!name.trim()) return;
     if (instrument==="sound_team" && !detail.trim()) { showToast("Enter sound team role"); return; }
@@ -390,11 +447,28 @@ function AddMemberModal({ groupId, onAdd, onClose, showToast }: { groupId: strin
           </button>
         </div>
         <div className="p-5 space-y-4">
-          <div>
+          <div className="relative">
             <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Name</div>
-            <input autoFocus type="text" placeholder="e.g. John Tan" value={name} onChange={e => setName(e.target.value)}
+            <input autoFocus type="text" placeholder="e.g. John Tan" value={name}
+              onChange={e => { setName(e.target.value); setShowSuggest(true); }}
+              onFocus={() => setShowSuggest(true)}
+              onBlur={() => setTimeout(() => setShowSuggest(false), 150)}
               onKeyDown={e => e.key==="Enter" && handleAdd()}
               className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-indigo-400 bg-white dark:bg-slate-800" />
+            {showSuggest && matches.length > 0 && (
+              <div className="absolute left-0 right-0 top-full mt-1 z-20 max-h-52 overflow-y-auto rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl">
+                {matches.map(s => (
+                  <button key={s.id} type="button" onMouseDown={(e) => { e.preventDefault(); pick(s); }}
+                    className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2">
+                    <span className="w-7 h-7 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 text-xs font-semibold flex items-center justify-center shrink-0">{(s.displayName?.[0] ?? "?").toUpperCase()}</span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium truncate">{s.displayName}</span>
+                      {insLabel(s) && <span className="block text-xs text-slate-400 truncate">{insLabel(s)}</span>}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Role</div>

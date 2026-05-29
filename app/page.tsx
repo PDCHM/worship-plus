@@ -831,6 +831,11 @@ export default function Home() {
     setGroupMembers(p=>[...p,{id:uid(),groupId:g.id,userId:user.id,role:"owner",displayName:profile?.full_name??null,instrument:null,instrumentDetail:null,status:"joined",email:profile?.email??null}]);
     return g;
   };
+  const updateGroupName = async (groupId: string, name: string): Promise<void> => {
+    setGroups(p => p.map(g => g.id === groupId ? { ...g, name } : g));
+    const { error } = await supabase.from("groups").update({ name }).eq("id", groupId);
+    if (error) { logErr("update group name", error); showToast("Couldn't rename team: " + error.message); }
+  };
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const addGroupMember=async(groupId:string,displayName:string,role:string,instrument:string,instrumentDetail:string):Promise<void>=>{
     const{data,error}=await supabase.rpc("add_group_member",{p_group_id:groupId,p_display_name:displayName,p_role:role,p_instrument:instrument,p_instrument_detail:instrumentDetail});
@@ -1083,7 +1088,7 @@ export default function Home() {
             </div>
           )}
           {view.kind === "groups" && groupsLoaded && (
-            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={songs} folders={folders} onCreateGroup={createGroup} onAddMember={addGroupMember} onRemoveMember={removeGroupMember} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onDeleteGroup={deleteGroup} onOpenSong={openSong} onOpenSetlist={(id) => navigateTo({ kind: "folders", subview: id })} showToast={showToast}/>
+            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={songs} folders={folders} onCreateGroup={createGroup} onUpdateGroup={updateGroupName} onAddMember={addGroupMember} onRemoveMember={removeGroupMember} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onDeleteGroup={deleteGroup} onOpenSong={openSong} onOpenSetlist={(id) => navigateTo({ kind: "folders", subview: id })} showToast={showToast}/>
           )}
         </main>
       </div>
