@@ -893,3 +893,44 @@ create policy bubbles_delete on public.song_bubbles
 
 create index if not exists song_bubbles_song_id_idx on public.song_bubbles(song_id);
 create index if not exists song_bubbles_parent_id_idx on public.song_bubbles(parent_id);
+
+-- ============================================================
+-- get_song_content: returns a song's full content (sections → lines →
+-- chords) as one JSON blob in a single round trip. SECURITY DEFINER so
+-- the nested reads run once past a single can_read_song() gate, instead
+-- of PostgREST re-evaluating per-row RLS on every section/line/chord —
+-- much faster to open large or shared songs. Read-only (stable).
+-- ============================================================
+create or replace function public.get_song_content(p_song uuid)
+returns jsonb language plpgsql security definer stable set search_path = public
+as $$
+begin
+  if not public.can_read_song(p_song) then
+    raise exception 'access denied';
+  end if;
+  return (
+    select jsonb_build_object(
+      'sections', coalesce((
+        select jsonb_agg(
+          jsonb_build_object(
+            'id', sec.id, 'label', sec.label, 'type', sec.type, 'position', sec.position,
+            'lines', coalesce((
+              select jsonb_agg(
+                jsonb_build_object(
+                  'id', ln.id, 'lyric', ln.lyric, 'position', ln.position,
+                  'chords', coalesce((
+                    select jsonb_agg(jsonb_build_object('id', ch.id, 'chord_name', ch.chord_name, 'position_px', ch.position_px) order by ch.position_px)
+                    from public.chords ch where ch.line_id = ln.id
+                  ), '[]'::jsonb)
+                ) order by ln.position
+              ) from public.lines ln where ln.section_id = sec.id
+            ), '[]'::jsonb)
+          ) order by sec.position
+        ) from public.sections sec where sec.song_id = p_song
+      ), '[]'::jsonb)
+    )
+  );
+end;
+$$;
+revoke all on function public.get_song_content(uuid) from public;
+grant execute on function public.get_song_content(uuid) to authenticated;

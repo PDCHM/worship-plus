@@ -542,20 +542,18 @@ export default function Home() {
       return;
     }
     setHydratingId(songId);
-    // Single nested query — sections + their lines + their chords in one round
-    // trip (PostgREST resource embedding), not three separate fetches.
-    const { data, error } = await supabase
-      .from("sections")
-      .select("*, lines(*, chords(*))")
-      .eq("song_id", songId)
-      .order("position");
+    // SECURITY DEFINER RPC builds the full sections → lines → chords tree in
+    // one round trip, past a single can_read_song() gate — avoids PostgREST
+    // re-evaluating per-row RLS on every section/line/chord.
+    const { data, error } = await supabase.rpc("get_song_content", { p_song: songId });
     if (error) {
       console.error("hydrate song failed", error.message);
       showToast("Could not load song: " + error.message);
       setHydratingId((cur) => (cur === songId ? null : cur));
       return;
     }
-    const sections = sectionRowsToSections((data ?? []) as unknown as SectionRow[]);
+    const content = (data as unknown as { sections?: SectionRow[] } | null) ?? {};
+    const sections = sectionRowsToSections(content.sections ?? []);
     hydratedIdsRef.current.add(songId);
     // Merge content into the metadata entry already in the list; keep any
     // locally-toggled metadata (e.g. favorite) untouched.
