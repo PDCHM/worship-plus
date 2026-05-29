@@ -556,6 +556,8 @@ export default function SongEditor({
   } | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("standard");
   const [charWidth, setCharWidth] = useState(9.6);
+  const [colWidth, setColWidth] = useState(0);
+  const sectionsRef = useRef<HTMLDivElement>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [keyPickerOpen, setKeyPickerOpen] = useState(false);
   const [capoPickerOpen, setCapoPickerOpen] = useState(false);
@@ -592,6 +594,7 @@ export default function SongEditor({
   const colors = isDark ? settings.sectionColorsDark : settings.sectionColorsLight;
   const readOnly = isTouchDevice && !editMode;
   const columnView = viewMode !== "standard";
+  const numCols = viewMode === "split-2" ? 2 : viewMode === "split-3" ? 3 : 1;
   const prefs = sectionStyles.prefs;
   const lyricFontFamily = EDITOR_FONT_FAMILY[prefs.fontFamily];
   const showChords = settings.showChords ?? true;
@@ -613,6 +616,14 @@ export default function SongEditor({
         const w = rulerRef.current.getBoundingClientRect().width;
         if (w > 0) setCharWidth(w / 10);
       }
+      // Width of one column so chord offsets can be expressed as a percentage
+      // of the actual column, keeping them on-screen in 2-/3-column views.
+      if (sectionsRef.current) {
+        const gapPx = numCols === 3 ? 24 : 32;
+        const total = sectionsRef.current.clientWidth;
+        const col = numCols > 1 ? (total - gapPx * (numCols - 1)) / numCols : total;
+        if (col > 0) setColWidth(col);
+      }
     };
     measure();
     if ("fonts" in document) {
@@ -620,7 +631,7 @@ export default function SongEditor({
     }
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
-  }, [lyricCeiling]);
+  }, [lyricCeiling, numCols]);
 
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -961,7 +972,6 @@ export default function SongEditor({
     setEditingSection(newId);
   };
 
-  const numCols = viewMode === "split-2" ? 2 : viewMode === "split-3" ? 3 : 1;
   const colGap = numCols === 3 ? "1.5rem" : "2rem";
   const sectionsContainerStyle: React.CSSProperties = columnView
     ? {
@@ -1294,6 +1304,7 @@ export default function SongEditor({
 
       <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-4 sm:p-6 md:p-8 overflow-x-auto print:border-0 print:shadow-none print:p-0">
         <div
+          ref={sectionsRef}
           data-bubble-skip
           className={columnView ? "" : "space-y-8 min-w-fit"}
           style={sectionsContainerStyle}
@@ -1454,7 +1465,12 @@ export default function SongEditor({
                             .map((ch) => (
                             <div
                               key={ch.id}
-                              style={{ left: ch.pos * charWidth, top: 0 }}
+                              style={{
+                                left: columnView && colWidth > 0
+                                  ? `${Math.min(100, (ch.pos * charWidth / colWidth) * 100)}%`
+                                  : ch.pos * charWidth,
+                                top: 0,
+                              }}
                               className="absolute"
                             >
                               {editingChord === ch.id && !readOnly ? (
