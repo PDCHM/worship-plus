@@ -427,7 +427,7 @@ export default function Home() {
             folderId: r.folder_id,
             label: r.label,
             eventDate: r.event_date,
-            eventType: (r.event_type === "service" ? "service" : "rehearsal") as "rehearsal" | "service",
+            eventType: (r.event_type === "rehearsal" ? "rehearsal" : "event") as "rehearsal" | "event",
           })));
         });
 
@@ -802,7 +802,7 @@ export default function Home() {
     if (error) logErr("update folder date", error);
   };
 
-  const addSetlistEvent = async (folderId: string, ev: { label: string; eventDate: string; eventType: "rehearsal" | "service" }): Promise<void> => {
+  const addSetlistEvent = async (folderId: string, ev: { label: string; eventDate: string; eventType: "rehearsal" | "event" }): Promise<void> => {
     const { data, error } = await supabase
       .from("setlist_events")
       .insert({ folder_id: folderId, label: ev.label, event_date: ev.eventDate, event_type: ev.eventType })
@@ -812,7 +812,7 @@ export default function Home() {
     const r = data as { id: string; folder_id: string; label: string; event_date: string; event_type: string };
     setSetlistEvents((prev) => [...prev, {
       id: r.id, folderId: r.folder_id, label: r.label, eventDate: r.event_date,
-      eventType: (r.event_type === "service" ? "service" : "rehearsal") as "rehearsal" | "service",
+      eventType: (r.event_type === "rehearsal" ? "rehearsal" : "event") as "rehearsal" | "event",
     }]);
   };
 

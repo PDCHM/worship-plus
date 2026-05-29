@@ -26,7 +26,7 @@ export type SetlistEvent = {
   folderId: string;
   label: string;
   eventDate: string; // ISO timestamp
-  eventType: "rehearsal" | "service";
+  eventType: "rehearsal" | "event";
 };
 
 export type TeamOption = { id: string; name: string };
@@ -47,7 +47,7 @@ export type FoldersViewProps = {
   onOpenSong: (id: string, opts?: { setlistId?: string }) => void;
   onUpdateDate: (id: string, date: string | null) => Promise<void>;
   setlistEvents: SetlistEvent[];
-  onAddEvent: (folderId: string, ev: { label: string; eventDate: string; eventType: "rehearsal" | "service" }) => Promise<void>;
+  onAddEvent: (folderId: string, ev: { label: string; eventDate: string; eventType: "rehearsal" | "event" }) => Promise<void>;
   onDeleteEvent: (id: string) => void;
   showToast: (msg: string) => void;
 };
@@ -382,7 +382,7 @@ function SetlistDetail({
   setlistEvents, onAddEvent, onDeleteEvent, showToast,
 }: { folder: Folder; currentSongs: Song[] } & FoldersViewProps) {
   const [addOpen, setAddOpen] = useState(false);
-  const [eventModal, setEventModal] = useState<{ type: "rehearsal" | "service" } | null>(null);
+  const [eventModal, setEventModal] = useState<{ type: "rehearsal" | "event" } | null>(null);
 
   const events = setlistEvents
     .filter((e) => e.folderId === folder.id)
@@ -623,7 +623,7 @@ function SetlistDetail({
       <div className="mt-8">
         <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3">Schedule</h3>
         {events.length === 0 ? (
-          <p className="text-xs text-slate-400 dark:text-slate-500 mb-3">No rehearsals or services scheduled yet.</p>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mb-3">No rehearsals or events scheduled yet.</p>
         ) : (
           <div className="rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 mb-3">
             {events.map((ev) => (
@@ -640,11 +640,11 @@ function SetlistDetail({
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => setEventModal({ type: "rehearsal" })}
             className="h-8 px-3 rounded-lg text-xs font-medium bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/50 flex items-center gap-1.5 transition-colors">
-            <span className="w-2 h-2 rounded-full bg-violet-500" /> Add rehearsal
+            <span className="w-2 h-2 rounded-full bg-violet-500" /> Rehearsal +
           </button>
-          <button type="button" onClick={() => setEventModal({ type: "service" })}
+          <button type="button" onClick={() => setEventModal({ type: "event" })}
             className="h-8 px-3 rounded-lg text-xs font-medium bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 flex items-center gap-1.5 transition-colors">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" /> Add service
+            <span className="w-2 h-2 rounded-full bg-emerald-500" /> Event +
           </button>
         </div>
       </div>
@@ -661,7 +661,7 @@ function SetlistDetail({
       {eventModal && (
         <AddEventModal
           type={eventModal.type}
-          defaultLabel={eventModal.type === "rehearsal" ? `Rehearsal ${rehearsalCount + 1}` : "Service"}
+          defaultLabel={eventModal.type === "rehearsal" ? `Rehearsal ${rehearsalCount + 1}` : "Event"}
           defaultDate={folder.date ?? ""}
           onSave={async (label, eventDate, eventType) => { await onAddEvent(folder.id, { label, eventDate, eventType }); showToast("Event added"); }}
           onClose={() => setEventModal(null)}
@@ -690,7 +690,7 @@ function EventRow({ ev, setlistName, songs, onDelete }: {
       <span className={"shrink-0 px-1.5 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wide " + (isRehearsal
         ? "bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-300"
         : "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-300")}>
-        {isRehearsal ? "Rehearsal" : "Service"}
+        {isRehearsal ? "Rehearsal" : "Event"}
       </span>
       <button type="button"
         onClick={() => window.open(googleCalendarUrl(ev, setlistName, songs), "_blank", "noopener,noreferrer")}
@@ -709,16 +709,16 @@ function EventRow({ ev, setlistName, songs, onDelete }: {
 /* ─── AddEventModal ───────────────────────────────────────────────────────── */
 
 function AddEventModal({ type, defaultLabel, defaultDate, onSave, onClose }: {
-  type: "rehearsal" | "service";
+  type: "rehearsal" | "event";
   defaultLabel: string;
   defaultDate: string;
-  onSave: (label: string, eventDate: string, eventType: "rehearsal" | "service") => Promise<void>;
+  onSave: (label: string, eventDate: string, eventType: "rehearsal" | "event") => Promise<void>;
   onClose: () => void;
 }) {
   const [label, setLabel] = useState(defaultLabel);
-  const [eventType, setEventType] = useState<"rehearsal" | "service">(type);
+  const [eventType, setEventType] = useState<"rehearsal" | "event">(type);
   const [date, setDate] = useState(defaultDate);
-  const [time, setTime] = useState(type === "service" ? "10:00" : "19:00");
+  const [time, setTime] = useState(type === "event" ? "10:00" : "19:00");
   const [saving, setSaving] = useState(false);
 
   const save = async () => {
@@ -745,9 +745,9 @@ function AddEventModal({ type, defaultLabel, defaultDate, onSave, onClose }: {
               className={"h-9 rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 border transition-colors " + (eventType === "rehearsal" ? "border-violet-400 bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400")}>
               <span className="w-2 h-2 rounded-full bg-violet-500" /> Rehearsal
             </button>
-            <button type="button" onClick={() => setEventType("service")}
-              className={"h-9 rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 border transition-colors " + (eventType === "service" ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400")}>
-              <span className="w-2 h-2 rounded-full bg-emerald-500" /> Service
+            <button type="button" onClick={() => setEventType("event")}
+              className={"h-9 rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 border transition-colors " + (eventType === "event" ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400")}>
+              <span className="w-2 h-2 rounded-full bg-emerald-500" /> Event
             </button>
           </div>
           <label className="block">

@@ -952,9 +952,15 @@ create table if not exists public.setlist_events (
   folder_id uuid not null references public.folders(id) on delete cascade,
   label text not null,
   event_date timestamptz not null,
-  event_type text not null default 'rehearsal' check (event_type in ('rehearsal', 'service')),
+  event_type text not null default 'rehearsal' check (event_type in ('rehearsal', 'service', 'event')),
   created_at timestamptz not null default now()
 );
+
+-- Widen the type check to allow 'event' (the renamed 'service') without
+-- breaking any existing 'service' rows. Idempotent for existing databases.
+alter table public.setlist_events drop constraint if exists setlist_events_event_type_check;
+alter table public.setlist_events add constraint setlist_events_event_type_check
+  check (event_type in ('rehearsal', 'service', 'event'));
 
 alter table public.setlist_events enable row level security;
 
