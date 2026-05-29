@@ -982,7 +982,7 @@ export default function SongEditor({
       }
     : {};
   const sectionInColumnStyle: React.CSSProperties = columnView
-    ? { minWidth: 0, wordBreak: "break-word" }
+    ? { minWidth: 0, overflow: "hidden", paddingRight: "0.6rem", wordBreak: "normal", overflowWrap: "break-word" }
     : {};
 
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -1522,6 +1522,11 @@ export default function SongEditor({
                                     touchAction: readOnly ? "auto" : "none",
                                     fontSize: chordFontSize,
                                     color: chordColor,
+                                    // Force text (not emoji) presentation so chord
+                                    // names like "B" or "#"-containing names never
+                                    // render as a small icon/box on some devices.
+                                    fontVariantEmoji: "text",
+                                    fontFamily: "var(--font-geist-mono), ui-monospace, 'SF Mono', Menlo, Consolas, monospace",
                                   }}
                                 >
                                   {ch.chord}
@@ -1567,7 +1572,7 @@ export default function SongEditor({
                                 ? "cursor-default"
                                 : "cursor-text hover:bg-slate-50 dark:hover:bg-slate-800/40"
                             }`}
-                            style={{ fontSize: lyricFontSize, fontFamily: lyricFontFamily, lineHeight, whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "break-word" }}
+                            style={{ fontSize: lyricFontSize, fontFamily: lyricFontFamily, lineHeight, whiteSpace: "pre-wrap", wordBreak: "normal", overflowWrap: "break-word" }}
                           >
                             {isFirstLine && !line.lyric && !readOnly ? (
                               <span className="text-[13px] text-slate-300 dark:text-slate-600">
