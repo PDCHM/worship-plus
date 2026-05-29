@@ -9,7 +9,8 @@ import {
 } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-export type SongBubblesHandle = { startAdd: () => void };
+// Imperative handle: the editor calls createAt() on a background double-click.
+export type SongBubblesHandle = { createAt: (xPct: number, yPct: number) => void };
 
 type BubbleRow = {
   id: string;
@@ -30,21 +31,23 @@ type Props = {
   showToast: (msg: string) => void;
 };
 
-// Static class strings so Tailwind keeps them — author colour cycles
-// amber → purple → teal → blue → rose by a hash of the user id.
-const AUTHOR_COLORS = [
-  { card: "bg-amber-50 dark:bg-amber-950/50 border-amber-300 dark:border-amber-700/70", accent: "text-amber-700 dark:text-amber-300", dot: "bg-amber-400" },
-  { card: "bg-purple-50 dark:bg-purple-950/50 border-purple-300 dark:border-purple-700/70", accent: "text-purple-700 dark:text-purple-300", dot: "bg-purple-400" },
-  { card: "bg-teal-50 dark:bg-teal-950/50 border-teal-300 dark:border-teal-700/70", accent: "text-teal-700 dark:text-teal-300", dot: "bg-teal-400" },
-  { card: "bg-blue-50 dark:bg-blue-950/50 border-blue-300 dark:border-blue-700/70", accent: "text-blue-700 dark:text-blue-300", dot: "bg-blue-400" },
-  { card: "bg-rose-50 dark:bg-rose-950/50 border-rose-300 dark:border-rose-700/70", accent: "text-rose-700 dark:text-rose-300", dot: "bg-rose-400" },
+// Sticky-note tints, cycled per author by a hash of the user id.
+const TINTS = [
+  { card: "bg-amber-100 dark:bg-amber-200/15", accent: "text-amber-800 dark:text-amber-200", body: "text-amber-950 dark:text-amber-50" },
+  { card: "bg-violet-100 dark:bg-violet-200/15", accent: "text-violet-800 dark:text-violet-200", body: "text-violet-950 dark:text-violet-50" },
+  { card: "bg-emerald-100 dark:bg-emerald-200/15", accent: "text-emerald-800 dark:text-emerald-200", body: "text-emerald-950 dark:text-emerald-50" },
+  { card: "bg-rose-100 dark:bg-rose-200/15", accent: "text-rose-800 dark:text-rose-200", body: "text-rose-950 dark:text-rose-50" },
+  { card: "bg-sky-100 dark:bg-sky-200/15", accent: "text-sky-800 dark:text-sky-200", body: "text-sky-950 dark:text-sky-50" },
 ];
 
-function colorFor(userId: string) {
+function hashStr(s: string): number {
   let h = 0;
-  for (let i = 0; i < userId.length; i++) h = (Math.imul(h, 31) + userId.charCodeAt(i)) >>> 0;
-  return AUTHOR_COLORS[h % AUTHOR_COLORS.length];
+  for (let i = 0; i < s.length; i++) h = (Math.imul(h, 31) + s.charCodeAt(i)) >>> 0;
+  return h;
 }
+const tintFor = (userId: string) => TINTS[hashStr(userId) % TINTS.length];
+// Slight, stable rotation (-2,-1,1,2 degrees) for the paper-note feel.
+const rotationFor = (id: string) => [-2, -1, 1, 2][hashStr(id) % 4];
 
 function shortTime(iso: string): string {
   const t = new Date(iso).getTime();
@@ -68,11 +71,11 @@ const SongBubbles = forwardRef<SongBubblesHandle, Props>(function SongBubbles(
 
   const [bubbles, setBubbles] = useState<BubbleRow[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [composing, setComposing] = useState<{ x: number; y: number; text: string } | null>(null);
+  const [draft, setDraft] = useState<{ x: number; y: number; text: string } | null>(null);
   const [replyText, setReplyText] = useState("");
   const [drag, setDrag] = useState<{ id: string; x: number; y: number } | null>(null);
+  const draftSavingRef = useRef(false);
 
-  // Load all bubbles for this song on open.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -89,28 +92,44 @@ const SongBubbles = forwardRef<SongBubblesHandle, Props>(function SongBubbles(
   }, [songId, supabase]);
 
   useImperativeHandle(ref, () => ({
-    startAdd: () => { setComposing({ x: 50, y: 50, text: "" }); },
+    createAt: (xPct: number, yPct: number) => {
+      setExpandedId(null);
+      setDraft({ x: clamp(xPct), y: clamp(yPct), text: "" });
+    },
   }), []);
+
+  // Close an open thread when clicking outside any note.
+  useEffect(() => {
+    if (!expandedId) return;
+    const onDown = (e: MouseEvent) => {
+      const el = e.target as HTMLElement;
+      if (el.closest(`[data-song-bubble="${expandedId}"]`)) return;
+      setExpandedId(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [expandedId]);
 
   const roots = bubbles.filter((b) => !b.parent_id);
   const repliesOf = (id: string) =>
     bubbles.filter((b) => b.parent_id === id).sort((a, b) => a.created_at.localeCompare(b.created_at));
 
-  const openThread = (id: string | null) => { setReplyText(""); setExpandedId(id); };
-
-  const submitNew = async () => {
-    if (!composing) return;
-    const message = composing.text.trim();
-    if (!message) { setComposing(null); return; }
+  // Save the in-progress draft note (on blur / click-outside). Empty = discard.
+  const saveDraft = async () => {
+    if (!draft || draftSavingRef.current) return;
+    const message = draft.text.trim();
+    const pos = { x: draft.x, y: draft.y };
+    if (!message) { setDraft(null); return; }
+    draftSavingRef.current = true;
     const { data, error } = await supabase
       .from("song_bubbles")
-      .insert({ song_id: songId, user_id: currentUserId, message, pos_x: composing.x, pos_y: composing.y, parent_id: null })
+      .insert({ song_id: songId, user_id: currentUserId, message, pos_x: pos.x, pos_y: pos.y, parent_id: null })
       .select()
       .single();
-    if (error) { showToast("Couldn't add bubble: " + error.message); return; }
+    draftSavingRef.current = false;
+    if (error) { showToast("Couldn't add note: " + error.message); return; }
     setBubbles((prev) => [...prev, data as BubbleRow]);
-    setComposing(null);
-    openThread((data as BubbleRow).id);
+    setDraft(null);
   };
 
   const submitReply = async (root: BubbleRow) => {
@@ -129,7 +148,6 @@ const SongBubbles = forwardRef<SongBubblesHandle, Props>(function SongBubbles(
   const toggleResolve = async (b: BubbleRow) => {
     const next = !b.resolved;
     setBubbles((prev) => prev.map((x) => (x.id === b.id ? { ...x, resolved: next } : x)));
-    if (next) setExpandedId((cur) => (cur === b.id ? null : cur));
     const { error } = await supabase.from("song_bubbles").update({ resolved: next }).eq("id", b.id);
     if (error) {
       showToast("Couldn't update: " + error.message);
@@ -146,180 +164,144 @@ const SongBubbles = forwardRef<SongBubblesHandle, Props>(function SongBubbles(
     if (error) { showToast("Couldn't delete: " + error.message); setBubbles(snapshot); }
   };
 
-  const startDrag = (e: React.PointerEvent, b: BubbleRow) => {
-    if (b.user_id !== currentUserId) return;
+  // Pointer-down on a note: drag if it moves (owner only), else treat as a
+  // click that toggles the reply thread.
+  const onNotePointerDown = (e: React.PointerEvent, b: BubbleRow) => {
     if (e.button !== undefined && e.button !== 0) return;
+    const target = e.target as HTMLElement;
+    if (target.closest("button, textarea, input")) return; // controls handle themselves
     const overlay = overlayRef.current;
-    if (!overlay) return;
-    e.preventDefault();
-    const rect = overlay.getBoundingClientRect();
-    const toPct = (ev: PointerEvent) => ({
-      x: clamp(((ev.clientX - rect.left) / rect.width) * 100),
-      y: clamp(((ev.clientY - rect.top) / rect.height) * 100),
-    });
-    const move = (ev: PointerEvent) => setDrag({ id: b.id, ...toPct(ev) });
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const isOwner = b.user_id === currentUserId;
+    let moved = false;
+
+    const toPct = (ev: PointerEvent) => {
+      const rect = overlay!.getBoundingClientRect();
+      return { x: clamp(((ev.clientX - rect.left) / rect.width) * 100), y: clamp(((ev.clientY - rect.top) / rect.height) * 100) };
+    };
+    const move = (ev: PointerEvent) => {
+      if (!moved && Math.abs(ev.clientX - startX) < 5 && Math.abs(ev.clientY - startY) < 5) return;
+      moved = true;
+      if (!isOwner || !overlay) return;
+      ev.preventDefault();
+      setDrag({ id: b.id, ...toPct(ev) });
+    };
     const up = async (ev: PointerEvent) => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      if (!moved) {
+        setExpandedId((cur) => (cur === b.id ? null : b.id));
+        setReplyText("");
+        return;
+      }
+      if (!isOwner || !overlay) { setDrag(null); return; }
       const { x, y } = toPct(ev);
       setDrag(null);
       setBubbles((prev) => prev.map((p) => (p.id === b.id ? { ...p, pos_x: x, pos_y: y } : p)));
       const { error } = await supabase.from("song_bubbles").update({ pos_x: x, pos_y: y }).eq("id", b.id);
-      if (error) showToast("Couldn't move bubble: " + error.message);
+      if (error) showToast("Couldn't move note: " + error.message);
     };
-    window.addEventListener("pointermove", move);
+    window.addEventListener("pointermove", move, { passive: false });
     window.addEventListener("pointerup", up);
   };
+
+  const draftTint = tintFor(currentUserId);
 
   return (
     <div ref={overlayRef} className="absolute inset-0 z-20 pointer-events-none print:hidden">
       {roots.map((b) => {
         const pos = drag?.id === b.id ? { x: drag.x, y: drag.y } : { x: b.pos_x, y: b.pos_y };
-        const color = colorFor(b.user_id);
+        const tint = tintFor(b.user_id);
         const isOwner = b.user_id === currentUserId;
         const replies = repliesOf(b.id);
         const expanded = expandedId === b.id;
         const name = authorNames[b.user_id] || "Someone";
-        const style = { left: `${pos.x}%`, top: `${pos.y}%` } as const;
-
-        if (b.resolved && !expanded) {
-          return (
-            <button
-              key={b.id}
-              type="button"
-              style={style}
-              onClick={() => openThread(b.id)}
-              title={`Resolved · ${name}`}
-              aria-label={`Resolved comment by ${name}`}
-              className="absolute pointer-events-auto w-5 h-5 rounded-full bg-slate-300 dark:bg-slate-600 border-2 border-white dark:border-slate-900 shadow hover:scale-110 transition-transform"
-            />
-          );
-        }
 
         return (
           <div
             key={b.id}
-            style={style}
-            className={"absolute pointer-events-auto w-60 max-w-[75vw] rounded-2xl border shadow-lg " + color.card}
+            data-song-bubble={b.id}
+            onPointerDown={(e) => onNotePointerDown(e, b)}
+            style={{ left: `${pos.x}%`, top: `${pos.y}%`, transform: `rotate(${rotationFor(b.id)}deg)`, opacity: b.resolved ? 0.3 : 1 }}
+            className={`group/note absolute pointer-events-auto w-44 max-w-[70vw] rounded-md p-2.5 shadow-lg shadow-black/15 select-none ${tint.card} ${drag?.id === b.id ? "cursor-grabbing" : isOwner ? "cursor-grab" : "cursor-pointer"} transition-shadow`}
           >
-            <div
-              onPointerDown={isOwner ? (e) => startDrag(e, b) : undefined}
-              className={"flex items-center gap-2 px-3 pt-2.5 pb-1 select-none " + (isOwner ? "cursor-grab active:cursor-grabbing touch-none" : "")}
-            >
-              <span className={"w-2 h-2 rounded-full shrink-0 " + color.dot} />
-              <span className={"text-xs font-semibold truncate " + color.accent}>{name}</span>
-              <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-auto shrink-0">{shortTime(b.created_at)}</span>
-              {isOwner && (
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className={`text-[11px] font-semibold truncate ${tint.accent}`}>{name}</span>
+              <span className="text-[10px] text-black/40 dark:text-white/40 ml-auto shrink-0">{shortTime(b.created_at)}</span>
+            </div>
+            <div className={`text-[13px] leading-snug whitespace-pre-wrap break-words ${tint.body}`}>{b.message}</div>
+
+            {replies.length > 0 && !expanded && (
+              <div className="mt-1 text-[10px] font-medium text-black/45 dark:text-white/45">
+                {replies.length} {replies.length === 1 ? "reply" : "replies"}
+              </div>
+            )}
+
+            {/* Owner controls — resolve (✓) and delete (×), revealed on hover. */}
+            {isOwner && (
+              <div className="absolute -top-2 -right-2 flex items-center gap-1 opacity-0 group-hover/note:opacity-100 transition-opacity">
                 <button
                   type="button"
-                  onClick={() => toggleResolve(b)}
+                  onClick={(e) => { e.stopPropagation(); void toggleResolve(b); }}
                   title={b.resolved ? "Reopen" : "Resolve"}
                   aria-label={b.resolved ? "Reopen" : "Resolve"}
-                  className="shrink-0 w-5 h-5 -mr-1 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-black/5 dark:hover:bg-white/10"
+                  className="w-5 h-5 rounded-full bg-white dark:bg-slate-800 shadow flex items-center justify-center text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50"
                 >
-                  {b.resolved ? (
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 1 0 9-9"/><polyline points="3 4 3 9 8 9"/></svg>
-                  ) : (
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                  )}
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                 </button>
-              )}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => openThread(expanded ? null : b.id)}
-              className="block w-full text-left px-3 pb-1.5 text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap break-words"
-            >
-              {b.message}
-            </button>
-
-            <div className="px-3 pb-2 flex items-center justify-between gap-2">
-              <button
-                type="button"
-                onClick={() => openThread(expanded ? null : b.id)}
-                className="text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-              >
-                {replies.length > 0
-                  ? `${replies.length} ${replies.length === 1 ? "reply" : "replies"}`
-                  : "Reply"}
-              </button>
-              {isOwner && (
                 <button
                   type="button"
-                  onClick={() => removeBubble(b)}
+                  onClick={(e) => { e.stopPropagation(); void removeBubble(b); }}
                   title="Delete"
-                  aria-label="Delete bubble"
-                  className="text-slate-400 hover:text-rose-500"
+                  aria-label="Delete note"
+                  className="w-5 h-5 rounded-full bg-white dark:bg-slate-800 shadow flex items-center justify-center text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50"
                 >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
-              )}
-            </div>
+              </div>
+            )}
 
             {expanded && (
-              <div className="border-t border-black/5 dark:border-white/10 px-3 py-2 space-y-2 max-h-52 overflow-y-auto">
+              <div className="mt-2 pt-2 border-t border-black/10 dark:border-white/10 space-y-1.5 max-h-44 overflow-y-auto">
                 {replies.map((r) => {
-                  const rc = colorFor(r.user_id);
                   const rn = authorNames[r.user_id] || "Someone";
                   return (
-                    <div key={r.id} className="text-xs">
-                      <div className="flex items-center gap-1.5">
-                        <span className={"w-1.5 h-1.5 rounded-full shrink-0 " + rc.dot} />
-                        <span className={"font-semibold truncate " + rc.accent}>{rn}</span>
-                        <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-auto shrink-0">{shortTime(r.created_at)}</span>
-                      </div>
-                      <div className="text-slate-600 dark:text-slate-300 pl-3 whitespace-pre-wrap break-words">{r.message}</div>
+                    <div key={r.id} className="text-[12px]">
+                      <span className={`font-semibold ${tintFor(r.user_id).accent}`}>{rn}: </span>
+                      <span className="text-black/70 dark:text-white/70 whitespace-pre-wrap break-words">{r.message}</span>
                     </div>
                   );
                 })}
-                <div className="flex items-center gap-1.5 pt-0.5">
-                  <input
-                    value={replyText}
-                    onChange={(e) => setReplyText(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void submitReply(b); } }}
-                    placeholder="Reply…"
-                    className="flex-1 min-w-0 text-xs bg-white/70 dark:bg-slate-900/70 border border-black/10 dark:border-white/10 rounded-lg px-2 py-1 outline-none focus:border-indigo-400"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void submitReply(b)}
-                    aria-label="Send reply"
-                    className="shrink-0 w-7 h-7 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center"
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                  </button>
-                </div>
+                <input
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void submitReply(b); } }}
+                  placeholder="Reply…"
+                  className="w-full text-[12px] bg-white/70 dark:bg-black/20 rounded px-2 py-1 outline-none placeholder:text-black/40 dark:placeholder:text-white/40"
+                />
               </div>
             )}
           </div>
         );
       })}
 
-      {composing && (
+      {draft && (
         <div
-          style={{ left: `${composing.x}%`, top: `${composing.y}%` }}
-          className="absolute pointer-events-auto w-60 max-w-[75vw] rounded-2xl border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-slate-900 shadow-xl p-3"
+          data-song-bubble="draft"
+          style={{ left: `${draft.x}%`, top: `${draft.y}%`, transform: "rotate(-1deg)" }}
+          className={`absolute pointer-events-auto w-44 max-w-[70vw] rounded-md p-2.5 shadow-lg shadow-black/15 ${draftTint.card}`}
         >
-          <div className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5 flex items-center gap-1.5">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-            New bubble
-          </div>
           <textarea
             autoFocus
-            value={composing.text}
-            onChange={(e) => setComposing((c) => (c ? { ...c, text: e.target.value } : c))}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void submitNew(); }
-              else if (e.key === "Escape") setComposing(null);
-            }}
-            placeholder="Add a note for the team…"
-            className="w-full h-16 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1.5 outline-none focus:border-indigo-400 resize-none"
+            value={draft.text}
+            onChange={(e) => setDraft((d) => (d ? { ...d, text: e.target.value } : d))}
+            onBlur={() => void saveDraft()}
+            onKeyDown={(e) => { if (e.key === "Escape") setDraft(null); }}
+            placeholder="Type a note…"
+            className={`w-full h-16 text-[13px] leading-snug bg-transparent outline-none resize-none placeholder:text-black/40 dark:placeholder:text-white/40 ${draftTint.body}`}
           />
-          <div className="flex justify-end gap-1.5 mt-1.5">
-            <button type="button" onClick={() => setComposing(null)} className="h-7 px-2.5 rounded-lg text-xs font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700">Cancel</button>
-            <button type="button" onClick={() => void submitNew()} className="h-7 px-3 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white">Add</button>
-          </div>
         </div>
       )}
     </div>
