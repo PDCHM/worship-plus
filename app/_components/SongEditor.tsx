@@ -619,7 +619,7 @@ export default function SongEditor({
       // Width of one column so chord offsets can be expressed as a percentage
       // of the actual column, keeping them on-screen in 2-/3-column views.
       if (sectionsRef.current) {
-        const gapPx = numCols === 3 ? 24 : 32;
+        const gapPx = numCols === 3 ? 16 : 20;
         const total = sectionsRef.current.clientWidth;
         const col = numCols > 1 ? (total - gapPx * (numCols - 1)) / numCols : total;
         if (col > 0) setColWidth(col);
@@ -972,7 +972,7 @@ export default function SongEditor({
     setEditingSection(newId);
   };
 
-  const colGap = numCols === 3 ? "1.5rem" : "2rem";
+  const colGap = numCols === 3 ? "1rem" : "1.25rem";
   const sectionsContainerStyle: React.CSSProperties = columnView
     ? {
         display: "grid",
@@ -1355,7 +1355,7 @@ export default function SongEditor({
                   )}
 
                   {!readOnly && (
-                    <div className="flex items-center gap-0.5 ml-1 print:hidden">
+                    <div className={"items-center gap-0.5 ml-1 print:hidden " + (columnView ? "hidden sm:flex" : "flex")}>
                       <ToolBtn
                         onClick={() => moveSection(section.id, -1)}
                         disabled={sIdx === 0}
@@ -1452,7 +1452,7 @@ export default function SongEditor({
                               key={ch.id}
                               style={{
                                 left: columnView && colWidth > 0
-                                  ? `${(ch.pos * charWidth / colWidth) * 100}%`
+                                  ? `${Math.min(88, (ch.pos * charWidth / colWidth) * 100)}%`
                                   : ch.pos * charWidth,
                                 top: 0,
                               }}
