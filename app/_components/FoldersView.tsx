@@ -547,6 +547,37 @@ function SetlistDetail({
           className="text-sm text-slate-600 dark:text-slate-300 bg-transparent border-none outline-none cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
         />
       </div>
+
+      {/* ── Schedule ── */}
+      <div className="mt-6">
+        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3">Schedule</h3>
+        {events.length === 0 ? (
+          <p className="text-xs text-slate-400 dark:text-slate-500 mb-3">No rehearsals or events scheduled yet.</p>
+        ) : (
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 mb-3">
+            {events.map((ev) => (
+              <EventRow
+                key={ev.id}
+                ev={ev}
+                setlistName={folder.name}
+                songs={currentSongs}
+                onDelete={() => { onDeleteEvent(ev.id); showToast("Event removed"); }}
+              />
+            ))}
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setEventModal({ type: "rehearsal" })}
+            className="h-8 px-3 rounded-lg text-xs font-medium bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/50 flex items-center gap-1.5 transition-colors">
+            <span className="w-2 h-2 rounded-full bg-violet-500" /> Rehearsal +
+          </button>
+          <button type="button" onClick={() => setEventModal({ type: "event" })}
+            className="h-8 px-3 rounded-lg text-xs font-medium bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 flex items-center gap-1.5 transition-colors">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" /> Event +
+          </button>
+        </div>
+      </div>
+
       <div className="flex items-center justify-between mt-6 mb-4">
         <p className="text-sm text-slate-500 dark:text-slate-400">
           {orderedSongs.length} {orderedSongs.length === 1 ? "song" : "songs"}
@@ -619,36 +650,6 @@ function SetlistDetail({
           })}
         </div>
       )}
-      {/* ── Schedule ── */}
-      <div className="mt-8">
-        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3">Schedule</h3>
-        {events.length === 0 ? (
-          <p className="text-xs text-slate-400 dark:text-slate-500 mb-3">No rehearsals or events scheduled yet.</p>
-        ) : (
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 mb-3">
-            {events.map((ev) => (
-              <EventRow
-                key={ev.id}
-                ev={ev}
-                setlistName={folder.name}
-                songs={currentSongs}
-                onDelete={() => { onDeleteEvent(ev.id); showToast("Event removed"); }}
-              />
-            ))}
-          </div>
-        )}
-        <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => setEventModal({ type: "rehearsal" })}
-            className="h-8 px-3 rounded-lg text-xs font-medium bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/50 flex items-center gap-1.5 transition-colors">
-            <span className="w-2 h-2 rounded-full bg-violet-500" /> Rehearsal +
-          </button>
-          <button type="button" onClick={() => setEventModal({ type: "event" })}
-            className="h-8 px-3 rounded-lg text-xs font-medium bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 flex items-center gap-1.5 transition-colors">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" /> Event +
-          </button>
-        </div>
-      </div>
-
       {addOpen && (
         <AddSongsModal
           allSongs={songs}
