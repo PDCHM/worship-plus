@@ -534,7 +534,7 @@ function SetlistDetail({
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>
                 </button>
-                <span className="w-5 text-center text-xs font-mono text-slate-400 shrink-0">
+                <span className="hidden sm:block w-5 text-center text-xs font-mono text-slate-400 shrink-0">
                   {idx + 1}
                 </span>
                 <div

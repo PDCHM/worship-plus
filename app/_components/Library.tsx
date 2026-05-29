@@ -254,8 +254,7 @@ export default function Library({
       ) : (
         <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
           <div
-            className="grid items-center gap-3 px-4 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800"
-            style={{ gridTemplateColumns: "1fr 140px 56px 32px 32px" }}
+            className="grid items-center gap-2 sm:gap-3 px-4 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 grid-cols-[1fr_64px_44px_32px_32px] sm:grid-cols-[1fr_140px_56px_32px_32px]"
           >
             <SortHeader label="Song" col="title" sortCol={sortCol} sortDir={sortDir} onClick={() => toggleSort("title")} />
             <SortHeader label="Artist" col="artist" sortCol={sortCol} sortDir={sortDir} onClick={() => toggleSort("artist")} />
@@ -651,8 +650,7 @@ function SongRow({
           onOpen();
         }
       }}
-      className={"group grid items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors hover:bg-indigo-50/60 dark:hover:bg-indigo-950/30 border-b border-slate-100 dark:border-slate-800/60 last:border-b-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 " + (oddRow ? "bg-white dark:bg-slate-900" : "bg-slate-50 dark:bg-slate-800/40")}
-      style={{ gridTemplateColumns: "1fr 140px 56px 32px 32px" }}
+      className={"group grid items-center gap-2 sm:gap-3 px-4 py-2.5 cursor-pointer transition-colors hover:bg-indigo-50/60 dark:hover:bg-indigo-950/30 border-b border-slate-100 dark:border-slate-800/60 last:border-b-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 grid-cols-[1fr_64px_44px_32px_32px] sm:grid-cols-[1fr_140px_56px_32px_32px] " + (oddRow ? "bg-white dark:bg-slate-900" : "bg-slate-50 dark:bg-slate-800/40")}
       aria-label={`Open ${song.title}`}
     >
       <div className="min-w-0">
