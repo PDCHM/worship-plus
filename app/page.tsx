@@ -993,6 +993,9 @@ export default function Home() {
               onSave={() => { const s = songs.find(x => view.kind === "editor" && x.id === (view as { kind: "editor"; songId: string }).songId); if (s) void saveSong(s); }}
               currentUserId={user.id}
               setlistContext={setlistContext}
+              onBack={() => navigateTo(view.kind === "editor" && view.setlistId
+                ? { kind: "folders", subview: view.setlistId }
+                : { kind: "library", filter: "all" })}
               bubbleAuthors={bubbleAuthors}
               sectionStyles={sectionStyles}
               onSectionStylesChange={setSectionStyles}
