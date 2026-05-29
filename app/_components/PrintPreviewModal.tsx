@@ -163,15 +163,18 @@ function PaperContent({ song, settings, sectionStyles, cols, paperW, paperH }: {
   return (
     <div style={{
       width: paperW,
+      // Never exceed the viewport on mobile, so the left edge can't be
+      // centered off-screen and clipped; falls back to fixed paperW on desktop.
+      maxWidth: "100%",
       minHeight: paperH,
       background: "#fff",
       boxShadow: "0 8px 40px rgba(0,0,0,0.25)",
-      padding: "48px",
+      // ≥16px left/right padding on small screens, up to 48px on large.
+      padding: "clamp(16px, 5vw, 48px)",
       fontFamily,
       fontSize,
       lineHeight: 1.5,
       color: "#000",
-      flexShrink: 0,
       ["--lyric-font-size" as string]: `${fontSize}px`,
     } as React.CSSProperties}>
       {/* Header */}
