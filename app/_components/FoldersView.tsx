@@ -340,32 +340,45 @@ function SetlistDetail({
   const containerRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
   const suppressClickRef = useRef(false);
+  // Holds the pending long-press activation timer (touch) so it can be
+  // cancelled if the finger moves (scroll) or lifts before it fires.
+  const longPressTimer = useRef<number | null>(null);
 
   useEffect(() => {
     if (draggingRef.current) return;
     setLocalOrder(currentSongs.map((s) => s.id));
   }, [currentSongs]);
 
+  useEffect(() => () => {
+    if (longPressTimer.current !== null) clearTimeout(longPressTimer.current);
+  }, []);
+
   const songById = new Map(currentSongs.map((s) => [s.id, s] as const));
   const orderedSongs = localOrder.map((id) => songById.get(id)).filter((s): s is Song => Boolean(s));
   const alreadyIn = new Set(orderedSongs.map((s) => s.id));
 
-  const startDrag = (e: React.PointerEvent<HTMLButtonElement>, songId: string) => {
+  // Unified drag start for both pointer types:
+  //  • Mouse/pen: drag begins only from the drag handle, after a 6px move.
+  //  • Touch: press-and-hold (~200ms) anywhere on the row activates drag.
+  //    Any finger movement before it fires is treated as a scroll and cancels
+  //    activation, so the list scrolls normally unless the user holds still.
+  //    Once active, a non-passive touchmove listener blocks the scroll so the
+  //    drag follows the finger.
+  const LONG_PRESS_MS = 200;
+  const startDrag = (e: React.PointerEvent<HTMLElement>, songId: string) => {
     if (e.button !== undefined && e.button !== 0) return;
-    const startY = e.clientY;
+    const isTouch = e.pointerType === "touch";
+    // Mouse/pen drags must originate on the drag handle so normal clicks and
+    // text selection on the row keep working.
+    if (!isTouch && !(e.target as HTMLElement).closest("[data-drag-handle]")) return;
+
     const pointerId = e.pointerId;
+    const startX = e.clientX;
+    const startY = e.clientY;
     let active = false;
+    let aborted = false;
 
-    const move = (ev: PointerEvent) => {
-      if (ev.pointerId !== pointerId) return;
-      if (!active && Math.abs(ev.clientY - startY) > 6) {
-        active = true;
-        draggingRef.current = true;
-        setDragSongId(songId);
-      }
-      if (!active) return;
-      ev.preventDefault();
-
+    const reorderTo = (clientY: number) => {
       const container = containerRef.current;
       if (!container) return;
       const rows = Array.from(container.querySelectorAll<HTMLElement>("[data-row-song-id]"));
@@ -373,7 +386,7 @@ function SetlistDetail({
       let targetIdx = others.length;
       for (let k = 0; k < others.length; k++) {
         const r = others[k].getBoundingClientRect();
-        if (ev.clientY < r.top + r.height / 2) { targetIdx = k; break; }
+        if (clientY < r.top + r.height / 2) { targetIdx = k; break; }
       }
       const cur = localOrderRef.current;
       const fromIdx = cur.indexOf(songId);
@@ -384,11 +397,53 @@ function SetlistDetail({
       setLocalOrder(next);
     };
 
-    const finish = (ev: PointerEvent) => {
+    const activate = () => {
+      active = true;
+      draggingRef.current = true;
+      setDragSongId(songId);
+      if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+        try { navigator.vibrate(12); } catch {}
+      }
+    };
+
+    // Blocks the page from scrolling once the drag is active. Must be a
+    // non-passive native listener — pointermove.preventDefault() alone does
+    // not stop touch scrolling.
+    const onNativeTouchMove = (ev: TouchEvent) => {
+      if (active) ev.preventDefault();
+    };
+
+    const move = (ev: PointerEvent) => {
       if (ev.pointerId !== pointerId) return;
+      if (!active) {
+        const movedX = Math.abs(ev.clientX - startX);
+        const movedY = Math.abs(ev.clientY - startY);
+        if (isTouch) {
+          // Pre-activation movement means the user is scrolling — bail out.
+          if (movedX > 10 || movedY > 10) abort();
+          return;
+        }
+        if (movedX > 6 || movedY > 6) activate();
+        else return;
+      }
+      ev.preventDefault();
+      reorderTo(ev.clientY);
+    };
+
+    const cleanup = () => {
+      if (longPressTimer.current !== null) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", finish);
       window.removeEventListener("pointercancel", finish);
+      window.removeEventListener("touchmove", onNativeTouchMove);
+    };
+
+    // Cancel a pending (not-yet-active) press, e.g. when a scroll starts.
+    const abort = () => { aborted = true; cleanup(); };
+
+    const finish = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      cleanup();
       if (active) {
         suppressClickRef.current = true;
         window.setTimeout(() => { suppressClickRef.current = false; }, 100);
@@ -404,6 +459,14 @@ function SetlistDetail({
     window.addEventListener("pointermove", move, { passive: false });
     window.addEventListener("pointerup", finish);
     window.addEventListener("pointercancel", finish);
+
+    if (isTouch) {
+      window.addEventListener("touchmove", onNativeTouchMove, { passive: false });
+      longPressTimer.current = window.setTimeout(() => {
+        longPressTimer.current = null;
+        if (!aborted) activate();
+      }, LONG_PRESS_MS);
+    }
   };
 
   return (
@@ -454,17 +517,19 @@ function SetlistDetail({
               <div
                 key={song.id}
                 data-row-song-id={song.id}
+                onPointerDown={(e) => startDrag(e, song.id)}
                 className={
-                  "flex items-center gap-2 px-2 py-3 bg-white dark:bg-slate-900 group hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors " +
-                  (isDragging ? "opacity-60 shadow-md z-10 relative" : "")
+                  "flex items-center gap-2 px-2 py-3 bg-white dark:bg-slate-900 group select-none transition-[transform,box-shadow,background-color] duration-150 " +
+                  (isDragging
+                    ? "scale-[1.03] shadow-lg ring-2 ring-indigo-400 dark:ring-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 z-10 relative"
+                    : "hover:bg-slate-50 dark:hover:bg-slate-800/50")
                 }
               >
                 <button
                   type="button"
                   aria-label="Drag to reorder"
                   title="Drag to reorder"
-                  onPointerDown={(e) => startDrag(e, song.id)}
-                  style={{ touchAction: "none" }}
+                  data-drag-handle
                   className="w-7 h-7 rounded-md flex items-center justify-center text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-grab active:cursor-grabbing shrink-0"
                 >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>
