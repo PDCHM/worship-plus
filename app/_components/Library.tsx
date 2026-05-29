@@ -571,22 +571,9 @@ function SongCard({
         </span>
       </div>
       <div className="mt-4 flex items-center gap-3 text-xs text-slate-400 dark:text-slate-500">
-        <span>
-          {song.sections.length}{" "}
-          {song.sections.length === 1 ? "section" : "sections"}
-        </span>
-        {song.capo ? (
-          <>
-            <span>·</span>
-            <span>Capo {song.capo}</span>
-          </>
-        ) : null}
-        {song.bpm ? (
-          <>
-            <span>·</span>
-            <span>{song.bpm} bpm</span>
-          </>
-        ) : null}
+        {song.capo ? <span>Capo {song.capo}</span> : null}
+        {song.capo && song.bpm ? <span>·</span> : null}
+        {song.bpm ? <span>{song.bpm} bpm</span> : null}
       </div>
       <div className="absolute top-3 right-3 flex items-center gap-1">
         <StarButton favorite={song.favorite} onClick={onToggleFavorite} />
@@ -650,7 +637,6 @@ function SongRow({
   const keyColor = KEY_COLORS[song.key] ?? { bg: "#E6F1FB", fg: "#0C447C" };
   const oddRow = index % 2 === 0;
   const subParts: string[] = [];
-  subParts.push(song.sections.length + " " + (song.sections.length === 1 ? "section" : "sections"));
   if (song.bpm) subParts.push(song.bpm + " bpm");
   if (song.capo) subParts.push("Capo " + song.capo);
 

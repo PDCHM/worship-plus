@@ -38,6 +38,12 @@ type View =
 const SETTINGS_KEY = "wp-settings-v1";
 const LIBRARY_VIEW_KEY = "wp-library-view-v1";
 
+// On-demand loading: startup fetches only these metadata columns for the
+// library list — never sections/lines/chords. Full content is loaded per song
+// when opened (hydrateSong) so the library scales to 500+ songs without a
+// nested-join timeout. rowToSong maps a metadata row to a Song with sections: [].
+const SONG_META_COLUMNS = "id, user_id, title, artist, key, bpm, capo, favorite, created_at, updated_at";
+
 type LibraryView = "grid" | "list";
 
 type Profile = {
@@ -206,6 +212,11 @@ export default function Home() {
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set());
   const lastSavedRef = useRef<Map<string, Song>>(new Map());
   const newSongIdsRef = useRef<Set<string>>(new Set());
+  // Songs whose full content (sections/lines/chords) is already in memory —
+  // either fetched on open, created locally, or restored from a backup. Used
+  // to make reopening instant and to avoid clobbering unsaved local content.
+  const hydratedIdsRef = useRef<Set<string>>(new Set());
+  const [hydratingId, setHydratingId] = useState<string | null>(null);
   const [unsavedModal, setUnsavedModal] = useState<{ pendingView: View } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -262,10 +273,11 @@ export default function Home() {
             }
           });
 
-        // Split the songs fetch into two phases so the heavy RLS path for
-        // shared songs (group_songs + setlist folder_songs) doesn't block
-        // the library on first paint. Each phase has its own AbortController
-        // with a 15s timeout — if shared songs hang, owned songs still load.
+        // Metadata-only startup. Two phases so the heavier shared-song RLS
+        // path (group_songs + setlist folder_songs) doesn't block the library
+        // on first paint. Each phase has its own AbortController with a 15s
+        // timeout — if shared songs hang, owned songs still load. Neither phase
+        // selects sections/lines/chords; full content is loaded per song on open.
         const restoreBackups = (batch: Song[]) => {
           for (const song of batch) {
             lastSavedRef.current.set(song.id, song);
@@ -274,6 +286,9 @@ export default function Home() {
               if (raw) {
                 const bs = JSON.parse(raw) as Song;
                 if (bs.updatedAt > song.updatedAt) {
+                  // Backup holds the full unsaved song — treat as hydrated so
+                  // opening it doesn't overwrite the local edits with DB content.
+                  hydratedIdsRef.current.add(song.id);
                   setSongs(prev => prev.map(s => s.id === song.id ? bs : s));
                   setDirtyIds(prev => new Set(prev).add(song.id));
                 }
@@ -288,7 +303,7 @@ export default function Home() {
         const ownTimeoutId = setTimeout(() => ownAbort.abort(), 15000);
         void supabase
           .from("songs")
-          .select("*, sections(*, lines(*, chords(*)))")
+          .select(SONG_META_COLUMNS)
           .eq("user_id", u.id)
           .order("created_at", { ascending: false })
           .abortSignal(ownAbort.signal)
@@ -325,7 +340,7 @@ export default function Home() {
         const sharedTimeoutId = setTimeout(() => sharedAbort.abort(), 15000);
         void supabase
           .from("songs")
-          .select("*, sections(*, lines(*, chords(*)))")
+          .select(SONG_META_COLUMNS)
           .neq("user_id", u.id)
           .order("created_at", { ascending: false })
           .abortSignal(sharedAbort.signal)
@@ -484,6 +499,7 @@ export default function Home() {
       const next = [...prev]; next[idx] = updated; return next;
     });
     setDirtyIds(prev => new Set(prev).add(updated.id));
+    hydratedIdsRef.current.add(updated.id);
     try { localStorage.setItem("wp-backup-" + updated.id, JSON.stringify(updated)); } catch {}
   };
 
@@ -505,6 +521,85 @@ export default function Home() {
     try { localStorage.removeItem("wp-backup-" + song.id); } catch {}
     showToast("Saved");
   };
+
+  // Load full content (sections/lines/chords) for one song on demand and merge
+  // it into the in-memory list. Cached via hydratedIdsRef so reopening is
+  // instant. New/dirty/backed-up songs already hold their content locally and
+  // are skipped so we never overwrite unsaved edits with stale DB rows.
+  const hydrateSong = async (songId: string) => {
+    if (hydratedIdsRef.current.has(songId)) return;
+    if (newSongIdsRef.current.has(songId) || dirtyIds.has(songId)) {
+      hydratedIdsRef.current.add(songId);
+      return;
+    }
+    setHydratingId(songId);
+    const { data, error } = await supabase
+      .from("songs")
+      .select("*, sections(*, lines(*, chords(*)))")
+      .eq("id", songId)
+      .maybeSingle();
+    if (error) {
+      console.error("hydrate song failed", error.message);
+      showToast("Could not load song: " + error.message);
+      setHydratingId((cur) => (cur === songId ? null : cur));
+      return;
+    }
+    if (data) {
+      const full = rowToSong(data as SongRow);
+      hydratedIdsRef.current.add(songId);
+      lastSavedRef.current.set(songId, full);
+      setSongs((prev) => {
+        if (prev.some((s) => s.id === songId)) {
+          // Fill sections only — keep any locally-toggled metadata (e.g. favorite).
+          return prev.map((s) => (s.id === songId ? { ...s, sections: full.sections } : s));
+        }
+        return [...prev, full];
+      });
+    }
+    setHydratingId((cur) => (cur === songId ? null : cur));
+  };
+
+  // Fetch one setlist's songs directly via folder_songs ⋈ songs (ordered by
+  // position). Surfaces shared songs the metadata phases may not have returned
+  // and refreshes this folder's ordering authoritatively — without ever
+  // loading section content. Mirrors the on-demand model for setlists.
+  const loadSetlistSongs = async (folderId: string) => {
+    const { data, error } = await supabase
+      .from("folder_songs")
+      .select("id, position, song_id, songs(" + SONG_META_COLUMNS + ")")
+      .eq("folder_id", folderId)
+      .order("position", { ascending: true });
+    if (error) {
+      console.error("load setlist songs failed", error.message);
+      return;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows = (data ?? []) as any[];
+    const fetched: Song[] = [];
+    for (const r of rows) {
+      const sr = Array.isArray(r.songs) ? r.songs[0] : r.songs;
+      if (sr) fetched.push(rowToSong(sr as SongRow));
+    }
+    if (fetched.length) {
+      setSongs((prev) => {
+        const have = new Set(prev.map((s) => s.id));
+        const missing = fetched.filter((s) => !have.has(s.id));
+        return missing.length ? [...prev, ...missing] : prev;
+      });
+    }
+    setFolderSongs((prev) => {
+      const others = prev.filter((fs) => fs.folderId !== folderId);
+      const mine = rows.map((r) => ({ id: r.id, folderId, songId: r.song_id, position: r.position ?? 0 }));
+      return [...others, ...mine];
+    });
+  };
+
+  // Hydrate the song under the editor; load a setlist's songs when it opens.
+  useEffect(() => {
+    if (view.kind === "editor") void hydrateSong(view.songId);
+    else if (view.kind === "folders" && view.subview !== "all") void loadSetlistSongs(view.subview);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
 
   const toggleFavorite = async (songId: string) => {
     const current = songs.find((s) => s.id === songId);
@@ -538,6 +633,7 @@ export default function Home() {
     setDirtyIds(prev => new Set(prev).add(song.id));
     lastSavedRef.current.set(song.id, song);
     newSongIdsRef.current.add(song.id);
+    hydratedIdsRef.current.add(song.id);
     navigateTo({ kind: "editor", songId: song.id });
   };
 
@@ -554,6 +650,7 @@ export default function Home() {
     };
     setSongs(prev => [newSong, ...prev]);
     lastSavedRef.current.set(newSong.id, newSong);
+    hydratedIdsRef.current.add(newSong.id);
     void saveSongToDb(supabase, newSong, user.id);
     setView({ kind: "editor", songId: newSong.id });
     showToast('Duplicated "' + source.title + '"');
@@ -574,6 +671,7 @@ export default function Home() {
 
   const handleImportPasted = (song: Song) => {
     setSongs((prev) => [song, ...prev]);
+    hydratedIdsRef.current.add(song.id);
     navigateTo({ kind: "editor", songId: song.id });
     setPasteOpen(false);
     showToast(`Imported "${song.title}"`);
@@ -594,6 +692,7 @@ export default function Home() {
             createdAt: Date.now(),
             updatedAt: Date.now(),
           }));
+          for (const s of imported) hydratedIdsRef.current.add(s.id);
           setSongs(prev => [...imported, ...prev]);
           showToast("Imported " + imported.length + " songs");
           navigateTo({ kind: "library", filter: "all" });
@@ -614,6 +713,7 @@ export default function Home() {
     try {
       const text = await file.text();
       const parsed = parseSongText(text);
+      hydratedIdsRef.current.add(parsed.id);
       setSongs((prev) => [parsed, ...prev]);
       navigateTo({ kind: "editor", songId: parsed.id });
       showToast(`Imported "${parsed.title}"`);
@@ -854,7 +954,12 @@ export default function Home() {
               onLibraryViewChange={setLibraryView}
             />
           )}
-          {view.kind === "editor" && activeSong && (
+          {view.kind === "editor" && activeSong && hydratingId === view.songId && activeSong.sections.length === 0 && (
+            <div className="flex items-center justify-center py-24">
+              <div className="w-6 h-6 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+            </div>
+          )}
+          {view.kind === "editor" && activeSong && !(hydratingId === view.songId && activeSong.sections.length === 0) && (
             <SongEditor
               song={activeSong}
               onChange={upsertSong}
