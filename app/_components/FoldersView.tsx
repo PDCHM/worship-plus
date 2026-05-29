@@ -21,6 +21,14 @@ export type FolderSong = {
   position: number;
 };
 
+export type SetlistEvent = {
+  id: string;
+  folderId: string;
+  label: string;
+  eventDate: string; // ISO timestamp
+  eventType: "rehearsal" | "service";
+};
+
 export type TeamOption = { id: string; name: string };
 
 export type FoldersViewProps = {
@@ -38,8 +46,39 @@ export type FoldersViewProps = {
   onCommitOrder: (folderId: string, orderedSongIds: string[]) => Promise<void>;
   onOpenSong: (id: string, opts?: { setlistId?: string }) => void;
   onUpdateDate: (id: string, date: string | null) => Promise<void>;
+  setlistEvents: SetlistEvent[];
+  onAddEvent: (folderId: string, ev: { label: string; eventDate: string; eventType: "rehearsal" | "service" }) => Promise<void>;
+  onDeleteEvent: (id: string) => void;
   showToast: (msg: string) => void;
 };
+
+// Ordered song-id fingerprint of a setlist — used to flag "Updated" when the
+// songs change vs what the user last saw (tracked in localStorage).
+function setlistSignature(folderSongs: FolderSong[], folderId: string): string {
+  return folderSongs
+    .filter((fs) => fs.folderId === folderId)
+    .sort((a, b) => a.position - b.position)
+    .map((fs) => fs.songId)
+    .join("|");
+}
+
+// Build a Google Calendar "add event" URL (1-hour default duration).
+function googleCalendarUrl(ev: SetlistEvent, setlistName: string, songs: Song[]): string {
+  const start = new Date(ev.eventDate);
+  const end = new Date(start.getTime() + 60 * 60 * 1000);
+  const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+  const details =
+    (songs.length
+      ? songs.map((s, i) => `${i + 1}. ${s.title}${s.artist ? ` — ${s.artist}` : ""}${s.key ? ` (${s.key})` : ""}`).join("\n")
+      : "No songs yet.") + "\n\nWorship+ · https://worshipplus.life";
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: `${setlistName} — ${ev.label}`,
+    dates: `${fmt(start)}/${fmt(end)}`,
+    details,
+  });
+  return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
 
 /* ─── Root ────────────────────────────────────────────────────────────────── */
 
@@ -101,6 +140,13 @@ function Overview({
       return ad.localeCompare(bd);
     });
   const countSongs = (id: string) => folderSongs.filter((fs) => fs.folderId === id).length;
+  // Orange "Updated" flag: the setlist's songs changed since the user last
+  // opened it (last-seen fingerprint stored in localStorage).
+  const isUpdated = (id: string) => {
+    let seen: string | null = null;
+    try { seen = localStorage.getItem("wp-setlist-seen-" + id); } catch {}
+    return seen !== null && seen !== setlistSignature(folderSongs, id);
+  };
 
   const submit = async (name: string, type: "folder" | "setlist", groupId: string | null) => {
     if (!name.trim()) return;
@@ -234,6 +280,7 @@ function Overview({
                   key={f.id}
                   item={f}
                   count={countSongs(f.id)}
+                  updated={isUpdated(f.id)}
                   onClick={() => onNavigate(f.id)}
                   onRename={(name) => onRename(f.id, name).then(() => showToast("Renamed"))}
                   onDelete={() => { onDelete(f.id); showToast("Setlist deleted"); }}
@@ -247,6 +294,7 @@ function Overview({
                   key={f.id}
                   item={f}
                   count={countSongs(f.id)}
+                  updated={isUpdated(f.id)}
                   isLast={idx === setlistList.length - 1}
                   onClick={() => onNavigate(f.id)}
                   onRename={(name) => onRename(f.id, name).then(() => showToast("Renamed"))}
@@ -329,10 +377,23 @@ function FolderDetail({
 /* ─── SetlistDetail ───────────────────────────────────────────────────────── */
 
 function SetlistDetail({
-  folder, currentSongs, songs, onNavigate, onRename, onDelete,
-  onAddSong, onRemoveSong, onCommitOrder, onOpenSong, onUpdateDate, showToast,
+  folder, currentSongs, songs, folderSongs, onNavigate, onRename, onDelete,
+  onAddSong, onRemoveSong, onCommitOrder, onOpenSong, onUpdateDate,
+  setlistEvents, onAddEvent, onDeleteEvent, showToast,
 }: { folder: Folder; currentSongs: Song[] } & FoldersViewProps) {
   const [addOpen, setAddOpen] = useState(false);
+  const [eventModal, setEventModal] = useState<{ type: "rehearsal" | "service" } | null>(null);
+
+  const events = setlistEvents
+    .filter((e) => e.folderId === folder.id)
+    .sort((a, b) => a.eventDate.localeCompare(b.eventDate));
+  const rehearsalCount = events.filter((e) => e.eventType === "rehearsal").length;
+
+  // Mark this setlist as "seen" at its current song fingerprint so the
+  // Updated badge on the overview clears once the user opens it.
+  useEffect(() => {
+    try { localStorage.setItem("wp-setlist-seen-" + folder.id, setlistSignature(folderSongs, folder.id)); } catch {}
+  }, [folder.id, folderSongs]);
   const [dragSongId, setDragSongId] = useState<string | null>(null);
   const [localOrder, setLocalOrder] = useState<string[]>(currentSongs.map((s) => s.id));
   const localOrderRef = useRef(localOrder);
@@ -558,6 +619,36 @@ function SetlistDetail({
           })}
         </div>
       )}
+      {/* ── Schedule ── */}
+      <div className="mt-8">
+        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3">Schedule</h3>
+        {events.length === 0 ? (
+          <p className="text-xs text-slate-400 dark:text-slate-500 mb-3">No rehearsals or services scheduled yet.</p>
+        ) : (
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 mb-3">
+            {events.map((ev) => (
+              <EventRow
+                key={ev.id}
+                ev={ev}
+                setlistName={folder.name}
+                songs={currentSongs}
+                onDelete={() => { onDeleteEvent(ev.id); showToast("Event removed"); }}
+              />
+            ))}
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setEventModal({ type: "rehearsal" })}
+            className="h-8 px-3 rounded-lg text-xs font-medium bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/50 flex items-center gap-1.5 transition-colors">
+            <span className="w-2 h-2 rounded-full bg-violet-500" /> Add rehearsal
+          </button>
+          <button type="button" onClick={() => setEventModal({ type: "service" })}
+            className="h-8 px-3 rounded-lg text-xs font-medium bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 flex items-center gap-1.5 transition-colors">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" /> Add service
+          </button>
+        </div>
+      </div>
+
       {addOpen && (
         <AddSongsModal
           allSongs={songs}
@@ -567,6 +658,122 @@ function SetlistDetail({
           onClose={() => setAddOpen(false)}
         />
       )}
+      {eventModal && (
+        <AddEventModal
+          type={eventModal.type}
+          defaultLabel={eventModal.type === "rehearsal" ? `Rehearsal ${rehearsalCount + 1}` : "Service"}
+          defaultDate={folder.date ?? ""}
+          onSave={async (label, eventDate, eventType) => { await onAddEvent(folder.id, { label, eventDate, eventType }); showToast("Event added"); }}
+          onClose={() => setEventModal(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ─── EventRow ────────────────────────────────────────────────────────────── */
+
+function EventRow({ ev, setlistName, songs, onDelete }: {
+  ev: SetlistEvent; setlistName: string; songs: Song[]; onDelete: () => void;
+}) {
+  const isRehearsal = ev.eventType === "rehearsal";
+  const when = new Date(ev.eventDate);
+  const dateStr = when.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+  const timeStr = when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return (
+    <div className="flex items-center gap-3 px-3 py-2.5 bg-white dark:bg-slate-900 group">
+      <span className={"w-2.5 h-2.5 rounded-full shrink-0 " + (isRehearsal ? "bg-violet-500" : "bg-emerald-500")} />
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium truncate">{ev.label}</div>
+        <div className="text-xs text-slate-400 dark:text-slate-500">{dateStr} · {timeStr}</div>
+      </div>
+      <span className={"shrink-0 px-1.5 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wide " + (isRehearsal
+        ? "bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-300"
+        : "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-300")}>
+        {isRehearsal ? "Rehearsal" : "Service"}
+      </span>
+      <button type="button"
+        onClick={() => window.open(googleCalendarUrl(ev, setlistName, songs), "_blank", "noopener,noreferrer")}
+        title="Add to Google Calendar" aria-label="Add to Google Calendar"
+        className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      </button>
+      <button type="button" onClick={onDelete} title="Remove event" aria-label="Remove event"
+        className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 opacity-0 group-hover:opacity-100 transition-opacity">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+  );
+}
+
+/* ─── AddEventModal ───────────────────────────────────────────────────────── */
+
+function AddEventModal({ type, defaultLabel, defaultDate, onSave, onClose }: {
+  type: "rehearsal" | "service";
+  defaultLabel: string;
+  defaultDate: string;
+  onSave: (label: string, eventDate: string, eventType: "rehearsal" | "service") => Promise<void>;
+  onClose: () => void;
+}) {
+  const [label, setLabel] = useState(defaultLabel);
+  const [eventType, setEventType] = useState<"rehearsal" | "service">(type);
+  const [date, setDate] = useState(defaultDate);
+  const [time, setTime] = useState(type === "service" ? "10:00" : "19:00");
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    if (!date || saving) return;
+    const iso = new Date(`${date}T${time || "00:00"}`).toISOString();
+    setSaving(true);
+    await onSave(label.trim() || defaultLabel, iso, eventType);
+    setSaving(false);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
+      <div className="w-full sm:max-w-sm bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden pb-[env(safe-area-inset-bottom)]" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+          <span className="font-semibold text-sm">Add to schedule</span>
+          <button type="button" onClick={onClose} className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div className="p-4 space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button" onClick={() => setEventType("rehearsal")}
+              className={"h-9 rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 border transition-colors " + (eventType === "rehearsal" ? "border-violet-400 bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400")}>
+              <span className="w-2 h-2 rounded-full bg-violet-500" /> Rehearsal
+            </button>
+            <button type="button" onClick={() => setEventType("service")}
+              className={"h-9 rounded-lg text-sm font-medium flex items-center justify-center gap-1.5 border transition-colors " + (eventType === "service" ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300" : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400")}>
+              <span className="w-2 h-2 rounded-full bg-emerald-500" /> Service
+            </button>
+          </div>
+          <label className="block">
+            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Label</span>
+            <input type="text" value={label} onChange={(e) => setLabel(e.target.value)}
+              className="mt-1 w-full h-10 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-indigo-400" />
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="block">
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Date</span>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+                className="mt-1 w-full h-10 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-indigo-400" />
+            </label>
+            <label className="block">
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Time</span>
+              <input type="time" value={time} onChange={(e) => setTime(e.target.value)}
+                className="mt-1 w-full h-10 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-indigo-400" />
+            </label>
+          </div>
+        </div>
+        <div className="px-4 pb-4 flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="h-9 px-4 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm font-medium">Cancel</button>
+          <button type="button" onClick={save} disabled={!date || saving}
+            className="h-9 px-4 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50">Add</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -676,10 +883,11 @@ function AddSongsModal({
 /* ─── ItemCard ────────────────────────────────────────────────────────────── */
 
 function ItemCard({
-  item, count, onClick, onRename, onDelete,
+  item, count, updated, onClick, onRename, onDelete,
 }: {
   item: Folder;
   count: number;
+  updated?: boolean;
   onClick: () => void;
   onRename: (name: string) => void;
   onDelete: () => void;
@@ -720,8 +928,11 @@ function ItemCard({
         ) : (
           <div className="text-sm font-semibold truncate mb-1">{item.name}</div>
         )}
-        <div className="text-xs text-slate-400 dark:text-slate-500">
-          {count} {count === 1 ? "song" : "songs"}
+        <div className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+          <span>{count} {count === 1 ? "song" : "songs"}</span>
+          {updated && (
+            <span className="px-1.5 py-0.5 rounded-full bg-orange-100 dark:bg-orange-950/60 text-orange-600 dark:text-orange-400 text-[10px] font-semibold uppercase tracking-wide">Updated</span>
+          )}
         </div>
         {item.type === "setlist" && item.date && (
           <div style={{fontSize:"11px"}} className="text-indigo-400 dark:text-indigo-500 mt-0.5">
@@ -763,10 +974,11 @@ function ItemCard({
 /* ─── ItemRow ─────────────────────────────────────────────────────────────── */
 
 function ItemRow({
-  item, count, isLast, onClick, onRename, onDelete,
+  item, count, updated, isLast, onClick, onRename, onDelete,
 }: {
   item: Folder;
   count: number;
+  updated?: boolean;
   isLast: boolean;
   onClick: () => void;
   onRename: (name: string) => void;
@@ -806,6 +1018,9 @@ function ItemRow({
         )}
         <div className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-2 mt-0.5">
           <span>{count} {count === 1 ? "song" : "songs"}</span>
+          {updated && (
+            <span className="px-1.5 py-0.5 rounded-full bg-orange-100 dark:bg-orange-950/60 text-orange-600 dark:text-orange-400 text-[10px] font-semibold uppercase tracking-wide">Updated</span>
+          )}
           {item.type === "setlist" && item.date && (
             <>
               <span aria-hidden>·</span>

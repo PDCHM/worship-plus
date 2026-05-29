@@ -10,7 +10,7 @@ import Library from "@/app/_components/Library";
 import PasteSongModal from "@/app/_components/PasteSongModal";
 import SettingsView from "@/app/_components/SettingsView";
 import SongEditor from "@/app/_components/SongEditor";
-import FoldersView, { type Folder, type FolderSong } from "@/app/_components/FoldersView";
+import FoldersView, { type Folder, type FolderSong, type SetlistEvent } from "@/app/_components/FoldersView";
 import GroupsView, { type Group, type GroupMember, type GroupSong } from "@/app/_components/GroupsView";
 import PrintLayout from "@/app/_components/PrintLayout";
 import {
@@ -195,6 +195,7 @@ export default function Home() {
   const [songsLoaded, setSongsLoaded] = useState(false);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [folderSongs, setFolderSongs] = useState<FolderSong[]>([]);
+  const [setlistEvents, setSetlistEvents] = useState<SetlistEvent[]>([]);
   const [groups, setGroups] = useState<Group[]>([]);
   const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
   const [groupSongs, setGroupSongs] = useState<GroupSong[]>([]);
@@ -385,9 +386,11 @@ export default function Home() {
         void Promise.all([
           supabase.from("folders").select("id, name, type, created_at, date, group_id").order("created_at"),
           supabase.from("folder_songs").select("id, folder_id, song_id, position").order("position", { ascending: true }),
+          supabase.from("setlist_events").select("id, folder_id, label, event_date, event_type").order("event_date", { ascending: true }),
         ]).then(([
           { data: folderRows, error: foldersError },
           { data: folderSongRows, error: folderSongsError },
+          { data: eventRows, error: eventsError },
         ]) => {
           if (cancelled) return;
           if (foldersError) {
@@ -415,6 +418,17 @@ export default function Home() {
             position: r.position ?? 0,
           }));
           setFolderSongs(loadedFolderSongs);
+
+          if (eventsError) {
+            console.error("load setlist_events failed", eventsError.message);
+          }
+          setSetlistEvents((eventRows ?? []).map((r: { id: string; folder_id: string; label: string; event_date: string; event_type: string }) => ({
+            id: r.id,
+            folderId: r.folder_id,
+            label: r.label,
+            eventDate: r.event_date,
+            eventType: (r.event_type === "service" ? "service" : "rehearsal") as "rehearsal" | "service",
+          })));
         });
 
         /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -788,6 +802,25 @@ export default function Home() {
     if (error) logErr("update folder date", error);
   };
 
+  const addSetlistEvent = async (folderId: string, ev: { label: string; eventDate: string; eventType: "rehearsal" | "service" }): Promise<void> => {
+    const { data, error } = await supabase
+      .from("setlist_events")
+      .insert({ folder_id: folderId, label: ev.label, event_date: ev.eventDate, event_type: ev.eventType })
+      .select()
+      .single();
+    if (error) { logErr("add setlist event", error); showToast("Couldn't add event: " + error.message); return; }
+    const r = data as { id: string; folder_id: string; label: string; event_date: string; event_type: string };
+    setSetlistEvents((prev) => [...prev, {
+      id: r.id, folderId: r.folder_id, label: r.label, eventDate: r.event_date,
+      eventType: (r.event_type === "service" ? "service" : "rehearsal") as "rehearsal" | "service",
+    }]);
+  };
+
+  const deleteSetlistEvent = (id: string): void => {
+    setSetlistEvents((prev) => prev.filter((e) => e.id !== id));
+    void supabase.from("setlist_events").delete().eq("id", id);
+  };
+
   const createGroup=async(name:string):Promise<Group|null>=>{
     if(!user)return null;
     const{data,error}=await supabase.rpc("create_worship_group",{group_name:name});
@@ -1038,6 +1071,9 @@ export default function Home() {
               onCommitOrder={commitSetlistOrder}
               onOpenSong={openSong}
               onUpdateDate={updateFolderDate}
+              setlistEvents={setlistEvents}
+              onAddEvent={addSetlistEvent}
+              onDeleteEvent={deleteSetlistEvent}
               showToast={showToast}
             />
           )}

@@ -941,3 +941,32 @@ end;
 $$;
 revoke all on function public.get_song_content(uuid) from public;
 grant execute on function public.get_song_content(uuid) to authenticated;
+
+-- ============================================================
+-- Setlist events — scheduled rehearsals / services attached to a
+-- setlist (folder). Owner manages; group members of a shared setlist
+-- can read.
+-- ============================================================
+create table if not exists public.setlist_events (
+  id uuid primary key default gen_random_uuid(),
+  folder_id uuid not null references public.folders(id) on delete cascade,
+  label text not null,
+  event_date timestamptz not null,
+  event_type text not null default 'rehearsal' check (event_type in ('rehearsal', 'service')),
+  created_at timestamptz not null default now()
+);
+
+alter table public.setlist_events enable row level security;
+
+drop policy if exists setlist_events_owner_all on public.setlist_events;
+create policy setlist_events_owner_all on public.setlist_events
+  for all to authenticated
+  using (exists (select 1 from public.folders f where f.id = setlist_events.folder_id and f.user_id = auth.uid()))
+  with check (exists (select 1 from public.folders f where f.id = setlist_events.folder_id and f.user_id = auth.uid()));
+
+drop policy if exists setlist_events_group_read on public.setlist_events;
+create policy setlist_events_group_read on public.setlist_events
+  for select to authenticated
+  using (exists (select 1 from public.folders f where f.id = setlist_events.folder_id and f.group_id is not null and public.is_group_member(f.group_id)));
+
+create index if not exists setlist_events_folder_id_idx on public.setlist_events(folder_id);
