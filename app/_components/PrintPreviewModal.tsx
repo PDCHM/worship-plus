@@ -127,7 +127,7 @@ export default function PrintPreviewModal({
       </div>
 
       {/* ── Scrollable paper preview (fills remaining height) ── */}
-      <div className="flex-1 min-h-0 overflow-auto bg-slate-300 dark:bg-slate-800 p-4 sm:p-10 flex justify-center">
+      <div className="flex-1 min-h-0 overflow-auto bg-slate-300 dark:bg-slate-800 p-4 sm:p-10 flex justify-center items-start">
         <PaperContent
           song={song}
           settings={settings}
@@ -161,7 +161,7 @@ function PaperContent({ song, settings, sectionStyles, cols, paperW, paperH }: {
       background: "#fff",
       boxShadow: "0 8px 40px rgba(0,0,0,0.25)",
       // ≥16px left/right padding on small screens, up to 48px on large.
-      padding: "clamp(16px, 5vw, 48px)",
+      padding: "clamp(28px, 6vw, 56px) clamp(16px, 5vw, 48px) clamp(16px, 5vw, 48px)",
       fontFamily,
       fontSize,
       lineHeight: 1.5,
@@ -270,14 +270,14 @@ function SegBtn<T extends string | number>({
   disabledTitle?: string;
 }) {
   return (
-    <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden text-xs">
+    <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 divide-x divide-slate-200 dark:divide-slate-700 overflow-hidden text-xs">
       {options.map((o) => {
         const isDisabled = disabled?.(o) ?? false;
         return (
           <button key={String(o)} type="button" onClick={() => onSelect(o)}
             disabled={isDisabled}
             title={isDisabled ? disabledTitle : undefined}
-            className={`flex-1 h-7 font-medium transition-colors ${
+            className={`h-7 px-3 min-w-[2.25rem] text-center whitespace-nowrap font-medium transition-colors ${
               isDisabled
                 ? "bg-slate-50 dark:bg-slate-900 text-slate-300 dark:text-slate-600 cursor-not-allowed"
                 : active === o
