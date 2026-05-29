@@ -69,9 +69,20 @@ export default function PrintPreviewModal({
   const paperH = isLandscape ? Math.round(paperW / ratio) : Math.round(paperW * ratio);
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col-reverse sm:flex-row bg-black/60 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex flex-col bg-black/60 backdrop-blur-sm">
 
-      {/* ── Scrollable paper preview ── */}
+      {/* ── Top bar ── */}
+      <div className="shrink-0 flex items-center justify-between px-4 py-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+        <span className="font-semibold text-sm">Print Preview</span>
+        <button type="button" onClick={onClose}
+          className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      {/* ── Scrollable paper preview (on top) ── */}
       <div className="flex-1 min-h-0 overflow-auto bg-slate-300 dark:bg-slate-800 p-4 sm:p-10 flex justify-center">
         <PaperContent
           song={song}
@@ -83,23 +94,9 @@ export default function PrintPreviewModal({
         />
       </div>
 
-      {/* ── Sidebar ── */}
-      <div className="w-full sm:w-52 shrink-0 max-h-[45vh] sm:max-h-none overflow-y-auto bg-white dark:bg-slate-900 border-t sm:border-t-0 sm:border-l border-slate-200 dark:border-slate-800 flex flex-col">
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-100 dark:border-slate-800">
-          <span className="font-semibold text-sm">Print Preview</span>
-          <button type="button" onClick={onClose}
-            className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
-          </button>
-        </div>
-
-        {/* Controls */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-5">
-
+      {/* ── Settings (sticky footer panel below the preview) ── */}
+      <div className="shrink-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-4 py-3 max-h-[45vh] overflow-y-auto">
+        <div className="max-w-3xl mx-auto flex flex-wrap items-end gap-x-5 gap-y-3">
           <CtrlRow label="Columns">
             <SegBtn options={[1,2,3] as const} active={cols}
               onSelect={(v) => { if (v <= maxCols) update({ printColumns: v }); }}
@@ -130,13 +127,9 @@ export default function PrintPreviewModal({
             </button>
           </CtrlRow>
 
-        </div>
-
-        {/* Print button */}
-        <div className="p-4 border-t border-slate-100 dark:border-slate-800">
           <button type="button"
             onClick={() => { onClose(); setTimeout(onPrint, 80); }}
-            className="w-full h-10 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 flex items-center justify-center gap-2 transition-colors">
+            className="ml-auto h-10 px-5 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 flex items-center justify-center gap-2 transition-colors">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="6 9 6 2 18 2 18 9"/>
               <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
