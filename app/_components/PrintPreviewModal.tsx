@@ -71,18 +71,62 @@ export default function PrintPreviewModal({
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black/60 backdrop-blur-sm">
 
-      {/* ── Top bar ── */}
-      <div className="shrink-0 flex items-center justify-between px-4 py-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
-        <span className="font-semibold text-sm">Print Preview</span>
-        <button type="button" onClick={onClose}
-          className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </button>
+      {/* ── Top bar: title · Columns · Print Now · close ── */}
+      <div className="shrink-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 py-2.5">
+        <div className="flex items-center justify-between gap-x-3 gap-y-2 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="font-semibold text-sm">Print Preview</span>
+            <Field label="Columns">
+              <SegBtn options={[1,2,3] as const} active={cols}
+                onSelect={(v) => { if (v <= maxCols) update({ printColumns: v }); }}
+                label={(v) => String(v)}
+                disabled={(v) => v > maxCols}
+                disabledTitle="Reduce font size for 3 columns" />
+            </Field>
+          </div>
+          <div className="flex items-center gap-2">
+            <button type="button"
+              onClick={() => { onClose(); setTimeout(onPrint, 80); }}
+              className="h-9 px-4 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 flex items-center justify-center gap-2 transition-colors">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 6 2 18 2 18 9"/>
+                <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+                <rect x="6" y="14" width="12" height="8"/>
+              </svg>
+              Print Now
+            </button>
+            <button type="button" onClick={onClose}
+              className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* ── Scrollable paper preview (on top) ── */}
+      {/* ── Secondary controls row ── */}
+      <div className="shrink-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-3 py-2 flex items-center gap-x-4 gap-y-2 flex-wrap">
+        <Field label="Orientation">
+          <SegBtn options={["portrait","landscape"] as const} active={orientation}
+            onSelect={(v) => update({ printOrientation: v })}
+            label={(v) => v === "portrait" ? "↕ Port" : "↔ Land"} />
+        </Field>
+        <Field label="Page">
+          <SegBtn options={["A4","Letter"] as const} active={settings.printLayout ?? "A4"}
+            onSelect={(v) => update({ printLayout: v })}
+            label={(v) => v} />
+        </Field>
+        <Field label="Chords">
+          <button type="button"
+            onClick={() => update({ showChords: !(settings.showChords ?? true) })}
+            className={`relative w-10 h-6 rounded-full transition-colors ${(settings.showChords ?? true) ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-600"}`}>
+            <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${(settings.showChords ?? true) ? "translate-x-4" : "translate-x-0"}`} />
+          </button>
+        </Field>
+      </div>
+
+      {/* ── Scrollable paper preview (fills remaining height) ── */}
       <div className="flex-1 min-h-0 overflow-auto bg-slate-300 dark:bg-slate-800 p-4 sm:p-10 flex justify-center">
         <PaperContent
           song={song}
@@ -92,52 +136,6 @@ export default function PrintPreviewModal({
           paperW={paperW}
           paperH={paperH}
         />
-      </div>
-
-      {/* ── Settings (sticky footer panel below the preview) ── */}
-      <div className="shrink-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-4 py-3 max-h-[45vh] overflow-y-auto">
-        <div className="max-w-3xl mx-auto flex flex-wrap items-end gap-x-5 gap-y-3">
-          <CtrlRow label="Columns">
-            <SegBtn options={[1,2,3] as const} active={cols}
-              onSelect={(v) => { if (v <= maxCols) update({ printColumns: v }); }}
-              label={(v) => String(v)}
-              disabled={(v) => v > maxCols}
-              disabledTitle="Reduce font size for 3 columns" />
-          </CtrlRow>
-
-          <CtrlRow label="Orientation">
-            <SegBtn
-              options={["portrait","landscape"] as const}
-              active={orientation}
-              onSelect={(v) => update({ printOrientation: v })}
-              label={(v) => v === "portrait" ? "↕ Port" : "↔ Land"} />
-          </CtrlRow>
-
-          <CtrlRow label="Page">
-            <SegBtn options={["A4","Letter"] as const} active={settings.printLayout ?? "A4"}
-              onSelect={(v) => update({ printLayout: v })}
-              label={(v) => v} />
-          </CtrlRow>
-
-          <CtrlRow label="Chords">
-            <button type="button"
-              onClick={() => update({ showChords: !(settings.showChords ?? true) })}
-              className={`relative w-10 h-6 rounded-full transition-colors ${(settings.showChords ?? true) ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-600"}`}>
-              <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${(settings.showChords ?? true) ? "translate-x-4" : "translate-x-0"}`} />
-            </button>
-          </CtrlRow>
-
-          <button type="button"
-            onClick={() => { onClose(); setTimeout(onPrint, 80); }}
-            className="ml-auto h-10 px-5 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 flex items-center justify-center gap-2 transition-colors">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="6 9 6 2 18 2 18 9"/>
-              <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
-              <rect x="6" y="14" width="12" height="8"/>
-            </svg>
-            Print Now
-          </button>
-        </div>
       </div>
     </div>
   );
@@ -250,12 +248,12 @@ function PaperContent({ song, settings, sectionStyles, cols, paperW, paperH }: {
 
 /* ─── Small UI helpers ───────────────────────────────────────────────────── */
 
-function CtrlRow({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-1.5">
-      <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+    <div className="flex items-center gap-1.5">
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
         {label}
-      </div>
+      </span>
       {children}
     </div>
   );
