@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { getEffectiveStyle, getSectionColorKey, getSectionStyleKey, type Chord, type SectionStyles, type Song, type Settings } from "@/lib/song";
+import { CHORD_FONT_CLAMP, LYRIC_FONT_CLAMP, getEffectiveStyle, getSectionColorKey, getSectionStyleKey, type Chord, type SectionStyles, type Song, type Settings } from "@/lib/song";
 
 const FONT_CSS: Record<string, string> = {
   system: "ui-sans-serif, system-ui, -apple-system, sans-serif",
@@ -172,7 +172,8 @@ function PaperContent({ song, settings, sectionStyles, cols, paperW, paperH }: {
       lineHeight: 1.5,
       color: "#000",
       flexShrink: 0,
-    }}>
+      ["--lyric-font-size" as string]: `${fontSize}px`,
+    } as React.CSSProperties}>
       {/* Header */}
       <div style={{
         display: "flex",
@@ -232,13 +233,13 @@ function PaperContent({ song, settings, sectionStyles, cols, paperW, paperH }: {
                   {showChords && line.chords.length > 0 && (
                     <pre style={{
                       margin: 0, fontFamily: MONO_FAMILY,
-                      fontSize: `${fontSize * 0.8}px`, fontWeight: 700,
+                      fontSize: CHORD_FONT_CLAMP, fontWeight: 700,
                       color: chordColor, lineHeight: 1.3, whiteSpace: "pre", overflow: "hidden", width: "100%",
                     }}>
                       {buildChordLine(line.chords)}
                     </pre>
                   )}
-                  <div style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "break-word", lineHeight: 1.4, minHeight: `${fontSize * 1.4}px`, overflow: "hidden", fontFamily: MONO_FAMILY, width: "100%" }}>
+                  <div style={{ fontSize: LYRIC_FONT_CLAMP, whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "break-word", lineHeight: 1.4, minHeight: `${fontSize * 1.4}px`, overflow: "hidden", fontFamily: MONO_FAMILY, width: "100%" }}>
                     {line.lyric || "\u00a0"}
                   </div>
                 </div>

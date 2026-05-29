@@ -372,6 +372,12 @@ export function collectStyleKeys(sections: Section[], styles: Record<string, Sec
 // Numeric mappings for the prefs enum values.
 export const LYRIC_FONT_SIZE_PX: Record<EditorPrefs["lyricFontSize"], number> = { small: 14, medium: 17, large: 20 };
 export const CHORD_FONT_SIZE_PX: Record<EditorPrefs["chordFontSize"], number> = { small: 11, medium: 13, large: 16 };
+
+// Fluid typography for the editor and print preview. Lyrics scale with the
+// viewport from a 13px floor up to the user's chosen size (exposed as the
+// --lyric-font-size CSS variable on the container). Chords track 2px smaller.
+export const LYRIC_FONT_CLAMP = "clamp(13px, 2.2vw, var(--lyric-font-size, 16px))";
+export const CHORD_FONT_CLAMP = "clamp(11px, 1.8vw, calc(var(--lyric-font-size, 16px) - 2px))";
 export const LINE_SPACING: Record<EditorPrefs["lineSpacing"], number> = { compact: 1.25, normal: 1.55, relaxed: 1.95 };
 export const EDITOR_FONT_FAMILY: Record<EditorPrefs["fontFamily"], string> = {
   mono: "ui-monospace, Menlo, Consolas, 'Courier New', monospace",

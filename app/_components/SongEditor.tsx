@@ -5,9 +5,10 @@ import PrintPreviewModal from "@/app/_components/PrintPreviewModal";
 import QuickActionsPanel from "@/app/_components/QuickActionsPanel";
 import SongBubbles, { type SongBubblesHandle } from "@/app/_components/SongBubbles";
 import {
-  CHORD_FONT_SIZE_PX,
+  CHORD_FONT_CLAMP,
   EDITOR_FONT_FAMILY,
   KEYS,
+  LYRIC_FONT_CLAMP,
   LINE_SPACING,
   LYRIC_FONT_SIZE_PX,
   PREFER_FLAT_KEYS,
@@ -566,17 +567,6 @@ export default function SongEditor({
   const [stylesPanelOpen, setStylesPanelOpen] = useState(false);
   const [isTouchDevice, setIsTouchDevice] = useState(false);
   const [editMode, setEditMode] = useState(true);
-  const [isNarrow, setIsNarrow] = useState(false);
-
-  // Track narrow (mobile) viewports so we can force a compact font size.
-  useEffect(() => {
-    if (typeof window === "undefined" || !window.matchMedia) return;
-    const mq = window.matchMedia("(max-width: 639px)");
-    const update = () => setIsNarrow(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
 
   useEffect(() => {
     const touch = typeof navigator !== "undefined" && (navigator.maxTouchPoints ?? 0) > 0;
@@ -606,17 +596,12 @@ export default function SongEditor({
   // "Click to add a chord" hint on the first line of a new song.
   const songHasNoChords = song.sections.every((sec) => sec.lines.every((l) => l.chords.length === 0));
   const baseFontSize = LYRIC_FONT_SIZE_PX[prefs.lyricFontSize] + zoomOffset;
-  const desktopLyricSize =
-    viewMode === "split-3"
-      ? Math.max(11, Math.round(baseFontSize * 0.78))
-      : baseFontSize;
-  const desktopChordSize = viewMode === "split-3"
-    ? Math.max(10, Math.round(CHORD_FONT_SIZE_PX[prefs.chordFontSize] * 0.85))
-    : CHORD_FONT_SIZE_PX[prefs.chordFontSize];
-  // On mobile (<640px) clamp to a compact size regardless of settings so
-  // lines fit without horizontal overflow.
-  const effectiveFontSize = isNarrow ? 13 : desktopLyricSize;
-  const chordFontSize = isNarrow ? 11 : desktopChordSize;
+  // Ceiling for the fluid clamp() (the --lyric-font-size CSS var). The split-3
+  // column view keeps its tighter size by lowering the ceiling; clamp then
+  // scales fluidly from a 13px floor up to it based on viewport width.
+  const lyricCeiling = viewMode === "split-3" ? Math.max(13, Math.round(baseFontSize * 0.78)) : baseFontSize;
+  const lyricFontSize = LYRIC_FONT_CLAMP;
+  const chordFontSize = CHORD_FONT_CLAMP;
   const lineHeight = LINE_SPACING[prefs.lineSpacing];
 
   useEffect(() => {
@@ -632,7 +617,7 @@ export default function SongEditor({
     }
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
-  }, [effectiveFontSize]);
+  }, [lyricCeiling]);
 
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -1010,6 +995,7 @@ export default function SongEditor({
 
   return (
     <div className="relative max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 md:py-8"
+      style={{ "--lyric-font-size": `${lyricCeiling}px` } as React.CSSProperties}
       onTouchStart={onSwipeStart}
       onTouchEnd={onSwipeEnd}
       onTouchCancel={() => { swipeStartRef.current = null; }}
@@ -1053,7 +1039,7 @@ export default function SongEditor({
           opacity: 0,
           pointerEvents: "none",
           whiteSpace: "pre",
-          fontSize: `${effectiveFontSize}px`,
+          fontSize: lyricFontSize,
         }}
       >
         0000000000
@@ -1415,7 +1401,7 @@ export default function SongEditor({
                   style={{ borderLeft: `3px solid ${c.bg}` }}
                 >
                   {section.lines.map((line, lIdx) => {
-                    const chordRowHeight = chordFontSize + 12;
+                    const chordRowHeight = `calc(${CHORD_FONT_CLAMP} + 12px)`;
                     const isFirstLine = sIdx === 0 && lIdx === 0;
                     return (
                       <div
@@ -1479,7 +1465,7 @@ export default function SongEditor({
                                     commitChord(line.id, ch.id, e.target.value)
                                   }
                                   className="font-mono font-bold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-200 outline-none rounded px-1 py-0.5 ring-2 ring-indigo-500"
-                                  style={{ fontSize: `${chordFontSize}px` }}
+                                  style={{ fontSize: chordFontSize }}
                                 />
                               ) : (
                                 <span
@@ -1521,7 +1507,7 @@ export default function SongEditor({
                                   }`}
                                   style={{
                                     touchAction: readOnly ? "auto" : "none",
-                                    fontSize: `${chordFontSize}px`,
+                                    fontSize: chordFontSize,
                                     color: chordColor,
                                   }}
                                 >
@@ -1549,7 +1535,7 @@ export default function SongEditor({
                             onBlur={(e) => commitLine(line.id, e.target.value)}
                             className="bg-slate-50 dark:bg-slate-800/60 outline-none rounded px-1 py-0.5 ring-2 ring-indigo-500 w-full"
                             spellCheck={false}
-                            style={{ fontSize: `${effectiveFontSize}px`, fontFamily: lyricFontFamily, lineHeight }}
+                            style={{ fontSize: lyricFontSize, fontFamily: lyricFontFamily, lineHeight }}
                           />
                         ) : (
                           <div
@@ -1568,7 +1554,7 @@ export default function SongEditor({
                                 ? "cursor-default"
                                 : "cursor-text hover:bg-slate-50 dark:hover:bg-slate-800/40"
                             }`}
-                            style={{ fontSize: `${effectiveFontSize}px`, fontFamily: lyricFontFamily, lineHeight, whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "break-word" }}
+                            style={{ fontSize: lyricFontSize, fontFamily: lyricFontFamily, lineHeight, whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "break-word" }}
                           >
                             {isFirstLine && !line.lyric && !readOnly ? (
                               <span className="text-[13px] text-slate-300 dark:text-slate-600">
@@ -1720,7 +1706,7 @@ export default function SongEditor({
           song={song}
           settings={settings}
           zoomOffset={zoomOffset}
-          effectiveFontSize={effectiveFontSize}
+          effectiveFontSize={lyricCeiling}
           autoScrolling={autoScrolling}
           scrollSpeed={scrollSpeed}
           onTranspose={handleTranspose}
