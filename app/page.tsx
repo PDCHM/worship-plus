@@ -44,15 +44,6 @@ const LIBRARY_VIEW_KEY = "wp-library-view-v1";
 // nested-join timeout. rowToSong maps a metadata row to a Song with sections: [].
 const SONG_META_COLUMNS = "id, user_id, title, artist, key, bpm, capo, favorite, created_at, updated_at";
 
-// Full content for one song, fetched in a SINGLE nested-embed query on open
-// (PostgREST resource embedding — one round-trip, not separate section/line/
-// chord queries). Columns are narrowed to exactly what rowToSong maps so we
-// don't over-fetch unused fields (section.type, per-row created_at, …) across
-// hundreds of nested rows — keeps the open fast, especially on mobile.
-const SONG_FULL_COLUMNS =
-  "id, user_id, title, artist, key, bpm, capo, favorite, created_at, updated_at, " +
-  "sections(id, label, position, lines(id, lyric, position, chords(id, chord_name, position_px)))";
-
 type LibraryView = "grid" | "list";
 
 type Profile = {
@@ -91,8 +82,13 @@ type SongRow = {
   }> | null;
 };
 
-function rowToSong(row: SongRow): Song {
-  const sections = (row.sections ?? [])
+type SectionRow = NonNullable<SongRow["sections"]>[number];
+
+// Maps raw section rows (with nested lines → chords) into the Song.sections
+// shape, sorting each level by its stored position. Shared by rowToSong and
+// the on-open hydration path so both produce identical content.
+function sectionRowsToSections(rows: SectionRow[]): Song["sections"] {
+  return rows
     .slice()
     .sort((a, b) => a.position - b.position)
     .map((s) => ({
@@ -114,6 +110,10 @@ function rowToSong(row: SongRow): Song {
             })),
         })),
     }));
+}
+
+function rowToSong(row: SongRow): Song {
+  const sections = sectionRowsToSections(row.sections ?? []);
   return {
     id: row.id,
     title: row.title,
@@ -542,29 +542,31 @@ export default function Home() {
       return;
     }
     setHydratingId(songId);
+    // Single nested query — sections + their lines + their chords in one round
+    // trip (PostgREST resource embedding), not three separate fetches.
     const { data, error } = await supabase
-      .from("songs")
-      .select(SONG_FULL_COLUMNS)
-      .eq("id", songId)
-      .maybeSingle();
+      .from("sections")
+      .select("*, lines(*, chords(*))")
+      .eq("song_id", songId)
+      .order("position");
     if (error) {
       console.error("hydrate song failed", error.message);
       showToast("Could not load song: " + error.message);
       setHydratingId((cur) => (cur === songId ? null : cur));
       return;
     }
-    if (data) {
-      const full = rowToSong(data as unknown as SongRow);
-      hydratedIdsRef.current.add(songId);
-      lastSavedRef.current.set(songId, full);
-      setSongs((prev) => {
-        if (prev.some((s) => s.id === songId)) {
-          // Fill sections only — keep any locally-toggled metadata (e.g. favorite).
-          return prev.map((s) => (s.id === songId ? { ...s, sections: full.sections } : s));
-        }
-        return [...prev, full];
-      });
-    }
+    const sections = sectionRowsToSections((data ?? []) as unknown as SectionRow[]);
+    hydratedIdsRef.current.add(songId);
+    // Merge content into the metadata entry already in the list; keep any
+    // locally-toggled metadata (e.g. favorite) untouched.
+    setSongs((prev) =>
+      prev.map((s) => {
+        if (s.id !== songId) return s;
+        const merged = { ...s, sections };
+        lastSavedRef.current.set(songId, merged);
+        return merged;
+      }),
+    );
     setHydratingId((cur) => (cur === songId ? null : cur));
   };
 
