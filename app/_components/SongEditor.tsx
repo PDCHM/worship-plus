@@ -572,11 +572,6 @@ export default function SongEditor({
   const [stylesPanelOpen, setStylesPanelOpen] = useState(false);
   const [isTouchDevice, setIsTouchDevice] = useState(false);
   const [editMode, setEditMode] = useState(true);
-  // Inline chord mode: lyrics rendered with [Chord] interleaved at each chord's
-  // character position instead of the absolutely-positioned chord-on-top rows.
-  // Read-only presentation, persisted per-song in localStorage.
-  const [inlineChords, setInlineChords] = useState(false);
-  const lastLyricTapRef = useRef(0);
 
   useEffect(() => {
     const touch = typeof navigator !== "undefined" && (navigator.maxTouchPoints ?? 0) > 0;
@@ -596,30 +591,8 @@ export default function SongEditor({
     try { localStorage.setItem("wp-edit-mode-v1", String(editMode)); } catch {}
   }, [editMode, isTouchDevice]);
 
-  // Load the per-song inline-chord preference when the open song changes.
-  useEffect(() => {
-    try {
-      setInlineChords(localStorage.getItem(`wp-inline-chords-v1:${song.id}`) === "true");
-    } catch {
-      setInlineChords(false);
-    }
-  }, [song.id]);
-
-  // Persist on toggle (not via an effect) so switching songs never writes the
-  // previous song's value to the new song's key before the load effect runs.
-  const toggleInlineChords = () => {
-    setInlineChords((v) => {
-      const next = !v;
-      try { localStorage.setItem(`wp-inline-chords-v1:${song.id}`, String(next)); } catch {}
-      return next;
-    });
-  };
-
   const colors = isDark ? settings.sectionColorsDark : settings.sectionColorsLight;
   const readOnly = isTouchDevice && !editMode;
-  // Inline mode is a read-only presentation: section/line/chord editing and the
-  // Add line/section affordances are all suppressed while it's on.
-  const inline = inlineChords;
   const columnView = viewMode !== "standard";
   const numCols = viewMode === "split-2" ? 2 : viewMode === "split-3" ? 3 : 1;
   const prefs = sectionStyles.prefs;
@@ -1033,53 +1006,6 @@ export default function SongEditor({
     else setlistContext.onPrev?.();
   };
 
-  // Build the inline-chord rendering for a line: each chord is spliced in as
-  // [Chord] (indigo) at its character position, sorted left-to-right. Because
-  // everything flows as normal text, it wraps inside any column width and never
-  // clips — unlike the absolutely-positioned chord-on-top rows.
-  const renderInlineLine = (line: (typeof song.sections)[number]["lines"][number]) => {
-    const lyric = line.lyric;
-    const chords = line.chords
-      .filter((c) => c.chord.trim() !== "")
-      .map((c) => ({ id: c.id, chord: c.chord, pos: Math.max(0, Math.min(lyric.length, c.pos)) }))
-      .sort((a, b) => a.pos - b.pos);
-    if (chords.length === 0) return lyric || " ";
-    const nodes: React.ReactNode[] = [];
-    let cursor = 0;
-    chords.forEach((c) => {
-      if (c.pos > cursor) {
-        nodes.push(<span key={`t${cursor}`}>{lyric.slice(cursor, c.pos)}</span>);
-        cursor = c.pos;
-      }
-      nodes.push(
-        <span
-          key={`c${c.id}`}
-          className="font-semibold text-indigo-600 dark:text-indigo-400"
-          style={{ fontVariantEmoji: "text" }}
-        >
-          [{c.chord}]
-        </span>,
-      );
-    });
-    if (cursor < lyric.length) nodes.push(<span key="tail">{lyric.slice(cursor)}</span>);
-    return nodes;
-  };
-
-  // Double-tap the lyric area on a touch device toggles inline mode. Only active
-  // when not editing the line (read mode or already inline), so it never steals
-  // the edit-mode double-tap-to-edit gesture.
-  const handleLyricTouchEnd: React.TouchEventHandler = (e) => {
-    if (!isTouchDevice) return;
-    const now = Date.now();
-    if (now - lastLyricTapRef.current < 300) {
-      e.preventDefault();
-      lastLyricTapRef.current = 0;
-      toggleInlineChords();
-    } else {
-      lastLyricTapRef.current = now;
-    }
-  };
-
   return (
     <div className="relative max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 md:py-8"
       style={{ "--lyric-font-size": `${lyricCeiling}px` } as React.CSSProperties}
@@ -1267,21 +1193,6 @@ export default function SongEditor({
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
           </button>
           <ViewToggle viewMode={viewMode} onChange={switchView} />
-          <button type="button" onClick={toggleInlineChords}
-            title={inline ? "Inline chords on — tap to show chords on top" : "Show chords inline ([Chord] before each word)"}
-            aria-pressed={inline}
-            aria-label="Toggle inline chord mode"
-            className={
-              "h-9 w-9 rounded-lg flex items-center justify-center transition-colors " +
-              (inline
-                ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-600/30"
-                : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300")
-            }>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="9 4 5 4 5 20 9 20" />
-              <polyline points="15 4 19 4 19 20 15 20" />
-            </svg>
-          </button>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
           {isTouchDevice && (
@@ -1403,7 +1314,7 @@ export default function SongEditor({
                 style={sectionInColumnStyle}
               >
                 <div className="flex items-center gap-2 mb-3 flex-wrap">
-                  {editingSection === section.id && !readOnly && !inline ? (
+                  {editingSection === section.id && !readOnly ? (
                     <input
                       autoFocus
                       list="section-presets"
@@ -1424,7 +1335,7 @@ export default function SongEditor({
                       className={`text-xs uppercase tracking-wider outline-none rounded-md px-2.5 py-1 ring-2 ring-indigo-500 ${labelWeightClass}`}
                       style={{ background: c.bg, color: c.fg }}
                     />
-                  ) : readOnly || inline ? (
+                  ) : readOnly ? (
                     <span
                       className={`px-2.5 py-1 rounded-md text-xs uppercase tracking-wider ${labelWeightClass}`}
                       style={{ background: c.bg, color: c.fg }}
@@ -1443,7 +1354,7 @@ export default function SongEditor({
                     </button>
                   )}
 
-                  {!readOnly && !inline && (
+                  {!readOnly && (
                     <div className={"items-center gap-0.5 ml-1 print:hidden " + (columnView ? "hidden sm:flex" : "flex")}>
                       <ToolBtn
                         onClick={() => moveSection(section.id, -1)}
@@ -1505,11 +1416,11 @@ export default function SongEditor({
                       <div
                         className="relative"
                         style={{
-                          paddingTop: showChords && !inline ? chordRowHeight : 0,
-                          minWidth: !inline && line.lyric.length === 0 ? `${40 * charWidth}px` : undefined,
+                          paddingTop: showChords ? chordRowHeight : 0,
+                          minWidth: line.lyric.length === 0 ? `${40 * charWidth}px` : undefined,
                         }}
                       >
-                        {showChords && !inline && (
+                        {showChords && (
                         <div
                           className="absolute left-0 right-0 top-0"
                           style={{ height: chordRowHeight }}
@@ -1626,7 +1537,7 @@ export default function SongEditor({
                         </div>
                         )}
 
-                        {editingLine === line.id && !readOnly && !inline ? (
+                        {editingLine === line.id && !readOnly ? (
                           <input
                             autoFocus
                             defaultValue={line.lyric}
@@ -1647,35 +1558,23 @@ export default function SongEditor({
                         ) : (
                           <div
                             onClick={
-                              !readOnly && !inline && isFirstLine && !line.lyric
+                              !readOnly && isFirstLine && !line.lyric
                                 ? () => setEditingLine(line.id)
                                 : undefined
                             }
                             onDoubleClick={
-                              readOnly || inline
+                              readOnly
                                 ? undefined
                                 : () => setEditingLine(line.id)
                             }
-                            onTouchEnd={
-                              isTouchDevice && (readOnly || inline)
-                                ? handleLyricTouchEnd
-                                : undefined
-                            }
-                            title={
-                              isTouchDevice && (readOnly || inline)
-                                ? "Double-tap to toggle inline chords"
-                                : undefined
-                            }
                             className={`rounded px-1 py-0.5 -mx-1 transition-colors ${
-                              readOnly || inline
+                              readOnly
                                 ? "cursor-default"
                                 : "cursor-text hover:bg-slate-50 dark:hover:bg-slate-800/40"
                             }`}
                             style={{ fontSize: lyricFontSize, fontFamily: lyricFontFamily, lineHeight, whiteSpace: "pre-wrap", wordBreak: "normal", overflowWrap: "break-word" }}
                           >
-                            {inline ? (
-                              renderInlineLine(line)
-                            ) : isFirstLine && !line.lyric && !readOnly ? (
+                            {isFirstLine && !line.lyric && !readOnly ? (
                               <span className="text-[13px] text-slate-300 dark:text-slate-600">
                                 Start typing your lyrics here...
                               </span>
@@ -1690,7 +1589,7 @@ export default function SongEditor({
                     );
                   })}
 
-                  {!readOnly && !inline && (
+                  {!readOnly && (
                     <button
                       type="button"
                       onClick={() => addLineToSection(section.id)}
@@ -1716,7 +1615,7 @@ export default function SongEditor({
           })}
         </div>
 
-        {!readOnly && !inline && (
+        {!readOnly && (
           <button
             type="button"
             onClick={addSection}
@@ -1732,16 +1631,7 @@ export default function SongEditor({
       </div>
 
       <div className="mt-5 text-xs text-slate-500 dark:text-slate-400 px-1 leading-relaxed space-y-1 print:hidden">
-        {inline ? (
-          <p>
-            <span className="font-semibold text-slate-700 dark:text-slate-300">Inline chord</span>{" "}
-            view — chords shown as{" "}
-            <span className="font-mono text-indigo-600 dark:text-indigo-400">[Chord]</span>{" "}
-            before each word. Tap the{" "}
-            <span className="font-semibold text-slate-700 dark:text-slate-300">[ ]</span>{" "}
-            button{isTouchDevice ? " or double-tap the lyrics" : ""} to show chords on top and edit.
-          </p>
-        ) : readOnly ? (
+        {readOnly ? (
           <p>
             Read-only{" "}
             <span className="font-semibold text-slate-700 dark:text-slate-300">
@@ -1867,7 +1757,6 @@ export default function SongEditor({
             <div className="flex justify-center pt-2.5 pb-1"><div className="w-9 h-1 rounded-full bg-slate-300 dark:bg-slate-700" /></div>
             <div className="py-1">
               {([
-                { label: inline ? "Inline chords: On" : "Inline chords: Off", onClick: toggleInlineChords, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 4 5 4 5 20 9 20"/><polyline points="15 4 19 4 19 20 15 20"/></svg> },
                 { label: "Section styles", onClick: () => setStylesPanelOpen(true), icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg> },
                 { label: "Print", onClick: () => setPreviewOpen(true), icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> },
                 { label: "Export", onClick: onExport, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> },
