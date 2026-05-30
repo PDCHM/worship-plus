@@ -159,18 +159,20 @@ async function saveSongToDb(supabase: SupabaseClient, song: Song, userId: string
     favorite: song.favorite,
     updated_at: new Date(song.updatedAt).toISOString(),
   };
+  // Writes omit .select() — returning every inserted row adds latency/payload
+  // and isn't needed (errors come back regardless), which was contributing to
+  // save timeouts on large songs.
   let { error: songError } = await supabase
     .from("songs")
-    .upsert({ ...songRow, is_draft: song.isDraft ?? false })
-    .select();
+    .upsert({ ...songRow, is_draft: song.isDraft ?? false });
   // Fall back to a save without is_draft if the column hasn't been added yet
   // (schema migration not applied) so saving never hard-fails on it.
   if (songError && /is_draft|column|42703/i.test(songError.message || "")) {
-    ({ error: songError } = await supabase.from("songs").upsert(songRow).select());
+    ({ error: songError } = await supabase.from("songs").upsert(songRow));
   }
   if (songError) { logErr("save song failed", songError); return { ok: false, message: songError.message }; }
 
-  const { error: delError } = await supabase.from("sections").delete().eq("song_id", song.id).select();
+  const { error: delError } = await supabase.from("sections").delete().eq("song_id", song.id);
   if (delError) { logErr("delete old sections failed", delError); return { ok: false, message: delError.message }; }
 
   const sectionRows: Array<{ id: string; song_id: string; label: string; type: string; position: number }> = [];
@@ -181,13 +183,17 @@ async function saveSongToDb(supabase: SupabaseClient, song: Song, userId: string
     sectionRows.push({ id: section.id, song_id: song.id, label: section.label, type: getSectionColorKey(section.label), position: sIdx });
     section.lines.forEach((line, lIdx) => {
       lineRows.push({ id: line.id, section_id: section.id, lyric: line.lyric, position: lIdx });
-      const lineHasWords = tokenizeWords(line.lyric).length > 0;
+      const wordCount = tokenizeWords(line.lyric).length;
+      const lineHasWords = wordCount > 0;
       line.chords.forEach((chord) => {
         // Persist the word the chord attaches to, and resync position_px to that
         // word's character offset so print/export/serialize stay correct. On
         // chord-only lines (no lyric words) there is no word to anchor to, so
         // pos/word_index act as a left-to-right ordinal — keep pos as stored.
         const wordIndex = chord.wordIndex ?? findNearestWordIndex(chord.pos, line.lyric);
+        // Bounds-check: drop a chord whose word index is past the actual words
+        // rather than letting it attach to the last word (chord misalignment).
+        if (lineHasWords && wordIndex >= wordCount) return;
         chordRows.push({
           id: chord.id,
           line_id: line.id,
@@ -199,16 +205,18 @@ async function saveSongToDb(supabase: SupabaseClient, song: Song, userId: string
     });
   });
 
+  // Each table is inserted in a single batched call (3 round trips total, not
+  // one per row). No .select() — we don't need the rows echoed back.
   if (sectionRows.length) {
-    const { error } = await supabase.from("sections").insert(sectionRows).select();
+    const { error } = await supabase.from("sections").insert(sectionRows);
     if (error) { logErr("insert sections failed", error); return { ok: false, message: error.message }; }
   }
   if (lineRows.length) {
-    const { error } = await supabase.from("lines").insert(lineRows).select();
+    const { error } = await supabase.from("lines").insert(lineRows);
     if (error) { logErr("insert lines failed", error); return { ok: false, message: error.message }; }
   }
   if (chordRows.length) {
-    const { error } = await supabase.from("chords").insert(chordRows).select();
+    const { error } = await supabase.from("chords").insert(chordRows);
     if (error) { logErr("insert chords failed", error); return { ok: false, message: error.message }; }
   }
   return { ok: true };

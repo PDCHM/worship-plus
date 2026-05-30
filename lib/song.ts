@@ -855,6 +855,9 @@ function chordPositionsFromLine(chordLine: string, maxLen?: number): Chord[] {
     // Extract strictly: only real chords (detection via isPastedChordLine is
     // looser, but a stray non-chord token here is dropped, not stored).
     if (!isValidChord(m[0])) continue;
+    // Drop chords whose column sits past the end of the lyric — they have no
+    // word beneath them and would otherwise clamp onto the last word.
+    if (maxLen != null && m.index > maxLen) continue;
     const pos = maxLen == null ? m.index : Math.min(m.index, maxLen);
     result.push({ id: uid(), pos, chord: m[0] });
   }

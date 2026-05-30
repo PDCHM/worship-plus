@@ -1647,6 +1647,9 @@ export default function SongEditor({
                     if (hasWords) {
                       const chordsByWord = new Map<number, Chord[]>();
                       for (const ch of visibleChords) {
+                        // Discard a chord whose stored word index is past the
+                        // actual words rather than clamping it onto the last one.
+                        if (ch.wordIndex != null && ch.wordIndex >= tokens.length) continue;
                         const wi = effectiveWordIndex(ch, line.lyric);
                         const arr = chordsByWord.get(wi);
                         if (arr) arr.push(ch);
