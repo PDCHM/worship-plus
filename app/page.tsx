@@ -46,7 +46,12 @@ const LIBRARY_VIEW_KEY = "wp-library-view-v1";
 // library list — never sections/lines/chords. Full content is loaded per song
 // when opened (hydrateSong) so the library scales to 500+ songs without a
 // nested-join timeout. rowToSong maps a metadata row to a Song with sections: [].
-const SONG_META_COLUMNS = "id, user_id, title, artist, key, bpm, capo, favorite, is_draft, created_at, updated_at";
+const SONG_META_COLUMNS = "id, user_id, title, artist, key, bpm, capo, favorite, created_at, updated_at";
+// Drafts are owner-only (never shared to groups/setlists), so only the
+// own-songs load pulls is_draft. It falls back to SONG_META_COLUMNS if the
+// column hasn't been added to the DB yet (schema migration not applied), so a
+// missing column can never empty the library.
+const SONG_META_COLUMNS_OWN = "id, user_id, title, artist, key, bpm, capo, favorite, is_draft, created_at, updated_at";
 
 type LibraryView = "grid" | "list";
 
@@ -152,10 +157,17 @@ async function saveSongToDb(supabase: SupabaseClient, song: Song, userId: string
     bpm: song.bpm,
     capo: song.capo,
     favorite: song.favorite,
-    is_draft: song.isDraft ?? false,
     updated_at: new Date(song.updatedAt).toISOString(),
   };
-  const { error: songError } = await supabase.from("songs").upsert(songRow).select();
+  let { error: songError } = await supabase
+    .from("songs")
+    .upsert({ ...songRow, is_draft: song.isDraft ?? false })
+    .select();
+  // Fall back to a save without is_draft if the column hasn't been added yet
+  // (schema migration not applied) so saving never hard-fails on it.
+  if (songError && /is_draft|column|42703/i.test(songError.message || "")) {
+    ({ error: songError } = await supabase.from("songs").upsert(songRow).select());
+  }
   if (songError) { logErr("save song failed", songError); return { ok: false, message: songError.message }; }
 
   const { error: delError } = await supabase.from("sections").delete().eq("song_id", song.id).select();
@@ -333,37 +345,48 @@ export default function Home() {
         // the songs_user_id_idx index. Library renders as soon as this returns.
         const ownAbort = new AbortController();
         const ownTimeoutId = setTimeout(() => ownAbort.abort(), 15000);
-        void supabase
-          .from("songs")
-          .select(SONG_META_COLUMNS)
-          .eq("user_id", u.id)
-          .order("created_at", { ascending: false })
-          .abortSignal(ownAbort.signal)
-          .then(
-            ({ data: songRows, error: songsError }) => {
-              clearTimeout(ownTimeoutId);
-              if (cancelled) return;
-              if (songsError) {
-                console.error("load own songs failed", songsError.message);
-                showToast("Songs error: " + songsError.message);
+        const loadOwnSongs = (cols: string, isFallback: boolean) => {
+          void supabase
+            .from("songs")
+            .select(cols)
+            .eq("user_id", u.id)
+            .order("created_at", { ascending: false })
+            .abortSignal(ownAbort.signal)
+            .then(
+              ({ data: songRows, error: songsError }) => {
+                if (cancelled) return;
+                if (songsError) {
+                  // The is_draft column may not exist yet (schema migration not
+                  // applied). Retry once without it so the library still loads.
+                  if (!isFallback && /is_draft|column|42703/i.test(songsError.message || "")) {
+                    console.warn("own songs: retrying without is_draft —", songsError.message);
+                    loadOwnSongs(SONG_META_COLUMNS, true);
+                    return;
+                  }
+                  clearTimeout(ownTimeoutId);
+                  console.error("load own songs failed", songsError.message);
+                  showToast("Songs error: " + songsError.message);
+                  setSongsLoaded(true);
+                  return;
+                }
+                clearTimeout(ownTimeoutId);
+                const own = (songRows ?? []).map((r) => rowToSong(r as unknown as SongRow));
+                setSongs(own);
                 setSongsLoaded(true);
-                return;
-              }
-              const own = (songRows ?? []).map((r) => rowToSong(r as SongRow));
-              setSongs(own);
-              setSongsLoaded(true);
-              restoreBackups(own);
-            },
-            (err: unknown) => {
-              clearTimeout(ownTimeoutId);
-              if (cancelled) return;
-              const e = err as { message?: string; name?: string };
-              const msg = e?.message ?? String(err);
-              console.error("load own songs aborted/failed", msg);
-              if (e?.name !== "AbortError") showToast("Songs unavailable: " + msg);
-              setSongsLoaded(true);
-            },
-          );
+                restoreBackups(own);
+              },
+              (err: unknown) => {
+                clearTimeout(ownTimeoutId);
+                if (cancelled) return;
+                const e = err as { message?: string; name?: string };
+                const msg = e?.message ?? String(err);
+                console.error("load own songs aborted/failed", msg);
+                if (e?.name !== "AbortError") showToast("Songs unavailable: " + msg);
+                setSongsLoaded(true);
+              },
+            );
+        };
+        loadOwnSongs(SONG_META_COLUMNS_OWN, false);
 
         // Phase 2: shared songs (owned by other users, visible via group_songs
         // or shared setlist). This hits the heavier RLS path; if it times out
