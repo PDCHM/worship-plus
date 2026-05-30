@@ -67,6 +67,22 @@ async function extractPdf(buf: ArrayBuffer): Promise<string> {
   return (Array.isArray(text) ? text.join("\n\n") : text).trim();
 }
 
+// RTF — strip control words/groups to recover plain text.
+function extractRtf(raw: string): string {
+  return raw
+    .replace(/\{\\\*[\s\S]*?\}/g, "") // drop annotation groups like {\*\...}
+    .replace(/\\par[d]?\b/g, "\n")
+    .replace(/\\line\b/g, "\n")
+    .replace(/\\tab\b/g, "\t")
+    .replace(/\\'[0-9a-fA-F]{2}/g, "") // hex-encoded bytes
+    .replace(/\\[a-zA-Z]+-?\d*\s?/g, "") // control words
+    .replace(/[{}]/g, "")
+    .replace(/\r/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 // SongBook Pro (.sbp) — XML-based. Strip tags to recover the lyric/chord text.
 function extractSbp(raw: string): string {
   if (!raw.includes("<")) return raw.trim();
@@ -97,6 +113,7 @@ export async function POST(request: Request) {
     else if (ext === "pptx") text = await extractPptx(await file.arrayBuffer());
     else if (ext === "pdf") text = await extractPdf(await file.arrayBuffer());
     else if (ext === "sbp") text = extractSbp(await file.text());
+    else if (ext === "rtf") text = extractRtf(await file.text());
     else if (ext === "txt" || ext === "worship") text = await file.text();
     else return NextResponse.json({ error: `Unsupported file type: .${ext}` }, { status: 415 });
 

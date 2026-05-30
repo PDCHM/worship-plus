@@ -824,8 +824,11 @@ export default function Home() {
     // Plain-text formats read on the client; binary/zip/pdf formats are sent to
     // /api/extract-text for server-side text extraction. Both then run through
     // the same chord-chart parser.
-    const TEXT_EXTS = ["txt"];
-    const EXTRACT_EXTS = ["docx", "pdf", "pptx", "sbp"];
+    // Text formats parse on the client; ChordPro/OnSong are text + inline
+    // [chords] and route straight through parseSongText (which handles ChordPro
+    // directives, [Section] headers, and word-anchored inline chords).
+    const TEXT_EXTS = ["txt", "chopro", "cho", "onsong"];
+    const EXTRACT_EXTS = ["docx", "pdf", "pptx", "sbp", "rtf"];
     let text: string;
     try {
       if (TEXT_EXTS.includes(ext)) {
@@ -1084,7 +1087,7 @@ export default function Home() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".txt,.worship,.docx,.pdf,.pptx,.sbp"
+        accept=".txt,.worship,.chopro,.cho,.onsong,.sbp,.docx,.pdf,.pptx,.rtf"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];

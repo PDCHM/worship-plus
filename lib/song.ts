@@ -576,9 +576,9 @@ export function parseSongText(text: string): Song {
         const n = parseInt(val, 10);
         if (!isNaN(n) && n > 0) capo = n;
       } else if (k === "section" || k === "comment") startNew(val);
-      else if (k === "start_of_chorus") startNew("Chorus");
-      else if (k === "start_of_verse") startNew("Verse");
-      else if (k === "start_of_bridge") startNew("Bridge");
+      else if (k === "start_of_chorus" || k === "chorus" || k === "soc") startNew(val || "Chorus");
+      else if (k === "start_of_verse" || k === "verse" || k === "sov") startNew(val || "Verse");
+      else if (k === "start_of_bridge" || k === "bridge" || k === "sob") startNew(val || "Bridge");
       continue;
     }
 

@@ -55,7 +55,7 @@ export default function AddSongSheet({ onBuildNew, onPasteChart, onAiChords, onI
               label="Paste text" desc="Paste a chord chart from your clipboard" />
             <SheetBtn onClick={() => { onImportFile(); onClose(); }}
               icon={ICON_FILE}
-              label="Import file (.txt .worship)" desc="Choose a file · batch supported" />
+              label="Import file" desc=".txt · ChordPro · OnSong · .docx · .pdf · .rtf · .worship" />
           </div>
         ) : (
           <div className="p-3 space-y-1">
