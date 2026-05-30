@@ -1272,7 +1272,7 @@ export default function SongEditor({
             aria-pressed={inline}
             aria-label="Toggle inline chord mode"
             className={
-              "h-9 w-9 rounded-lg hidden sm:flex items-center justify-center transition-colors " +
+              "h-9 w-9 rounded-lg flex items-center justify-center transition-colors " +
               (inline
                 ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-600/30"
                 : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300")
