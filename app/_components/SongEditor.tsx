@@ -1467,7 +1467,7 @@ export default function SongEditor({
             <span className="hidden sm:inline">Export</span>
           </button>
           <button type="button" onClick={() => setMoreOpen(true)} title="More" aria-label="More actions"
-            className="h-9 w-9 rounded-lg sm:hidden flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors">
+            className="h-9 w-9 rounded-lg flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
           </button>
           <div className="relative">
@@ -2047,8 +2047,8 @@ export default function SongEditor({
       )}
 
       {moreOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:hidden print:hidden" onClick={() => setMoreOpen(false)}>
-          <div className="w-full bg-white dark:bg-slate-900 rounded-t-2xl border-t border-slate-200 dark:border-slate-700 shadow-2xl pb-[env(safe-area-inset-bottom)]" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4 print:hidden" onClick={() => setMoreOpen(false)}>
+          <div className="w-full sm:max-w-sm bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border-t sm:border border-slate-200 dark:border-slate-700 shadow-2xl pb-[env(safe-area-inset-bottom)] sm:pb-2" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-center pt-2.5 pb-1"><div className="w-9 h-1 rounded-full bg-slate-300 dark:bg-slate-700" /></div>
             <div className="py-1">
               {([
