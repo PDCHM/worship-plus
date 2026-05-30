@@ -30,6 +30,7 @@ import {
   wordStartOffset,
   type Chord,
   type EditorPrefs,
+  type Line,
   type Section,
   type SectionStyle,
   type SectionStyles,
@@ -619,6 +620,11 @@ export default function SongEditor({
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
   const [stylesPanelOpen, setStylesPanelOpen] = useState(false);
   const [editMode, setEditMode] = useState(true);
+  // AI chord generation sheet.
+  const [generateOpen, setGenerateOpen] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [genKey, setGenKey] = useState(song.key);
+  const [genStyle, setGenStyle] = useState<"Worship" | "Gospel" | "Contemporary" | "Traditional">("Worship");
 
   useEffect(() => {
     const touch = typeof navigator !== "undefined" && (navigator.maxTouchPoints ?? 0) > 0;
@@ -726,6 +732,100 @@ export default function SongEditor({
 
   const update = (updater: (s: Song) => Song) =>
     onChange({ ...updater(song), updatedAt: Date.now() });
+
+  // "Generate Chords" is offered when the song has lyrics but few or no chords
+  // (fewer chords than lyric lines, i.e. less than ~one per line on average).
+  const lyricLines = song.sections.flatMap((s) => s.lines).filter((l) => l.lyric.trim() !== "");
+  const totalChords = song.sections.reduce(
+    (n, s) => n + s.lines.reduce((m, l) => m + l.chords.length, 0),
+    0,
+  );
+  const canGenerateChords = !readOnly && lyricLines.length > 0 && totalChords < lyricLines.length;
+
+  const openGenerate = () => {
+    setGenKey(song.key);
+    setGenerateOpen(true);
+  };
+
+  // Serialize the song's lyrics for the model, and capture the lyric-bearing
+  // lines in document order so the response can be mapped back by line index.
+  const buildLyricsPayload = (): { lyrics: string; lines: Line[] } => {
+    const lines: Line[] = [];
+    const parts: string[] = [];
+    for (const sec of song.sections) {
+      const secLines = sec.lines.filter((l) => l.lyric.trim() !== "");
+      if (secLines.length === 0) continue;
+      parts.push(sec.label);
+      for (const l of secLines) {
+        parts.push(l.lyric);
+        lines.push(l);
+      }
+      parts.push("");
+    }
+    return { lyrics: parts.join("\n").trim(), lines };
+  };
+
+  const generateChords = async () => {
+    const { lyrics, lines } = buildLyricsPayload();
+    if (!lyrics) {
+      showToast("Add some lyrics first.");
+      return;
+    }
+    setGenerating(true);
+    try {
+      const res = await fetch("/api/generate-chords", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: song.title, key: genKey, style: genStyle, lyrics }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(typeof data?.error === "string" ? data.error : "Chord generation failed.");
+        return;
+      }
+      // Flatten the model's lines (across its sections) and zip with our lyric
+      // lines by index; each chord's wordIndex maps to a word in that line.
+      const aiLines: Array<{ chords?: unknown }> = [];
+      for (const sec of Array.isArray(data?.sections) ? data.sections : []) {
+        for (const ln of Array.isArray(sec?.lines) ? sec.lines : []) aiLines.push(ln);
+      }
+      const chordsByLineId = new Map<string, Chord[]>();
+      for (let i = 0; i < Math.min(aiLines.length, lines.length); i++) {
+        const line = lines[i];
+        const wordCount = tokenizeWords(line.lyric).length;
+        const aiChords = Array.isArray(aiLines[i]?.chords) ? (aiLines[i].chords as unknown[]) : [];
+        const made: Chord[] = [];
+        for (const raw of aiChords) {
+          const c = raw as { wordIndex?: unknown; chord?: unknown };
+          const wi = Number(c?.wordIndex);
+          const name = typeof c?.chord === "string" ? c.chord.trim() : "";
+          if (!name || !Number.isInteger(wi) || wi < 0 || wi >= wordCount) continue;
+          made.push({ id: uid(), chord: name, wordIndex: wi, pos: wordStartOffset(line.lyric, wi) });
+        }
+        if (made.length) chordsByLineId.set(line.id, made);
+      }
+      if (chordsByLineId.size === 0) {
+        showToast("No chords were generated. Try again.");
+        return;
+      }
+      update((s) => ({
+        ...s,
+        key: genKey,
+        sections: s.sections.map((sec) => ({
+          ...sec,
+          lines: sec.lines.map((l) =>
+            chordsByLineId.has(l.id) ? { ...l, chords: chordsByLineId.get(l.id)! } : l,
+          ),
+        })),
+      }));
+      setGenerateOpen(false);
+      showToast("Chords generated — review and save");
+    } catch {
+      showToast("Chord generation failed. Check your connection.");
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   const handleTranspose = (target: string) => {
     const delta = noteToIndex(target) - noteToIndex(song.key);
@@ -1278,6 +1378,17 @@ export default function SongEditor({
           <ViewToggle viewMode={viewMode} onChange={switchView} />
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
+          {canGenerateChords && (
+            <button type="button" onClick={openGenerate}
+              title="Generate chords with AI"
+              aria-label="Generate chords with AI"
+              className="h-9 px-3 rounded-lg text-sm font-medium hidden sm:flex items-center gap-1.5 bg-gradient-to-br from-indigo-500 to-violet-600 text-white hover:from-indigo-600 hover:to-violet-700 shadow-sm shadow-indigo-600/30 transition-colors">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z"/>
+              </svg>
+              <span>Generate Chords</span>
+            </button>
+          )}
           <button type="button" onClick={toggleEditMode}
             title={editMode ? "Switch to read-only performance mode" : "Switch to edit mode"}
             aria-pressed={editMode}
@@ -1912,6 +2023,18 @@ export default function SongEditor({
           <div className="w-full bg-white dark:bg-slate-900 rounded-t-2xl border-t border-slate-200 dark:border-slate-700 shadow-2xl pb-[env(safe-area-inset-bottom)]" onClick={(e) => e.stopPropagation()}>
             <div className="flex justify-center pt-2.5 pb-1"><div className="w-9 h-1 rounded-full bg-slate-300 dark:bg-slate-700" /></div>
             <div className="py-1">
+              {canGenerateChords && (
+                <button
+                  type="button"
+                  onClick={() => { setMoreOpen(false); openGenerate(); }}
+                  className="w-full min-h-[48px] px-5 flex items-center gap-3.5 text-[15px] font-medium text-indigo-600 dark:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <span className="shrink-0 w-5 flex justify-center">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z"/></svg>
+                  </span>
+                  Generate Chords
+                </button>
+              )}
               {([
                 { label: "Section styles", onClick: () => setStylesPanelOpen(true), icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg> },
                 { label: "Print", onClick: () => setPreviewOpen(true), icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> },
@@ -1931,6 +2054,72 @@ export default function SongEditor({
                   {item.label}
                 </button>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {generateOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center print:hidden"
+          onClick={() => { if (!generating) setGenerateOpen(false); }}>
+          <div
+            className="w-full sm:max-w-md bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border-t sm:border border-slate-200 dark:border-slate-700 shadow-2xl pb-[env(safe-area-inset-bottom)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 pt-4 pb-2">
+              <div className="flex items-center gap-2">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-500"><path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z"/></svg>
+                <h2 className="text-base font-semibold">Generate Chords</h2>
+              </div>
+              <button type="button" onClick={() => { if (!generating) setGenerateOpen(false); }} disabled={generating}
+                aria-label="Close"
+                className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            <div className="px-5 pb-5 pt-1 space-y-4">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5">Key</div>
+                <div className="grid grid-cols-6 gap-1.5">
+                  {KEYS.map((k) => (
+                    <button key={k} type="button" onClick={() => setGenKey(k)} disabled={generating}
+                      className={"h-9 px-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-50 " + (genKey === k ? "bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/40" : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300")}>
+                      {k}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5">Style</div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {(["Worship", "Gospel", "Contemporary", "Traditional"] as const).map((s) => (
+                    <button key={s} type="button" onClick={() => setGenStyle(s)} disabled={generating}
+                      className={"h-10 px-3 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 " + (genStyle === s ? "bg-indigo-600 text-white" : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300")}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button type="button" onClick={generateChords} disabled={generating}
+                className="w-full h-11 rounded-xl text-sm font-semibold bg-gradient-to-br from-indigo-500 to-violet-600 text-white hover:from-indigo-600 hover:to-violet-700 shadow-sm shadow-indigo-600/30 transition-colors flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
+                {generating ? (
+                  <>
+                    <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                    Generating…
+                  </>
+                ) : (
+                  <>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z"/></svg>
+                    Generate Chords
+                  </>
+                )}
+              </button>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center">
+                Review the generated chords, then Save to keep them.
+              </p>
             </div>
           </div>
         </div>

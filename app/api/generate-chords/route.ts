@@ -1,0 +1,133 @@
+import Anthropic from "@anthropic-ai/sdk";
+import { NextResponse } from "next/server";
+
+// AI chord generation. Runs server-side so the Anthropic API key never reaches
+// the browser. The client posts the song's lyrics + key + style; we ask Claude
+// to attach chords to words and return strict JSON, then hand that JSON back to
+// the client, which maps it onto the existing word-block structure.
+
+const MODEL = "claude-sonnet-4-20250514";
+
+const SYSTEM_PROMPT = `You are a worship music chord chart generator. Given song lyrics, attach chords to specific words. Return ONLY valid JSON, no other text:
+{
+  sections: [{
+    label: string,
+    type: 'verse'|'chorus'|'bridge'|'intro'|'outro'|'pre-chorus'|'tag',
+    lines: [{
+      words: string[],
+      chords: [{ wordIndex: number, chord: string }]
+    }]
+  }]
+}
+Rules: Use chords from the key provided. Place chords on musically natural syllables. Choruses typically have more chord changes than verses. Common worship progressions: I-V-vi-IV, I-IV-V, vi-IV-I-V.`;
+
+type GenerateBody = {
+  title?: unknown;
+  key?: unknown;
+  style?: unknown;
+  lyrics?: unknown;
+};
+
+// Pull the JSON object out of Claude's reply. The prompt asks for bare JSON, but
+// be tolerant of a stray ```json fence or surrounding prose.
+function extractJson(text: string): string {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenced) return fenced[1].trim();
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start !== -1 && end > start) return text.slice(start, end + 1);
+  return text.trim();
+}
+
+export async function POST(request: Request) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: "AI chord generation is not configured (missing ANTHROPIC_API_KEY)." },
+      { status: 503 },
+    );
+  }
+
+  let body: GenerateBody;
+  try {
+    body = (await request.json()) as GenerateBody;
+  } catch {
+    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  }
+
+  const title = typeof body.title === "string" ? body.title : "Untitled";
+  const key = typeof body.key === "string" && body.key.trim() ? body.key : "C";
+  const style = typeof body.style === "string" && body.style.trim() ? body.style : "Worship";
+  const lyrics = typeof body.lyrics === "string" ? body.lyrics.trim() : "";
+
+  if (!lyrics) {
+    return NextResponse.json({ error: "This song has no lyrics to generate chords for." }, { status: 400 });
+  }
+
+  const client = new Anthropic({ apiKey });
+
+  try {
+    const response = await client.messages.create({
+      model: MODEL,
+      max_tokens: 8000,
+      system: [
+        {
+          type: "text",
+          text: SYSTEM_PROMPT,
+          // Stable prefix — cache it so repeated generations are cheaper. (For a
+          // prompt this short the API may not actually cache, but it's the right
+          // pattern and harmless.)
+          cache_control: { type: "ephemeral" },
+        },
+      ],
+      messages: [
+        {
+          role: "user",
+          content: `Song: ${title}\nKey: ${key}\nStyle: ${style}\n\nLyrics:\n${lyrics}`,
+        },
+      ],
+    });
+
+    const text = response.content
+      .filter((b): b is Anthropic.TextBlock => b.type === "text")
+      .map((b) => b.text)
+      .join("");
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(extractJson(text));
+    } catch {
+      return NextResponse.json(
+        { error: "The model returned a response that could not be parsed. Try again." },
+        { status: 502 },
+      );
+    }
+
+    if (
+      !parsed ||
+      typeof parsed !== "object" ||
+      !Array.isArray((parsed as { sections?: unknown }).sections)
+    ) {
+      return NextResponse.json(
+        { error: "The model returned an unexpected format. Try again." },
+        { status: 502 },
+      );
+    }
+
+    return NextResponse.json(parsed);
+  } catch (error) {
+    if (error instanceof Anthropic.APIError) {
+      console.error("generate-chords Anthropic error", error.status, error.message);
+      const status = error.status && error.status >= 500 ? 502 : 400;
+      const message =
+        error instanceof Anthropic.RateLimitError
+          ? "Rate limited — wait a moment and try again."
+          : error instanceof Anthropic.AuthenticationError
+            ? "AI chord generation is misconfigured (authentication failed)."
+            : "Chord generation failed. Try again.";
+      return NextResponse.json({ error: message }, { status });
+    }
+    console.error("generate-chords error", error);
+    return NextResponse.json({ error: "Chord generation failed. Try again." }, { status: 500 });
+  }
+}
