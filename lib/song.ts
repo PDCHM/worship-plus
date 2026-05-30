@@ -73,6 +73,14 @@ export const SECTION_PRESETS = [
 ];
 
 const CHORD_TOKEN = /^[A-G][#b]?[A-Za-z0-9+#]*(?:\/[A-G][#b]?)?$/;
+// Stricter than CHORD_TOKEN: a real chord is an A–G root with optional accidental,
+// optional qualities (m/maj/min/dim/aug/sus/add/+), extension/alteration numbers,
+// and an optional slash bass. Rejects stray tokens like "h", "x2", or words.
+const VALID_CHORD =
+  /^[A-G][#b]?(?:maj|min|m|M|dim|aug|sus|add|\+|\d{1,2}|[#b]\d{1,2})*(?:\/[A-G][#b]?)?$/;
+export function isValidChord(name: string): boolean {
+  return VALID_CHORD.test(name.trim());
+}
 const SECTION_KEYWORD =
   /^(intro|verse|chorus|bridge|tag|outro|interlude|refrain|ending|pre-?chorus)$/i;
 
@@ -503,7 +511,12 @@ function parseChordProLine(text: string): Line {
         i++;
         continue;
       }
-      chords.push({ id: uid(), pos: lyric.length, chord: text.slice(i + 1, end) });
+      // Only treat bracket content as a chord if it's a real chord; otherwise
+      // drop the bracket entirely (stray markers like [x2], [h], directives).
+      const inner = text.slice(i + 1, end).trim();
+      if (isValidChord(inner)) {
+        chords.push({ id: uid(), pos: lyric.length, chord: inner });
+      }
       i = end + 1;
     } else {
       lyric += text[i];
@@ -839,7 +852,9 @@ function chordPositionsFromLine(chordLine: string, maxLen?: number): Chord[] {
   const re = /\S+/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(chordLine)) !== null) {
-    if (!isChordLikeToken(m[0])) continue;
+    // Extract strictly: only real chords (detection via isPastedChordLine is
+    // looser, but a stray non-chord token here is dropped, not stored).
+    if (!isValidChord(m[0])) continue;
     const pos = maxLen == null ? m.index : Math.min(m.index, maxLen);
     result.push({ id: uid(), pos, chord: m[0] });
   }
@@ -962,7 +977,9 @@ export function pastedChartToSong(
     key,
     capo: null,
     bpm: null,
-    sections,
+    // cloneSection reassigns a fresh uuid to every section/line/chord, so a
+    // paste can never reuse an id and collide on save (lines_pkey, etc.).
+    sections: sections.map(cloneSection),
     favorite: false,
     createdAt: now,
     updatedAt: now,
