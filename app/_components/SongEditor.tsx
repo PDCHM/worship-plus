@@ -598,6 +598,11 @@ export default function SongEditor({
   const readOnly = !editMode;
   const columnView = viewMode !== "standard";
   const numCols = viewMode === "split-2" ? 2 : viewMode === "split-3" ? 3 : 1;
+  // Column gutter, in px. Tightened in read-only (performance) mode so each
+  // column is a touch wider — chords can't be edited here, so the extra width
+  // just buys room to keep them from clipping. Kept in one place because the
+  // colWidth measurement below depends on the exact same value.
+  const colGapPx = numCols === 3 ? (readOnly ? 12 : 16) : (readOnly ? 16 : 20);
   const prefs = sectionStyles.prefs;
   const lyricFontFamily = EDITOR_FONT_FAMILY[prefs.fontFamily];
   const showChords = settings.showChords ?? true;
@@ -622,9 +627,8 @@ export default function SongEditor({
       // Width of one column so chord offsets can be expressed as a percentage
       // of the actual column, keeping them on-screen in 2-/3-column views.
       if (sectionsRef.current) {
-        const gapPx = numCols === 3 ? 16 : 20;
         const total = sectionsRef.current.clientWidth;
-        const col = numCols > 1 ? (total - gapPx * (numCols - 1)) / numCols : total;
+        const col = numCols > 1 ? (total - colGapPx * (numCols - 1)) / numCols : total;
         if (col > 0) setColWidth(col);
       }
     };
@@ -634,7 +638,7 @@ export default function SongEditor({
     }
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
-  }, [lyricCeiling, numCols]);
+  }, [lyricCeiling, numCols, colGapPx]);
 
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -975,7 +979,7 @@ export default function SongEditor({
     setEditingSection(newId);
   };
 
-  const colGap = numCols === 3 ? "1rem" : "1.25rem";
+  const colGap = `${colGapPx}px`;
   const sectionsContainerStyle: React.CSSProperties = columnView
     ? {
         display: "grid",
@@ -984,8 +988,17 @@ export default function SongEditor({
         alignItems: "start",
       }
     : {};
+  // In read-only mode there are no drag handles or editing affordances, so we
+  // let chords overflow the column box (overflow: visible) instead of clipping
+  // them. Editing keeps overflow: hidden so the editable chord row stays tidy.
   const sectionInColumnStyle: React.CSSProperties = columnView
-    ? { minWidth: 0, overflow: "hidden", paddingRight: "0.6rem", wordBreak: "normal", overflowWrap: "break-word" }
+    ? {
+        minWidth: 0,
+        overflow: readOnly ? "visible" : "hidden",
+        paddingRight: "0.6rem",
+        wordBreak: "normal",
+        overflowWrap: "break-word",
+      }
     : {};
 
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -1454,7 +1467,7 @@ export default function SongEditor({
                               key={ch.id}
                               style={{
                                 left: columnView && colWidth > 0
-                                  ? `${Math.min(88, (ch.pos * charWidth / colWidth) * 100)}%`
+                                  ? `${Math.min(readOnly ? 96 : 88, (ch.pos * charWidth / colWidth) * 100)}%`
                                   : ch.pos * charWidth,
                                 top: 0,
                               }}
