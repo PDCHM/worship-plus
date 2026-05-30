@@ -859,8 +859,14 @@ export function parsePastedChart(text: string): {
   // create empty sections. Unlabeled blocks are auto-numbered Verse 1, Verse 2…
   let pendingBreak = false;
   let autoVerse = 1;
+  // Annotated locals widen past TS's flow-narrowing of `current` to null
+  // (the same reason ensure() uses `current!`).
+  const hasContent = (): boolean => {
+    const cur: Section | null = current;
+    return !!cur && cur.lines.length > 0;
+  };
   const target = (): Section => {
-    if (pendingBreak && current && current.lines.length > 0) {
+    if (pendingBreak && hasContent()) {
       startNew(`Verse ${++autoVerse}`);
     }
     pendingBreak = false;
@@ -870,7 +876,7 @@ export function parsePastedChart(text: string): {
   for (let i = 0; i < rawLines.length; i++) {
     const l = rawLines[i];
     if (l.trim() === "") {
-      if (current && current.lines.length > 0) pendingBreak = true;
+      if (hasContent()) pendingBreak = true;
       continue;
     }
 
