@@ -22,6 +22,7 @@ import {
   findNearestWordIndex,
   getSectionColorKey,
   makeNewSong,
+  tokenizeWords,
   wordStartOffset,
   mergeSectionStyles,
   parseSongText,
@@ -165,16 +166,18 @@ async function saveSongToDb(supabase: SupabaseClient, song: Song, userId: string
     sectionRows.push({ id: section.id, song_id: song.id, label: section.label, type: getSectionColorKey(section.label), position: sIdx });
     section.lines.forEach((line, lIdx) => {
       lineRows.push({ id: line.id, section_id: section.id, lyric: line.lyric, position: lIdx });
+      const lineHasWords = tokenizeWords(line.lyric).length > 0;
       line.chords.forEach((chord) => {
         // Persist the word the chord attaches to, and resync position_px to that
-        // word's character offset so print/export/serialize stay correct. Falls
-        // back to the legacy char position for chords not yet migrated.
+        // word's character offset so print/export/serialize stay correct. On
+        // chord-only lines (no lyric words) there is no word to anchor to, so
+        // pos/word_index act as a left-to-right ordinal — keep pos as stored.
         const wordIndex = chord.wordIndex ?? findNearestWordIndex(chord.pos, line.lyric);
         chordRows.push({
           id: chord.id,
           line_id: line.id,
           chord_name: chord.chord,
-          position_px: wordStartOffset(line.lyric, wordIndex),
+          position_px: lineHasWords ? wordStartOffset(line.lyric, wordIndex) : chord.pos,
           word_index: wordIndex,
         });
       });

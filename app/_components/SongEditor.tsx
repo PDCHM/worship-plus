@@ -768,11 +768,30 @@ export default function SongEditor({
     );
   };
 
-  // Drag a chord horizontally; it snaps to whichever word-unit the pointer is
-  // nearest (hit-testing the rendered units by their on-screen rects), updating
-  // word_index. Works identically in 1/2/3-column layouts.
+  // Chord-only lines have no words to anchor to, so each chord is its own
+  // pseudo-word slot ordered by pos. Dragging reorders the chords and renumbers
+  // pos/wordIndex as a left-to-right ordinal.
+  const reorderChordToSlot = (lineId: string, chordId: string, slot: number) => {
+    update((s) =>
+      mapLine(s, lineId, (line) => {
+        const sorted = [...line.chords].sort((a, b) => a.pos - b.pos);
+        const from = sorted.findIndex((c) => c.id === chordId);
+        if (from === -1) return line;
+        const [moved] = sorted.splice(from, 1);
+        const to = Math.max(0, Math.min(sorted.length, slot));
+        sorted.splice(to, 0, moved);
+        return { ...line, chords: sorted.map((c, i) => ({ ...c, pos: i, wordIndex: i })) };
+      }),
+    );
+  };
+
+  // Drag a chord; it snaps to whichever word-unit the pointer is nearest
+  // (hit-testing the rendered units by their on-screen rects). On lyric lines
+  // it re-anchors to that word; on chord-only lines it reorders the chords.
+  // Works identically in 1/2/3-column layouts.
   const handleChordDragStart =
-    (lineId: string, chordId: string) => (e: React.PointerEvent) => {
+    (lineId: string, chordId: string, chordOnly: boolean) =>
+    (e: React.PointerEvent) => {
       if (readOnly) return;
       if (editingChord === chordId) return;
       if (e.button !== 0) return;
@@ -804,7 +823,10 @@ export default function SongEditor({
             bestIdx = Number.isNaN(wi) ? bestIdx : wi;
           }
         }
-        if (bestIdx != null) setChordWord(lineId, chordId, bestIdx);
+        if (bestIdx != null) {
+          if (chordOnly) reorderChordToSlot(lineId, chordId, bestIdx);
+          else setChordWord(lineId, chordId, bestIdx);
+        }
       };
       const onUp = () => {
         document.removeEventListener("pointermove", onMove);
@@ -874,18 +896,18 @@ export default function SongEditor({
     if (!trimmed) return;
     const newId = uid();
     update((s) =>
-      mapLine(s, lineId, (line) => ({
-        ...line,
-        chords: [
-          ...line.chords,
-          {
-            id: newId,
-            chord: trimmed,
-            wordIndex,
-            pos: wordStartOffset(line.lyric, wordIndex),
-          },
-        ],
-      })),
+      mapLine(s, lineId, (line) => {
+        // On chord-only lines a new chord is appended as its own slot; pos and
+        // wordIndex are a left-to-right ordinal. On lyric lines it anchors to
+        // the tapped word.
+        const hasWords = tokenizeWords(line.lyric).length > 0;
+        const wi = hasWords ? wordIndex : line.chords.length;
+        const pos = hasWords ? wordStartOffset(line.lyric, wordIndex) : line.chords.length;
+        return {
+          ...line,
+          chords: [...line.chords, { id: newId, chord: trimmed, wordIndex: wi, pos }],
+        };
+      }),
     );
   };
 
@@ -1471,28 +1493,54 @@ export default function SongEditor({
                   {section.lines.map((line, lIdx) => {
                     const isFirstLine = sIdx === 0 && lIdx === 0;
                     const tokens = tokenizeWords(line.lyric);
-                    // Group every visible chord under the word it sits above.
-                    const chordsByWord = new Map<number, Chord[]>();
-                    for (const ch of line.chords) {
-                      if (ch.chord.trim() === "" && editingChord !== ch.id) continue;
-                      const wi = effectiveWordIndex(ch, line.lyric);
-                      const arr = chordsByWord.get(wi);
-                      if (arr) arr.push(ch);
-                      else chordsByWord.set(wi, [ch]);
+                    const hasWords = tokens.length > 0;
+                    // chord-only line: no lyric words, so each chord becomes its
+                    // own pseudo-word unit (ordered by pos) and spreads across
+                    // the line instead of clustering on a single slot.
+                    const chordOnly = !hasWords;
+                    const visibleChords = line.chords.filter(
+                      (ch) => ch.chord.trim() !== "" || editingChord === ch.id,
+                    );
+                    // Each unit: a draggable slot index, the word text below, and
+                    // the chords sitting above it.
+                    type WordUnit = { key: string; dragIndex: number; text: string; chords: Chord[]; tappable: boolean };
+                    let units: WordUnit[];
+                    if (hasWords) {
+                      const chordsByWord = new Map<number, Chord[]>();
+                      for (const ch of visibleChords) {
+                        const wi = effectiveWordIndex(ch, line.lyric);
+                        const arr = chordsByWord.get(wi);
+                        if (arr) arr.push(ch);
+                        else chordsByWord.set(wi, [ch]);
+                      }
+                      units = tokens.map((t, i) => ({
+                        key: `w${i}`,
+                        dragIndex: i,
+                        text: t.text,
+                        chords: chordsByWord.get(i) ?? [],
+                        tappable: true,
+                      }));
+                    } else {
+                      units = [...visibleChords]
+                        .sort((a, b) => a.pos - b.pos)
+                        .map((ch, i) => ({
+                          key: ch.id,
+                          dragIndex: i,
+                          text: " ",
+                          chords: [ch],
+                          tappable: false,
+                        }));
                     }
-                    // Empty lines still render one placeholder unit so any
-                    // chords on them show and a chord can be added.
-                    const units =
-                      tokens.length > 0
-                        ? tokens.map((t, i) => ({ wi: i, text: t.text, empty: false }))
-                        : [{ wi: 0, text: "", empty: true }];
+                    const addSlotIndex = units.length;
 
                     const renderChordSpan = (ch: Chord) => (
                       <span
                         key={ch.id}
                         data-chord-id={ch.id}
                         onPointerDown={
-                          readOnly ? undefined : handleChordDragStart(line.id, ch.id)
+                          readOnly
+                            ? undefined
+                            : handleChordDragStart(line.id, ch.id, chordOnly)
                         }
                         onClick={
                           readOnly
@@ -1569,15 +1617,14 @@ export default function SongEditor({
                               }}
                             >
                               {units.map((u) => {
-                                const chords = chordsByWord.get(u.wi) ?? [];
                                 const addingHere =
                                   addingChord?.lineId === line.id &&
-                                  addingChord.wordIndex === u.wi;
+                                  addingChord.wordIndex === u.dragIndex;
                                 return (
                                   <div
-                                    key={u.wi}
+                                    key={u.key}
                                     data-wu-line={line.id}
-                                    data-wu-index={u.wi}
+                                    data-wu-index={u.dragIndex}
                                     className="inline-flex flex-col items-start"
                                   >
                                     {showChords && (
@@ -1585,7 +1632,7 @@ export default function SongEditor({
                                         className="flex items-end gap-1 leading-none"
                                         style={{ minHeight: chordSlotHeight }}
                                       >
-                                        {chords.map((ch) =>
+                                        {u.chords.map((ch) =>
                                           editingChord === ch.id && !readOnly ? (
                                             <ChordInput
                                               key={ch.id}
@@ -1601,7 +1648,7 @@ export default function SongEditor({
                                         {addingHere && (
                                           <ChordInput
                                             fontSize={chordFontSize}
-                                            onCommit={(v) => commitAddChord(line.id, u.wi, v)}
+                                            onCommit={(v) => commitAddChord(line.id, u.dragIndex, v)}
                                             onCancel={() => setAddingChord(null)}
                                           />
                                         )}
@@ -1609,28 +1656,62 @@ export default function SongEditor({
                                     )}
                                     <span
                                       onClick={
-                                        readOnly || !showChords
+                                        readOnly || !showChords || !u.tappable
                                           ? undefined
-                                          : () => startAddChord(line.id, u.wi)
+                                          : () => startAddChord(line.id, u.dragIndex)
                                       }
                                       title={
-                                        readOnly || !showChords
+                                        readOnly || !showChords || !u.tappable
                                           ? undefined
                                           : "Tap to add a chord above this word"
                                       }
                                       className={
                                         "rounded leading-tight " +
-                                        (readOnly || !showChords
+                                        (readOnly || !showChords || !u.tappable
                                           ? ""
                                           : "cursor-pointer hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40")
                                       }
-                                      style={u.empty ? { minWidth: "1.5ch" } : undefined}
+                                      style={u.tappable ? undefined : { minWidth: "1ch" }}
                                     >
-                                      {u.empty ? " " : u.text}
+                                      {u.text}
                                     </span>
                                   </div>
                                 );
                               })}
+                              {/* chord-only lines get a trailing "+ chord" slot
+                                  to append chords (also a drag target). */}
+                              {chordOnly && !readOnly && showChords && (
+                                <div
+                                  data-wu-line={line.id}
+                                  data-wu-index={addSlotIndex}
+                                  className="inline-flex flex-col items-start"
+                                >
+                                  <span
+                                    className="flex items-end gap-1 leading-none"
+                                    style={{ minHeight: chordSlotHeight }}
+                                  >
+                                    {addingChord?.lineId === line.id &&
+                                    addingChord.wordIndex === addSlotIndex ? (
+                                      <ChordInput
+                                        fontSize={chordFontSize}
+                                        onCommit={(v) => commitAddChord(line.id, addSlotIndex, v)}
+                                        onCancel={() => setAddingChord(null)}
+                                      />
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        onClick={() => startAddChord(line.id, addSlotIndex)}
+                                        className="font-mono font-semibold text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 rounded px-1 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 transition-colors"
+                                        style={{ fontSize: chordFontSize }}
+                                        title="Add a chord"
+                                      >
+                                        + chord
+                                      </button>
+                                    )}
+                                  </span>
+                                  <span style={{ minWidth: "1ch" }}> </span>
+                                </div>
+                              )}
                             </div>
                             {!readOnly && (
                               <button
