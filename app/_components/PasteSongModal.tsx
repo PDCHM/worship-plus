@@ -6,10 +6,13 @@ import { pastedChartToSong, type Song } from "@/lib/song";
 type Props = {
   open: boolean;
   onClose: () => void;
-  onImport: (song: Song) => void;
+  // aiIntent: opened from "AI Chords" — paste lyrics, then the caller auto-opens
+  // the Generate Chords flow on the created song.
+  aiIntent?: boolean;
+  onImport: (song: Song, aiIntent: boolean) => void;
 };
 
-export default function PasteSongModal({ open, onClose, onImport }: Props) {
+export default function PasteSongModal({ open, onClose, aiIntent = false, onImport }: Props) {
   const [title, setTitle] = useState("");
   const [artist, setArtist] = useState("");
   const [text, setText] = useState("");
@@ -43,7 +46,7 @@ export default function PasteSongModal({ open, onClose, onImport }: Props) {
   const handleImport = () => {
     if (!text.trim()) return;
     const song = pastedChartToSong(text, title, artist);
-    onImport(song);
+    onImport(song, aiIntent);
     reset();
   };
 
@@ -63,9 +66,11 @@ export default function PasteSongModal({ open, onClose, onImport }: Props) {
       >
         <div className="flex items-center justify-between p-5 border-b border-slate-200 dark:border-slate-800 shrink-0">
           <div>
-            <h2 className="text-lg font-bold tracking-tight">Paste Song</h2>
+            <h2 className="text-lg font-bold tracking-tight">{aiIntent ? "AI Chords" : "Paste Song"}</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Auto-detects chord-above-lyric and ChordPro formats
+              {aiIntent
+                ? "Paste your lyrics — Claude will generate the chords next"
+                : "Auto-detects chord-above-lyric and ChordPro formats"}
             </p>
           </div>
           <button
@@ -142,7 +147,7 @@ export default function PasteSongModal({ open, onClose, onImport }: Props) {
             disabled={!text.trim()}
             className="h-10 px-4 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed text-white transition-colors shadow-sm shadow-indigo-600/30"
           >
-            Import Song
+            {aiIntent ? "Continue to chords" : "Import Song"}
           </button>
         </div>
       </div>

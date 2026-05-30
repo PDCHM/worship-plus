@@ -60,6 +60,10 @@ type Props = {
   onPasteSong: () => void;
   onSave: () => void;
   onSaveAsCopy: () => void;
+  // When true (set by the "AI Chords" flow after a lyrics paste), the editor
+  // auto-opens the Generate Chords sheet once, then calls onAutoGenerateConsumed.
+  autoGenerateChords?: boolean;
+  onAutoGenerateConsumed?: () => void;
   isDirty: boolean;
   currentUserId: string;
   setlistContext: SetlistContext | null;
@@ -580,6 +584,8 @@ export default function SongEditor({
   onPasteSong,
   onSave,
   onSaveAsCopy,
+  autoGenerateChords,
+  onAutoGenerateConsumed,
   isDirty,
   currentUserId,
   setlistContext,
@@ -748,6 +754,16 @@ export default function SongEditor({
     setGenKey(song.key);
     setGenerateOpen(true);
   };
+
+  // AI Chords flow: when the parent flags this freshly-pasted song, open the
+  // Generate Chords sheet once automatically, then clear the flag.
+  useEffect(() => {
+    if (!autoGenerateChords) return;
+    setGenKey(song.key);
+    setGenerateOpen(true);
+    onAutoGenerateConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoGenerateChords]);
 
   // Serialize the song's lyrics for the model, and capture the lyric-bearing
   // lines in document order so the response can be mapped back by line index.

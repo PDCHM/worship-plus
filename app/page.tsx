@@ -257,6 +257,10 @@ export default function Home() {
   const [toast, setToast] = useState<string | null>(null);
   const [isDark, setIsDark] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
+  // Paste modal opened from "AI Chords": after the lyrics-only song is created,
+  // auto-open the Generate Chords sheet on it (tracked by id).
+  const [pasteAiIntent, setPasteAiIntent] = useState(false);
+  const [aiGenerateSongId, setAiGenerateSongId] = useState<string | null>(null);
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -774,11 +778,14 @@ export default function Home() {
 
   const openSong = (id: string, opts?: { setlistId?: string }) => navigateTo({ kind: "editor", songId: id, setlistId: opts?.setlistId });
 
-  const handleImportPasted = (song: Song) => {
+  const handleImportPasted = (song: Song, aiIntent = false) => {
     setSongs((prev) => [song, ...prev]);
     hydratedIdsRef.current.add(song.id);
+    // AI Chords flow: mark this song so the editor auto-opens Generate Chords.
+    if (aiIntent) setAiGenerateSongId(song.id);
     navigateTo({ kind: "editor", songId: song.id });
     setPasteOpen(false);
+    setPasteAiIntent(false);
     showToast(`Imported "${song.title}"`);
     if (user) void saveSongToDb(supabase, song, user.id);
   };
@@ -1087,7 +1094,8 @@ export default function Home() {
               onDelete={deleteSong}
               onDuplicate={duplicateSong}
               onNewSong={newSong}
-              onPasteChart={() => setPasteOpen(true)}
+              onPasteChart={() => { setPasteAiIntent(false); setPasteOpen(true); }}
+              onAiChords={() => { setPasteAiIntent(true); setPasteOpen(true); }}
               onImportFile={() => fileInputRef.current?.click()}
               showToast={showToast}
               filter={view.filter}
@@ -1113,6 +1121,8 @@ export default function Home() {
               isDirty={view.kind === "editor" && dirtyIds.has((view as { kind: "editor"; songId: string }).songId)}
               onSave={() => { const s = songs.find(x => view.kind === "editor" && x.id === (view as { kind: "editor"; songId: string }).songId); if (s) void saveSong(s); }}
               onSaveAsCopy={() => { const s = songs.find(x => view.kind === "editor" && x.id === (view as { kind: "editor"; songId: string }).songId); if (s) void saveAsCopy(s); }}
+              autoGenerateChords={aiGenerateSongId === activeSong.id}
+              onAutoGenerateConsumed={() => setAiGenerateSongId(null)}
               currentUserId={user.id}
               setlistContext={setlistContext}
               onBack={() => navigateTo(view.kind === "editor" && view.setlistId
@@ -1180,14 +1190,16 @@ export default function Home() {
 
       <PasteSongModal
         open={pasteOpen}
-        onClose={() => setPasteOpen(false)}
+        aiIntent={pasteAiIntent}
+        onClose={() => { setPasteOpen(false); setPasteAiIntent(false); }}
         onImport={handleImportPasted}
       />
 
       {addSheetOpen && (
         <AddSongSheet
           onBuildNew={newSong}
-          onPasteChart={() => setPasteOpen(true)}
+          onPasteChart={() => { setPasteAiIntent(false); setPasteOpen(true); }}
+          onAiChords={() => { setPasteAiIntent(true); setPasteOpen(true); }}
           onImportFile={() => fileInputRef.current?.click()}
           onClose={() => setAddSheetOpen(false)}
         />

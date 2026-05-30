@@ -15,6 +15,7 @@ type Props = {
   onDuplicate?: (songId: string) => void;
   onNewSong: () => void;
   onPasteChart: () => void;
+  onAiChords: () => void;
   onImportFile: () => void;
   showToast: (msg: string) => void;
   filter: LibraryFilter;
@@ -30,6 +31,7 @@ export default function Library({
   onDuplicate,
   onNewSong,
   onPasteChart,
+  onAiChords,
   onImportFile,
   showToast,
   filter,
@@ -414,7 +416,7 @@ export default function Library({
         </div>
       )}
 
-      {addSheetOpen && <AddSongSheet onBuildNew={onNewSong} onPasteChart={onPasteChart} onImportFile={onImportFile} onClose={()=>setAddSheetOpen(false)} />}
+      {addSheetOpen && <AddSongSheet onBuildNew={onNewSong} onPasteChart={onPasteChart} onAiChords={onAiChords} onImportFile={onImportFile} onClose={()=>setAddSheetOpen(false)} />}
     </div>
   );
 }
