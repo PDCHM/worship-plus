@@ -46,7 +46,7 @@ const LIBRARY_VIEW_KEY = "wp-library-view-v1";
 // library list — never sections/lines/chords. Full content is loaded per song
 // when opened (hydrateSong) so the library scales to 500+ songs without a
 // nested-join timeout. rowToSong maps a metadata row to a Song with sections: [].
-const SONG_META_COLUMNS = "id, user_id, title, artist, key, bpm, capo, favorite, created_at, updated_at";
+const SONG_META_COLUMNS = "id, user_id, title, artist, key, bpm, capo, favorite, is_draft, created_at, updated_at";
 
 type LibraryView = "grid" | "list";
 
@@ -67,6 +67,7 @@ type SongRow = {
   bpm: number | null;
   capo: number | null;
   favorite: boolean;
+  is_draft?: boolean | null;
   created_at: string;
   updated_at: string;
   sections?: Array<{
@@ -128,6 +129,7 @@ function rowToSong(row: SongRow): Song {
     bpm: row.bpm,
     capo: row.capo,
     favorite: !!row.favorite,
+    isDraft: !!row.is_draft,
     sections,
     createdAt: new Date(row.created_at).getTime(),
     updatedAt: new Date(row.updated_at).getTime(),
@@ -150,6 +152,7 @@ async function saveSongToDb(supabase: SupabaseClient, song: Song, userId: string
     bpm: song.bpm,
     capo: song.capo,
     favorite: song.favorite,
+    is_draft: song.isDraft ?? false,
     updated_at: new Date(song.updatedAt).toISOString(),
   };
   const { error: songError } = await supabase.from("songs").upsert(songRow).select();
@@ -698,6 +701,35 @@ export default function Home() {
     showToast('Duplicated "' + source.title + '"');
   };
 
+  // Save the current (possibly unsaved) editor state as a brand-new song, owned
+  // by the current user, leaving the original untouched. Used by the editor's
+  // "Save as copy" — e.g. keep the original and save an AI-chorded version.
+  const saveAsCopy = async (song: Song) => {
+    if (!user) return;
+    const copy: Song = {
+      ...song,
+      id: uid(),
+      userId: user.id,
+      title: (song.title.trim() || "Untitled Song") + " (copy)",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      sections: song.sections.map((s) => cloneSection(s)),
+    };
+    setSongs((prev) => [copy, ...prev]);
+    lastSavedRef.current.set(copy.id, copy);
+    hydratedIdsRef.current.add(copy.id);
+    const result = await saveSongToDb(supabase, copy, user.id);
+    if (!result.ok) {
+      setSongs((prev) => prev.filter((s) => s.id !== copy.id));
+      showToast("Save failed: " + result.message);
+      return;
+    }
+    // Open the copy. setView (not navigateTo) so the dirty original doesn't
+    // trigger the unsaved-changes prompt — keeping it untouched is the point.
+    setView({ kind: "editor", songId: copy.id });
+    showToast("Saved as copy");
+  };
+
   const navigateTo = (newView: View) => {
     if (view.kind === "editor") {
       const songId = (view as { kind: "editor"; songId: string }).songId;
@@ -1049,6 +1081,7 @@ export default function Home() {
               onPasteSong={() => setPasteOpen(true)}
               isDirty={view.kind === "editor" && dirtyIds.has((view as { kind: "editor"; songId: string }).songId)}
               onSave={() => { const s = songs.find(x => view.kind === "editor" && x.id === (view as { kind: "editor"; songId: string }).songId); if (s) void saveSong(s); }}
+              onSaveAsCopy={() => { const s = songs.find(x => view.kind === "editor" && x.id === (view as { kind: "editor"; songId: string }).songId); if (s) void saveAsCopy(s); }}
               currentUserId={user.id}
               setlistContext={setlistContext}
               onBack={() => navigateTo(view.kind === "editor" && view.setlistId

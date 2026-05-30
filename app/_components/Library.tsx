@@ -475,6 +475,14 @@ function MenuItem({
   );
 }
 
+function DraftBadge() {
+  return (
+    <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-semibold uppercase tracking-wider">
+      Draft
+    </span>
+  );
+}
+
 function DotsButton({
   onClick,
 }: {
@@ -558,9 +566,12 @@ function SongCard({
     >
       <div className="flex items-start justify-between gap-3 pr-16">
         <div className="min-w-0 flex-1">
-          <h3 className="font-semibold text-base text-slate-900 dark:text-slate-100 truncate">
-            {song.title}
-          </h3>
+          <div className="flex items-center gap-1.5 min-w-0">
+            <h3 className="font-semibold text-base text-slate-900 dark:text-slate-100 truncate">
+              {song.title}
+            </h3>
+            {song.isDraft && <DraftBadge />}
+          </div>
           <p className="text-sm text-slate-500 dark:text-slate-400 truncate mt-0.5">
             {song.artist || "Unknown artist"}
           </p>
@@ -654,8 +665,11 @@ function SongRow({
       aria-label={`Open ${song.title}`}
     >
       <div className="min-w-0">
-        <div className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
-          {song.title}
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+            {song.title}
+          </span>
+          {song.isDraft && <DraftBadge />}
         </div>
         <div className="text-xs text-slate-500 dark:text-slate-400 truncate">
           {subParts.join(" · ")}

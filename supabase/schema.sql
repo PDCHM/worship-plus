@@ -19,10 +19,17 @@ create table if not exists public.songs (
   bpm         integer,
   capo        integer,
   favorite    boolean not null default false,
+  -- Draft songs are owner-only: hidden from group members / shared setlists
+  -- until the owner toggles them back to published. Enforced in can_read_song
+  -- and the songs_group_read / songs_setlist_group_read policies below.
+  is_draft    boolean not null default false,
   data        jsonb not null default '{}'::jsonb,
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
 );
+-- Backfill the column on existing installs (create table above is a no-op when
+-- the table already exists).
+alter table public.songs add column if not exists is_draft boolean not null default false;
 
 alter table public.songs add column if not exists capo integer;
 alter table public.songs add column if not exists favorite boolean not null default false;
@@ -296,21 +303,28 @@ stable
 set search_path = public
 as $$
   select exists (
+    -- Owner: always, including their own drafts.
     select 1 from public.songs s
     where s.id = p_song and s.user_id = auth.uid()
   )
-  or exists (
-    select 1 from public.group_songs gs
-    where gs.song_id = p_song and public.is_group_member(gs.group_id)
-  )
-  or exists (
-    select 1
-    from public.folder_songs fs
-    join public.folders f on f.id = fs.folder_id
-    where fs.song_id = p_song
-      and f.type = 'setlist'
-      and f.group_id is not null
-      and public.is_group_member(f.group_id)
+  or (
+    -- Non-owners: only published (non-draft) songs are visible.
+    not coalesce((select s.is_draft from public.songs s where s.id = p_song), false)
+    and (
+      exists (
+        select 1 from public.group_songs gs
+        where gs.song_id = p_song and public.is_group_member(gs.group_id)
+      )
+      or exists (
+        select 1
+        from public.folder_songs fs
+        join public.folders f on f.id = fs.folder_id
+        where fs.song_id = p_song
+          and f.type = 'setlist'
+          and f.group_id is not null
+          and public.is_group_member(f.group_id)
+      )
+    )
   );
 $$;
 
@@ -558,7 +572,8 @@ drop policy if exists songs_group_read on public.songs;
 create policy songs_group_read on public.songs
   for select to authenticated
   using (
-    exists (
+    not songs.is_draft
+    and exists (
       select 1
       from public.group_songs gs
       where gs.song_id = songs.id
@@ -571,7 +586,8 @@ drop policy if exists songs_setlist_group_read on public.songs;
 create policy songs_setlist_group_read on public.songs
   for select to authenticated
   using (
-    exists (
+    not songs.is_draft
+    and exists (
       select 1
       from public.folder_songs fs
       join public.folders f on f.id = fs.folder_id

@@ -97,6 +97,8 @@ export type Song = {
   createdAt: number;
   updatedAt: number;
   userId?: string;
+  // Owner-only draft: hidden from group members / shared setlists until published.
+  isDraft?: boolean;
 };
 
 export type SectionColor = { bg: string; fg: string };
