@@ -76,7 +76,13 @@ const CHORD_TOKEN = /^[A-G][#b]?[A-Za-z0-9+#]*(?:\/[A-G][#b]?)?$/;
 const SECTION_KEYWORD =
   /^(intro|verse|chorus|bridge|tag|outro|interlude|refrain|ending|pre-?chorus)$/i;
 
-export type Chord = { id: string; pos: number; chord: string };
+// `pos` is a character index into the lyric (historically stored in the DB
+// column `position_px`). `wordIndex` is the new source of truth for which word
+// a chord sits above; `pos` is kept in sync on save for print/export/serialize,
+// which still render off character positions. `wordIndex` may be null on
+// chords saved before the word-block model — callers derive it from `pos` via
+// effectiveWordIndex() until the next save persists it.
+export type Chord = { id: string; pos: number; chord: string; wordIndex?: number | null };
 export type Line = { id: string; lyric: string; chords: Chord[] };
 export type Section = { id: string; label: string; lines: Line[] };
 export type Song = {
@@ -384,11 +390,69 @@ export const EDITOR_FONT_FAMILY: Record<EditorPrefs["fontFamily"], string> = {
   sans: "ui-sans-serif, system-ui, -apple-system, sans-serif",
 };
 
+// ── Word-block model ───────────────────────────────────────────────────────
+// Chords attach to whole words. A word token is a maximal run of non-space
+// characters together with its character span in the lyric.
+export type WordToken = { text: string; start: number; end: number };
+
+export function tokenizeWords(lyric: string): WordToken[] {
+  const tokens: WordToken[] = [];
+  const re = /\S+/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(lyric)) !== null) {
+    tokens.push({ text: m[0], start: m.index, end: m.index + m[0].length });
+  }
+  return tokens;
+}
+
+// Map a character position to the index of the nearest word. A chord rendered
+// at character `pos` belongs to whichever word contains `pos`, or the closest
+// word by character distance. Ties resolve to the earlier word.
+export function findNearestWordIndex(pos: number, lyric: string): number {
+  const tokens = tokenizeWords(lyric);
+  if (tokens.length === 0) return 0;
+  let best = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    const d = pos < t.start ? t.start - pos : pos > t.end ? pos - t.end : 0;
+    if (d < bestDist) {
+      bestDist = d;
+      best = i;
+    }
+  }
+  return best;
+}
+
+// The word a chord sits above: its stored wordIndex (clamped to the current
+// word count) when present, otherwise derived from the legacy char position.
+export function effectiveWordIndex(chord: Chord, lyric: string): number {
+  const n = tokenizeWords(lyric).length;
+  if (chord.wordIndex != null) {
+    return Math.max(0, Math.min(Math.max(0, n - 1), chord.wordIndex));
+  }
+  return findNearestWordIndex(chord.pos, lyric);
+}
+
+// Character offset of a word's first character — used to resync `pos`
+// (position_px) from wordIndex on save so print/export stay correct.
+export function wordStartOffset(lyric: string, wordIndex: number): number {
+  const tokens = tokenizeWords(lyric);
+  if (tokens.length === 0) return 0;
+  const i = Math.max(0, Math.min(tokens.length - 1, wordIndex));
+  return tokens[i].start;
+}
+
 export function cloneLine(line: Line): Line {
   return {
     id: uid(),
     lyric: line.lyric,
-    chords: line.chords.map((c) => ({ id: uid(), pos: c.pos, chord: c.chord })),
+    chords: line.chords.map((c) => ({
+      id: uid(),
+      pos: c.pos,
+      chord: c.chord,
+      wordIndex: c.wordIndex ?? null,
+    })),
   };
 }
 

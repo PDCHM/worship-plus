@@ -55,8 +55,16 @@ create table if not exists public.chords (
   line_id     uuid not null references public.lines(id) on delete cascade,
   chord_name  text not null,
   position_px numeric not null default 0,
+  -- Word the chord attaches to (word-block model). Nullable for rows written
+  -- before this column existed; the client derives it from position_px on load
+  -- and persists it on the next save. position_px is kept in sync for the
+  -- print/export/serialize paths, which still render off character positions.
+  word_index  integer,
   created_at  timestamptz not null default now()
 );
+-- Backfill the column on existing installs (create table above is a no-op when
+-- the table already exists).
+alter table public.chords add column if not exists word_index integer;
 
 create table if not exists public.folders (
   id          uuid primary key default gen_random_uuid(),
@@ -926,7 +934,7 @@ begin
                 jsonb_build_object(
                   'id', ln.id, 'lyric', ln.lyric, 'position', ln.position,
                   'chords', coalesce((
-                    select jsonb_agg(jsonb_build_object('id', ch.id, 'chord_name', ch.chord_name, 'position_px', ch.position_px) order by ch.position_px)
+                    select jsonb_agg(jsonb_build_object('id', ch.id, 'chord_name', ch.chord_name, 'position_px', ch.position_px, 'word_index', ch.word_index) order by ch.position_px)
                     from public.chords ch where ch.line_id = ln.id
                   ), '[]'::jsonb)
                 ) order by ln.position

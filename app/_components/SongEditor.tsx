@@ -16,15 +16,19 @@ import {
   collectStyleKeys,
   cloneSection,
   defaultStyleForKey,
-  findLine,
+  effectiveWordIndex,
+  findNearestWordIndex,
   getEffectiveStyle,
   getSectionColorKey,
   getSectionStyleKey,
   mapLine,
   noteToIndex,
   styleLabelFor,
+  tokenizeWords,
   transposeChord,
   uid,
+  wordStartOffset,
+  type Chord,
   type EditorPrefs,
   type Section,
   type SectionStyle,
@@ -64,6 +68,48 @@ type Props = {
   bubbleAuthors: Record<string, string>;
   onBack: () => void;
 };
+
+// Small chord-name input used both when adding a chord to a word and when
+// editing an existing one. A `done` ref makes Enter/Escape authoritative so the
+// follow-on blur (fired when the input unmounts) can't double-commit or
+// resurrect a cancelled edit.
+function ChordInput({
+  defaultValue = "",
+  fontSize,
+  onCommit,
+  onCancel,
+}: {
+  defaultValue?: string;
+  fontSize: string;
+  onCommit: (value: string) => void;
+  onCancel: () => void;
+}) {
+  const done = useRef(false);
+  return (
+    <input
+      autoFocus
+      defaultValue={defaultValue}
+      size={Math.max(3, defaultValue.length + 1)}
+      onFocus={(e) => e.target.select()}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          done.current = true;
+          onCommit((e.target as HTMLInputElement).value);
+        } else if (e.key === "Escape") {
+          done.current = true;
+          onCancel();
+        }
+      }}
+      onBlur={(e) => {
+        if (done.current) return;
+        done.current = true;
+        onCommit(e.target.value);
+      }}
+      className="font-mono font-bold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-200 outline-none rounded px-1 py-0.5 ring-2 ring-indigo-500"
+      style={{ fontSize }}
+    />
+  );
+}
 
 function ToolBtn({
   onClick,
@@ -544,10 +590,15 @@ export default function SongEditor({
   const [moreOpen, setMoreOpen] = useState(false);
   const bubbles = useSongBubbles(song.id, currentUserId, bubbleAuthors, showToast);
   const [editingChord, setEditingChord] = useState<string | null>(null);
+  // The word a not-yet-created chord is being typed onto (tap a word → input).
+  const [addingChord, setAddingChord] = useState<{ lineId: string; wordIndex: number } | null>(null);
   const [editingLine, setEditingLine] = useState<string | null>(null);
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  // Set true while a chord is actually dragged so the trailing click doesn't
+  // open the chord editor.
+  const chordDraggedRef = useRef(false);
   const [clipboard, setClipboard] = useState<Section | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     chordId: string;
@@ -555,8 +606,6 @@ export default function SongEditor({
     y: number;
   } | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("standard");
-  const [charWidth, setCharWidth] = useState(9.6);
-  const [colWidth, setColWidth] = useState(0);
   const sectionsRef = useRef<HTMLDivElement>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [keyPickerOpen, setKeyPickerOpen] = useState(false);
@@ -566,7 +615,6 @@ export default function SongEditor({
   const [scrollSpeed, setScrollSpeed] = useState(3);
   const [zoomOffset, setZoomOffset] = useState(0);
   const scrollRafRef = useRef<number | null>(null);
-  const rulerRef = useRef<HTMLSpanElement>(null);
   const sectionRefs = useRef<Map<string, HTMLElement>>(new Map());
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
   const [stylesPanelOpen, setStylesPanelOpen] = useState(false);
@@ -598,17 +646,12 @@ export default function SongEditor({
   const readOnly = !editMode;
   const columnView = viewMode !== "standard";
   const numCols = viewMode === "split-2" ? 2 : viewMode === "split-3" ? 3 : 1;
-  // Column gutter, in px. Tightened in read-only (performance) mode so each
-  // column is a touch wider — chords can't be edited here, so the extra width
-  // just buys room to keep them from clipping. Kept in one place because the
-  // colWidth measurement below depends on the exact same value.
-  const colGapPx = numCols === 3 ? (readOnly ? 12 : 16) : (readOnly ? 16 : 20);
+  // Grid gutter between columns. Word-block lines wrap on their own, so this is
+  // purely visual spacing now — no chord-position math depends on it.
+  const colGapPx = numCols === 3 ? 16 : 20;
   const prefs = sectionStyles.prefs;
   const lyricFontFamily = EDITOR_FONT_FAMILY[prefs.fontFamily];
   const showChords = settings.showChords ?? true;
-  // True until the song has its first chord anywhere — drives the
-  // "Click to add a chord" hint on the first line of a new song.
-  const songHasNoChords = song.sections.every((sec) => sec.lines.every((l) => l.chords.length === 0));
   const baseFontSize = LYRIC_FONT_SIZE_PX[prefs.lyricFontSize] + zoomOffset;
   // Ceiling for the fluid clamp() (the --lyric-font-size CSS var). The split-3
   // column view keeps its tighter size by lowering the ceiling; clamp then
@@ -617,28 +660,9 @@ export default function SongEditor({
   const lyricFontSize = LYRIC_FONT_CLAMP;
   const chordFontSize = CHORD_FONT_CLAMP;
   const lineHeight = LINE_SPACING[prefs.lineSpacing];
-
-  useEffect(() => {
-    const measure = () => {
-      if (rulerRef.current) {
-        const w = rulerRef.current.getBoundingClientRect().width;
-        if (w > 0) setCharWidth(w / 10);
-      }
-      // Width of one column so chord offsets can be expressed as a percentage
-      // of the actual column, keeping them on-screen in 2-/3-column views.
-      if (sectionsRef.current) {
-        const total = sectionsRef.current.clientWidth;
-        const col = numCols > 1 ? (total - colGapPx * (numCols - 1)) / numCols : total;
-        if (col > 0) setColWidth(col);
-      }
-    };
-    measure();
-    if ("fonts" in document) {
-      document.fonts.ready.then(measure);
-    }
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [lyricCeiling, numCols, colGapPx]);
+  // Height reserved for the chord slot above every word so word baselines stay
+  // aligned across a line whether or not a given word carries a chord.
+  const chordSlotHeight = `calc(${CHORD_FONT_CLAMP} + 4px)`;
 
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -729,36 +753,58 @@ export default function SongEditor({
     update((s) => ({ ...s, capo: value }));
   };
 
-  const handleChordPointerDown =
+  // Attach a chord to a specific word, keeping the legacy char position in sync
+  // so print/export/serialize (which still read `pos`) stay correct in-memory.
+  const setChordWord = (lineId: string, chordId: string, wordIndex: number) => {
+    update((s) =>
+      mapLine(s, lineId, (line) => ({
+        ...line,
+        chords: line.chords.map((c) =>
+          c.id !== chordId
+            ? c
+            : { ...c, wordIndex, pos: wordStartOffset(line.lyric, wordIndex) },
+        ),
+      })),
+    );
+  };
+
+  // Drag a chord horizontally; it snaps to whichever word-unit the pointer is
+  // nearest (hit-testing the rendered units by their on-screen rects), updating
+  // word_index. Works identically in 1/2/3-column layouts.
+  const handleChordDragStart =
     (lineId: string, chordId: string) => (e: React.PointerEvent) => {
       if (readOnly) return;
       if (editingChord === chordId) return;
       if (e.button !== 0) return;
-      const line = findLine(song, lineId);
-      if (!line) return;
-      const chord = line.chords.find((c) => c.id === chordId);
-      if (!chord) return;
       const startX = e.clientX;
-      const startPos = chord.pos;
-      const maxPos = line.lyric.length > 0 ? line.lyric.length : 40;
+      const startY = e.clientY;
+      chordDraggedRef.current = false;
       let moved = false;
       const onMove = (ev: PointerEvent) => {
-        if (!moved && Math.abs(ev.clientX - startX) > 2) {
+        if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) > 4) {
           moved = true;
+          chordDraggedRef.current = true;
           setDraggingId(chordId);
         }
-        if (moved) {
-          const delta = Math.round((ev.clientX - startX) / charWidth);
-          const newPos = Math.max(0, Math.min(maxPos, startPos + delta));
-          update((s) =>
-            mapLine(s, lineId, (l) => ({
-              ...l,
-              chords: l.chords.map((c) =>
-                c.id !== chordId ? c : { ...c, pos: newPos },
-              ),
-            })),
-          );
+        if (!moved) return;
+        const units = Array.from(
+          document.querySelectorAll<HTMLElement>(`[data-wu-line="${lineId}"]`),
+        );
+        let bestIdx: number | null = null;
+        let bestDist = Infinity;
+        for (const el of units) {
+          const r = el.getBoundingClientRect();
+          const cx = r.left + r.width / 2;
+          const cy = r.top + r.height / 2;
+          // Weight vertical distance so dragging prefers words on the same row.
+          const d = Math.abs(ev.clientX - cx) + Math.abs(ev.clientY - cy) * 3;
+          if (d < bestDist) {
+            bestDist = d;
+            const wi = Number(el.getAttribute("data-wu-index"));
+            bestIdx = Number.isNaN(wi) ? bestIdx : wi;
+          }
         }
+        if (bestIdx != null) setChordWord(lineId, chordId, bestIdx);
       };
       const onUp = () => {
         document.removeEventListener("pointermove", onMove);
@@ -800,39 +846,56 @@ export default function SongEditor({
     setEditingChord(null);
   };
 
+  // Full-line lyric edit. On commit, reattach every chord to the nearest still-
+  // existing word: keep its word index, clamped into the new word count, and
+  // resync the char position from that word.
   const commitLine = (lineId: string, value: string) => {
     update((s) =>
       mapLine(s, lineId, (line) => {
-        const len = value.length;
+        const newCount = tokenizeWords(value).length;
         return {
           ...line,
           lyric: value,
-          chords: line.chords.map((c) => ({ ...c, pos: Math.min(c.pos, len) })),
+          chords: line.chords.map((c) => {
+            const oldWi = c.wordIndex ?? findNearestWordIndex(c.pos, line.lyric);
+            const wi = newCount > 0 ? Math.max(0, Math.min(newCount - 1, oldWi)) : 0;
+            return { ...c, wordIndex: wi, pos: wordStartOffset(value, wi) };
+          }),
         };
       }),
     );
     setEditingLine(null);
   };
 
-  const addChordAt = (lineId: string, pos: number) => {
+  // Create a chord on a word from the tap-a-word input. Empty input is a no-op.
+  const commitAddChord = (lineId: string, wordIndex: number, value: string) => {
+    setAddingChord(null);
+    const trimmed = value.trim();
+    if (!trimmed) return;
     const newId = uid();
     update((s) =>
-      mapLine(s, lineId, (line) => {
-        const maxPos = line.lyric.length > 0 ? line.lyric.length : 40;
-        return {
-          ...line,
-          chords: [
-            ...line.chords,
-            {
-              id: newId,
-              pos: Math.max(0, Math.min(maxPos, pos)),
-              chord: "C",
-            },
-          ],
-        };
-      }),
+      mapLine(s, lineId, (line) => ({
+        ...line,
+        chords: [
+          ...line.chords,
+          {
+            id: newId,
+            chord: trimmed,
+            wordIndex,
+            pos: wordStartOffset(line.lyric, wordIndex),
+          },
+        ],
+      })),
     );
-    setEditingChord(newId);
+  };
+
+  // Tap a word to start adding a chord above it (no chord exists yet until the
+  // input is committed with a non-empty value).
+  const startAddChord = (lineId: string, wordIndex: number) => {
+    if (readOnly) return;
+    setEditingChord(null);
+    setEditingLine(null);
+    setAddingChord({ lineId, wordIndex });
   };
 
   const addLineToSection = (sectionId: string) => {
@@ -988,14 +1051,13 @@ export default function SongEditor({
         alignItems: "start",
       }
     : {};
-  // In read-only mode there are no drag handles or editing affordances, so we
-  // let chords overflow the column box (overflow: visible) instead of clipping
-  // them. Editing keeps overflow: hidden so the editable chord row stays tidy.
+  // Word-block lines wrap within the column on their own, so chords can never
+  // be clipped regardless of column width — no overflow clipping needed.
   const sectionInColumnStyle: React.CSSProperties = columnView
     ? {
         minWidth: 0,
-        overflow: readOnly ? "visible" : "hidden",
-        paddingRight: "0.6rem",
+        overflow: "visible",
+        paddingRight: "0.4rem",
         wordBreak: "normal",
         overflowWrap: "break-word",
       }
@@ -1057,23 +1119,6 @@ export default function SongEditor({
           </div>
         </div>
       )}
-      <span
-        ref={rulerRef}
-        aria-hidden
-        className="font-mono"
-        style={{
-          position: "fixed",
-          top: -1000,
-          left: -1000,
-          opacity: 0,
-          pointerEvents: "none",
-          whiteSpace: "pre",
-          fontSize: lyricFontSize,
-        }}
-      >
-        0000000000
-      </span>
-
       <datalist id="section-presets">
         {SECTION_PRESETS.map((p) => (
           <option key={p} value={p} />
@@ -1424,134 +1469,78 @@ export default function SongEditor({
                   style={{ borderLeft: `3px solid ${c.bg}` }}
                 >
                   {section.lines.map((line, lIdx) => {
-                    const chordRowHeight = `calc(${CHORD_FONT_CLAMP} + 12px)`;
                     const isFirstLine = sIdx === 0 && lIdx === 0;
-                    return (
-                      <div key={line.id} className="group/line">
-                      <div
-                        className="relative"
+                    const tokens = tokenizeWords(line.lyric);
+                    // Group every visible chord under the word it sits above.
+                    const chordsByWord = new Map<number, Chord[]>();
+                    for (const ch of line.chords) {
+                      if (ch.chord.trim() === "" && editingChord !== ch.id) continue;
+                      const wi = effectiveWordIndex(ch, line.lyric);
+                      const arr = chordsByWord.get(wi);
+                      if (arr) arr.push(ch);
+                      else chordsByWord.set(wi, [ch]);
+                    }
+                    // Empty lines still render one placeholder unit so any
+                    // chords on them show and a chord can be added.
+                    const units =
+                      tokens.length > 0
+                        ? tokens.map((t, i) => ({ wi: i, text: t.text, empty: false }))
+                        : [{ wi: 0, text: "", empty: true }];
+
+                    const renderChordSpan = (ch: Chord) => (
+                      <span
+                        key={ch.id}
+                        data-chord-id={ch.id}
+                        onPointerDown={
+                          readOnly ? undefined : handleChordDragStart(line.id, ch.id)
+                        }
+                        onClick={
+                          readOnly
+                            ? undefined
+                            : (e) => {
+                                e.stopPropagation();
+                                if (chordDraggedRef.current) {
+                                  chordDraggedRef.current = false;
+                                  return;
+                                }
+                                setAddingChord(null);
+                                setEditingChord(ch.id);
+                              }
+                        }
+                        onContextMenu={
+                          readOnly
+                            ? undefined
+                            : (e) => {
+                                e.preventDefault();
+                                setContextMenu({
+                                  chordId: ch.id,
+                                  x: Math.min(e.clientX, window.innerWidth - 160),
+                                  y: Math.min(e.clientY, window.innerHeight - 96),
+                                });
+                              }
+                        }
+                        className={`font-mono font-bold leading-none select-none px-0.5 rounded transition-colors ${
+                          readOnly
+                            ? "cursor-default"
+                            : draggingId === ch.id
+                              ? "cursor-grabbing bg-indigo-100 dark:bg-indigo-900/70"
+                              : "cursor-grab hover:bg-indigo-50 dark:hover:bg-indigo-950/60"
+                        }`}
                         style={{
-                          paddingTop: showChords ? chordRowHeight : 0,
-                          minWidth: line.lyric.length === 0 ? `${40 * charWidth}px` : undefined,
+                          fontSize: chordFontSize,
+                          color: chordColor,
+                          touchAction: readOnly ? "auto" : "none",
+                          fontVariantEmoji: "text",
+                          fontFamily:
+                            "var(--font-geist-mono), ui-monospace, 'SF Mono', Menlo, Consolas, monospace",
                         }}
                       >
-                        {showChords && (
-                        <div
-                          className="absolute left-0 right-0 top-0"
-                          style={{ height: chordRowHeight }}
-                          onClick={(e) => {
-                            if (readOnly) return;
-                            if (e.target !== e.currentTarget) return;
-                            const rect = e.currentTarget.getBoundingClientRect();
-                            const pos = Math.max(
-                              0,
-                              Math.round((e.clientX - rect.left) / charWidth),
-                            );
-                            addChordAt(line.id, pos);
-                          }}
-                          title={readOnly ? undefined : "Click to add a chord"}
-                        >
-                          {isFirstLine && !readOnly && songHasNoChords && (
-                            <span className="pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 text-[12px] text-slate-300 dark:text-slate-600 select-none">
-                              Click to add a chord
-                            </span>
-                          )}
-                          {line.chords
-                            .filter(
-                              (c) =>
-                                c.chord.trim() !== "" ||
-                                editingChord === c.id,
-                            )
-                            .map((ch) => (
-                            <div
-                              key={ch.id}
-                              style={{
-                                left: columnView && colWidth > 0
-                                  ? `${Math.min(readOnly ? 96 : 88, (ch.pos * charWidth / colWidth) * 100)}%`
-                                  : ch.pos * charWidth,
-                                top: 0,
-                              }}
-                              className="absolute"
-                            >
-                              {editingChord === ch.id && !readOnly ? (
-                                <input
-                                  autoFocus
-                                  defaultValue={ch.chord}
-                                  size={Math.max(3, ch.chord.length + 1)}
-                                  onFocus={(e) => e.target.select()}
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter")
-                                      commitChord(
-                                        line.id,
-                                        ch.id,
-                                        (e.target as HTMLInputElement).value,
-                                      );
-                                    else if (e.key === "Escape")
-                                      setEditingChord(null);
-                                  }}
-                                  onBlur={(e) =>
-                                    commitChord(line.id, ch.id, e.target.value)
-                                  }
-                                  className="font-mono font-bold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-200 outline-none rounded px-1 py-0.5 ring-2 ring-indigo-500"
-                                  style={{ fontSize: chordFontSize }}
-                                />
-                              ) : (
-                                <span
-                                  data-chord-id={ch.id}
-                                  onPointerDown={
-                                    readOnly
-                                      ? undefined
-                                      : handleChordPointerDown(line.id, ch.id)
-                                  }
-                                  onDoubleClick={
-                                    readOnly
-                                      ? undefined
-                                      : () => setEditingChord(ch.id)
-                                  }
-                                  onContextMenu={
-                                    readOnly
-                                      ? undefined
-                                      : (e) => {
-                                          e.preventDefault();
-                                          setContextMenu({
-                                            chordId: ch.id,
-                                            x: Math.min(
-                                              e.clientX,
-                                              window.innerWidth - 160,
-                                            ),
-                                            y: Math.min(
-                                              e.clientY,
-                                              window.innerHeight - 96,
-                                            ),
-                                          });
-                                        }
-                                  }
-                                  className={`inline-block font-mono font-bold select-none px-1 py-0.5 rounded text-indigo-600 dark:text-indigo-300 transition-colors ${
-                                    readOnly
-                                      ? "cursor-default"
-                                      : draggingId === ch.id
-                                        ? "cursor-grabbing bg-indigo-100 dark:bg-indigo-900/70 scale-110 z-20"
-                                        : "cursor-grab hover:bg-indigo-50 dark:hover:bg-indigo-950/60"
-                                  }`}
-                                  style={{
-                                    touchAction: readOnly ? "auto" : "none",
-                                    fontSize: chordFontSize,
-                                    color: chordColor,
-                                    // Force text (not emoji) presentation so chord
-                                    // names like "B" or "#"-containing names never
-                                    // render as a small icon/box on some devices.
-                                    fontVariantEmoji: "text",
-                                    fontFamily: "var(--font-geist-mono), ui-monospace, 'SF Mono', Menlo, Consolas, monospace",
-                                  }}
-                                >
-                                  {ch.chord}
-                                </span>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                        )}
+                        {ch.chord}
+                      </span>
+                    );
 
+                    return (
+                      <div key={line.id} className="group/line">
                         {editingLine === line.id && !readOnly ? (
                           <input
                             autoFocus
@@ -1559,10 +1548,7 @@ export default function SongEditor({
                             onFocus={(e) => e.target.select()}
                             onKeyDown={(e) => {
                               if (e.key === "Enter")
-                                commitLine(
-                                  line.id,
-                                  (e.target as HTMLInputElement).value,
-                                );
+                                commitLine(line.id, (e.target as HTMLInputElement).value);
                               else if (e.key === "Escape") setEditingLine(null);
                             }}
                             onBlur={(e) => commitLine(line.id, e.target.value)}
@@ -1571,35 +1557,105 @@ export default function SongEditor({
                             style={{ fontSize: lyricFontSize, fontFamily: lyricFontFamily, lineHeight }}
                           />
                         ) : (
-                          <div
-                            onClick={
-                              !readOnly && isFirstLine && !line.lyric
-                                ? () => setEditingLine(line.id)
-                                : undefined
-                            }
-                            onDoubleClick={
-                              readOnly
-                                ? undefined
-                                : () => setEditingLine(line.id)
-                            }
-                            className={`rounded px-1 py-0.5 -mx-1 transition-colors ${
-                              readOnly
-                                ? "cursor-default"
-                                : "cursor-text hover:bg-slate-50 dark:hover:bg-slate-800/40"
-                            }`}
-                            style={{ fontSize: lyricFontSize, fontFamily: lyricFontFamily, lineHeight, whiteSpace: "pre-wrap", wordBreak: "normal", overflowWrap: "break-word" }}
-                          >
-                            {isFirstLine && !line.lyric && !readOnly ? (
-                              <span className="text-[13px] text-slate-300 dark:text-slate-600">
-                                Start typing your lyrics here...
-                              </span>
-                            ) : (
-                              line.lyric || " "
+                          <>
+                            <div
+                              className="flex flex-wrap items-end"
+                              style={{
+                                columnGap: "0.4em",
+                                rowGap: "0.15em",
+                                fontSize: lyricFontSize,
+                                fontFamily: lyricFontFamily,
+                                lineHeight,
+                              }}
+                            >
+                              {units.map((u) => {
+                                const chords = chordsByWord.get(u.wi) ?? [];
+                                const addingHere =
+                                  addingChord?.lineId === line.id &&
+                                  addingChord.wordIndex === u.wi;
+                                return (
+                                  <div
+                                    key={u.wi}
+                                    data-wu-line={line.id}
+                                    data-wu-index={u.wi}
+                                    className="inline-flex flex-col items-start"
+                                  >
+                                    {showChords && (
+                                      <span
+                                        className="flex items-end gap-1 leading-none"
+                                        style={{ minHeight: chordSlotHeight }}
+                                      >
+                                        {chords.map((ch) =>
+                                          editingChord === ch.id && !readOnly ? (
+                                            <ChordInput
+                                              key={ch.id}
+                                              defaultValue={ch.chord}
+                                              fontSize={chordFontSize}
+                                              onCommit={(v) => commitChord(line.id, ch.id, v)}
+                                              onCancel={() => setEditingChord(null)}
+                                            />
+                                          ) : (
+                                            renderChordSpan(ch)
+                                          ),
+                                        )}
+                                        {addingHere && (
+                                          <ChordInput
+                                            fontSize={chordFontSize}
+                                            onCommit={(v) => commitAddChord(line.id, u.wi, v)}
+                                            onCancel={() => setAddingChord(null)}
+                                          />
+                                        )}
+                                      </span>
+                                    )}
+                                    <span
+                                      onClick={
+                                        readOnly || !showChords
+                                          ? undefined
+                                          : () => startAddChord(line.id, u.wi)
+                                      }
+                                      title={
+                                        readOnly || !showChords
+                                          ? undefined
+                                          : "Tap to add a chord above this word"
+                                      }
+                                      className={
+                                        "rounded leading-tight " +
+                                        (readOnly || !showChords
+                                          ? ""
+                                          : "cursor-pointer hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40")
+                                      }
+                                      style={u.empty ? { minWidth: "1.5ch" } : undefined}
+                                    >
+                                      {u.empty ? " " : u.text}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {!readOnly && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingChord(null);
+                                  setAddingChord(null);
+                                  setEditingLine(line.id);
+                                }}
+                                title="Tap to edit the lyrics on this line"
+                                className={
+                                  "block w-full text-left text-[11px] mt-0.5 border-t border-dashed border-transparent transition-colors hover:text-indigo-500 hover:border-indigo-300 dark:hover:border-indigo-700 print:hidden " +
+                                  (!line.lyric
+                                    ? "text-slate-400 dark:text-slate-500 opacity-100"
+                                    : "text-slate-300 dark:text-slate-600 opacity-50 sm:opacity-0 sm:group-hover/line:opacity-100")
+                                }
+                              >
+                                {!line.lyric && isFirstLine
+                                  ? "Start typing your lyrics here…"
+                                  : "✎ edit lyrics"}
+                              </button>
                             )}
-                          </div>
+                          </>
                         )}
-                      </div>
-                      <LineBubbles sectionId={section.id} lineIndex={lIdx} api={bubbles} readOnly={readOnly} />
+                        <LineBubbles sectionId={section.id} lineIndex={lIdx} api={bubbles} readOnly={readOnly} />
                       </div>
                     );
                   })}

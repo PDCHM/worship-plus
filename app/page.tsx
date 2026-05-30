@@ -19,8 +19,10 @@ import {
   DEFAULT_SECTION_COLORS_LIGHT,
   DEFAULT_SECTION_STYLES,
   cloneSection,
+  findNearestWordIndex,
   getSectionColorKey,
   makeNewSong,
+  wordStartOffset,
   mergeSectionStyles,
   parseSongText,
   uid,
@@ -78,6 +80,7 @@ type SongRow = {
         id: string;
         chord_name: string;
         position_px: number;
+        word_index?: number | null;
       }> | null;
     }> | null;
   }> | null;
@@ -108,6 +111,7 @@ function sectionRowsToSections(rows: SectionRow[]): Song["sections"] {
               id: c.id,
               pos: c.position_px,
               chord: c.chord_name,
+              wordIndex: c.word_index ?? null,
             })),
         })),
     }));
@@ -155,14 +159,24 @@ async function saveSongToDb(supabase: SupabaseClient, song: Song, userId: string
 
   const sectionRows: Array<{ id: string; song_id: string; label: string; type: string; position: number }> = [];
   const lineRows: Array<{ id: string; section_id: string; lyric: string; position: number }> = [];
-  const chordRows: Array<{ id: string; line_id: string; chord_name: string; position_px: number }> = [];
+  const chordRows: Array<{ id: string; line_id: string; chord_name: string; position_px: number; word_index: number }> = [];
 
   song.sections.forEach((section, sIdx) => {
     sectionRows.push({ id: section.id, song_id: song.id, label: section.label, type: getSectionColorKey(section.label), position: sIdx });
     section.lines.forEach((line, lIdx) => {
       lineRows.push({ id: line.id, section_id: section.id, lyric: line.lyric, position: lIdx });
       line.chords.forEach((chord) => {
-        chordRows.push({ id: chord.id, line_id: line.id, chord_name: chord.chord, position_px: chord.pos });
+        // Persist the word the chord attaches to, and resync position_px to that
+        // word's character offset so print/export/serialize stay correct. Falls
+        // back to the legacy char position for chords not yet migrated.
+        const wordIndex = chord.wordIndex ?? findNearestWordIndex(chord.pos, line.lyric);
+        chordRows.push({
+          id: chord.id,
+          line_id: line.id,
+          chord_name: chord.chord,
+          position_px: wordStartOffset(line.lyric, wordIndex),
+          word_index: wordIndex,
+        });
       });
     });
   });
