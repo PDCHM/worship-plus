@@ -570,29 +570,32 @@ export default function SongEditor({
   const sectionRefs = useRef<Map<string, HTMLElement>>(new Map());
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
   const [stylesPanelOpen, setStylesPanelOpen] = useState(false);
-  const [isTouchDevice, setIsTouchDevice] = useState(false);
   const [editMode, setEditMode] = useState(true);
 
   useEffect(() => {
     const touch = typeof navigator !== "undefined" && (navigator.maxTouchPoints ?? 0) > 0;
-    setIsTouchDevice(touch);
-    if (touch) {
-      try {
-        const saved = localStorage.getItem("wp-edit-mode-v1");
-        setEditMode(saved === "true");
-      } catch {
-        setEditMode(false);
-      }
+    // Honor a saved edit/read preference on any device. With no saved value,
+    // tablets default to read (performance) mode and desktop to edit mode.
+    try {
+      const saved = localStorage.getItem("wp-edit-mode-v1");
+      setEditMode(saved === "true" || saved === "false" ? saved === "true" : !touch);
+    } catch {
+      setEditMode(!touch);
     }
   }, []);
 
-  useEffect(() => {
-    if (!isTouchDevice) return;
-    try { localStorage.setItem("wp-edit-mode-v1", String(editMode)); } catch {}
-  }, [editMode, isTouchDevice]);
+  // Persist on toggle (not via an effect) so the initial editMode value can't
+  // clobber the saved preference before the mount effect loads it.
+  const toggleEditMode = () => {
+    setEditMode((m) => {
+      const next = !m;
+      try { localStorage.setItem("wp-edit-mode-v1", String(next)); } catch {}
+      return next;
+    });
+  };
 
   const colors = isDark ? settings.sectionColorsDark : settings.sectionColorsLight;
-  const readOnly = isTouchDevice && !editMode;
+  const readOnly = !editMode;
   const columnView = viewMode !== "standard";
   const numCols = viewMode === "split-2" ? 2 : viewMode === "split-3" ? 3 : 1;
   const prefs = sectionStyles.prefs;
@@ -1195,29 +1198,28 @@ export default function SongEditor({
           <ViewToggle viewMode={viewMode} onChange={switchView} />
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
-          {isTouchDevice && (
-            <button type="button" onClick={() => setEditMode((m) => !m)}
-              title={editMode ? "Read mode" : "Edit mode"}
-              aria-pressed={editMode}
-              className={
-                "h-9 w-9 rounded-lg flex items-center justify-center transition-colors " +
-                (editMode
-                  ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-600/30"
-                  : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300")
-              }>
-              {editMode ? (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 20h9"/>
-                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z"/>
-                </svg>
-              ) : (
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 20h9"/>
-                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z"/>
-                </svg>
-              )}
-            </button>
-          )}
+          <button type="button" onClick={toggleEditMode}
+            title={editMode ? "Switch to read-only performance mode" : "Switch to edit mode"}
+            aria-pressed={editMode}
+            aria-label={editMode ? "Switch to read-only performance mode" : "Switch to edit mode"}
+            className={
+              "h-9 w-9 rounded-lg flex items-center justify-center transition-colors " +
+              (editMode
+                ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-600/30"
+                : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300")
+            }>
+            {editMode ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 20h9"/>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z"/>
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 20h9"/>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z"/>
+              </svg>
+            )}
+          </button>
           <button type="button" onClick={() => setStylesPanelOpen(true)} title="Section styles"
             className="h-9 w-9 rounded-lg hidden sm:flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -1635,9 +1637,13 @@ export default function SongEditor({
           <p>
             Read-only{" "}
             <span className="font-semibold text-slate-700 dark:text-slate-300">
-              {viewMode === "split-2" ? "Split 2" : "Split 3"}
+              performance
             </span>{" "}
-            view. Switch to Standard to edit.
+            view — chords and lyrics only. Tap the{" "}
+            <span className="font-semibold text-slate-700 dark:text-slate-300">
+              pencil
+            </span>{" "}
+            button to edit.
           </p>
         ) : (
           <p>
