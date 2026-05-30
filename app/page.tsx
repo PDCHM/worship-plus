@@ -821,9 +821,34 @@ export default function Home() {
       } catch { showToast("Could not read .worship file"); }
       return;
     }
-    if (ext !== "txt") { showToast(`.${ext} import is coming soon — try .txt`); return; }
+    // Plain-text formats read on the client; binary/zip/pdf formats are sent to
+    // /api/extract-text for server-side text extraction. Both then run through
+    // the same chord-chart parser.
+    const TEXT_EXTS = ["txt"];
+    const EXTRACT_EXTS = ["docx", "pdf", "pptx", "sbp"];
+    let text: string;
     try {
-      const text = await file.text();
+      if (TEXT_EXTS.includes(ext)) {
+        text = await file.text();
+      } else if (EXTRACT_EXTS.includes(ext)) {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetch("/api/extract-text", { method: "POST", body: fd });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          showToast(typeof data?.error === "string" ? data.error : `Could not read .${ext} file`);
+          return;
+        }
+        text = String(data.text ?? "");
+      } else {
+        showToast(`.${ext} import isn't supported`);
+        return;
+      }
+    } catch {
+      showToast("Could not read file");
+      return;
+    }
+    try {
       const parsed = parseSongText(text);
       hydratedIdsRef.current.add(parsed.id);
       setSongs((prev) => [parsed, ...prev]);
@@ -831,7 +856,7 @@ export default function Home() {
       showToast(`Imported "${parsed.title}"`);
       if (user) void saveSongToDb(supabase, parsed, user.id);
     } catch {
-      showToast("Could not read file");
+      showToast("Could not parse file");
     }
   };
 
@@ -1059,7 +1084,7 @@ export default function Home() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".txt,.docx,.pdf,.xlsx,.worship"
+        accept=".txt,.worship,.docx,.pdf,.pptx,.sbp"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];

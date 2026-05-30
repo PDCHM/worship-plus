@@ -21,7 +21,8 @@ const SYSTEM_PROMPT = `You are a worship music chord chart generator. Given song
     }]
   }]
 }
-Rules: Use chords from the key provided. Place chords on musically natural syllables. Choruses typically have more chord changes than verses. Common worship progressions: I-V-vi-IV, I-IV-V, vi-IV-I-V.`;
+Rules: Use chords from the key provided. Place chords on musically natural syllables. Choruses typically have more chord changes than verses. Common worship progressions: I-V-vi-IV, I-IV-V, vi-IV-I-V.
+IMPORTANT: Analyze the lyrics structure and identify sections. Label each section as Verse 1, Verse 2, Chorus, Pre-Chorus, Bridge, Intro, Outro, or Tag. Repeated lyrics blocks are the same section type. A chorus typically has the most repeated lines.`;
 
 type GenerateBody = {
   title?: unknown;
