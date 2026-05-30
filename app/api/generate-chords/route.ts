@@ -116,8 +116,24 @@ export async function POST(request: Request) {
 
     return NextResponse.json(parsed);
   } catch (error) {
+    // Surface the raw error detail in the server logs (and in the response when
+    // not in production) so failures are diagnosable instead of opaque.
+    const devDetail = process.env.NODE_ENV !== "production";
     if (error instanceof Anthropic.APIError) {
-      console.error("generate-chords Anthropic error", error.status, error.message);
+      console.error(
+        "[generate-chords] Anthropic APIError",
+        JSON.stringify(
+          {
+            name: error.name,
+            status: error.status,
+            type: error.type,
+            message: error.message,
+            request_id: error.requestID,
+          },
+          null,
+          2,
+        ),
+      );
       const status = error.status && error.status >= 500 ? 502 : 400;
       const message =
         error instanceof Anthropic.RateLimitError
@@ -125,9 +141,30 @@ export async function POST(request: Request) {
           : error instanceof Anthropic.AuthenticationError
             ? "AI chord generation is misconfigured (authentication failed)."
             : "Chord generation failed. Try again.";
-      return NextResponse.json({ error: message }, { status });
+      return NextResponse.json(
+        {
+          error: message,
+          ...(devDetail
+            ? {
+                detail: {
+                  status: error.status,
+                  type: error.type,
+                  message: error.message,
+                  request_id: error.requestID,
+                },
+              }
+            : {}),
+        },
+        { status },
+      );
     }
-    console.error("generate-chords error", error);
-    return NextResponse.json({ error: "Chord generation failed. Try again." }, { status: 500 });
+    console.error("[generate-chords] non-API error", error);
+    return NextResponse.json(
+      {
+        error: "Chord generation failed. Try again.",
+        ...(devDetail ? { detail: error instanceof Error ? error.message : String(error) } : {}),
+      },
+      { status: 500 },
+    );
   }
 }
