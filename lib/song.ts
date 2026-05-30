@@ -805,7 +805,14 @@ function normalizeSectionLabel(rawBase: string, num?: string): string {
 }
 
 function detectSectionLabel(text: string): string | null {
-  const m = text.trim().match(SECTION_LABEL_LINE);
+  let t = text.trim();
+  // Accept labels wrapped in [ ] or ( ) — e.g. "[Verse 1]", "(Chorus)". Only a
+  // full-line wrap is unwrapped, so a real ChordPro line like "[G]grace" (which
+  // doesn't end in "]") is left alone, and a bare chord like "[Am]" unwraps to
+  // "Am" which isn't a section keyword and falls through to chord handling.
+  const wrapped = t.match(/^\[(.+)\]$/) ?? t.match(/^\((.+)\)$/);
+  if (wrapped) t = wrapped[1].trim();
+  const m = t.match(SECTION_LABEL_LINE);
   if (!m) return null;
   return normalizeSectionLabel(m[1], m[2]);
 }
