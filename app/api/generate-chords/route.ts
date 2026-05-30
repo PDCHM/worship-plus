@@ -6,7 +6,9 @@ import { NextResponse } from "next/server";
 // to attach chords to words and return strict JSON, then hand that JSON back to
 // the client, which maps it onto the existing word-block structure.
 
-const MODEL = "claude-sonnet-4-20250514";
+// Current Sonnet (claude-sonnet-4-20250514 is a deprecated dated snapshot
+// retiring 2026-06-15; the bare alias is the active, recommended model).
+const MODEL = "claude-sonnet-4-6";
 
 const SYSTEM_PROMPT = `You are a worship music chord chart generator. Given song lyrics, attach chords to specific words. Return ONLY valid JSON, no other text:
 {
@@ -66,6 +68,23 @@ export async function POST(request: Request) {
 
   const client = new Anthropic({ apiKey });
 
+  const userMessage = `Song: ${title}\nKey: ${key}\nStyle: ${style}\n\nLyrics:\n${lyrics}`;
+  // Log the exact request shape being sent to Anthropic (key never logged).
+  console.log(
+    "[generate-chords] → Anthropic request",
+    JSON.stringify(
+      {
+        model: MODEL,
+        max_tokens: 8000,
+        api_key_prefix: apiKey.slice(0, 14) + "…",
+        system_chars: SYSTEM_PROMPT.length,
+        user_message: userMessage,
+      },
+      null,
+      2,
+    ),
+  );
+
   try {
     const response = await client.messages.create({
       model: MODEL,
@@ -80,12 +99,7 @@ export async function POST(request: Request) {
           cache_control: { type: "ephemeral" },
         },
       ],
-      messages: [
-        {
-          role: "user",
-          content: `Song: ${title}\nKey: ${key}\nStyle: ${style}\n\nLyrics:\n${lyrics}`,
-        },
-      ],
+      messages: [{ role: "user", content: userMessage }],
     });
 
     const text = response.content
