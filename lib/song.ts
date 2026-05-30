@@ -854,19 +854,35 @@ export function parsePastedChart(text: string): {
     if (!current) startNew("Verse 1");
     return current!;
   };
+  // A blank line between blocks of content starts a new section. The break is
+  // deferred until the next content line so trailing/multiple blank lines don't
+  // create empty sections. Unlabeled blocks are auto-numbered Verse 1, Verse 2…
+  let pendingBreak = false;
+  let autoVerse = 1;
+  const target = (): Section => {
+    if (pendingBreak && current && current.lines.length > 0) {
+      startNew(`Verse ${++autoVerse}`);
+    }
+    pendingBreak = false;
+    return ensure();
+  };
 
   for (let i = 0; i < rawLines.length; i++) {
     const l = rawLines[i];
-    if (l.trim() === "") continue;
+    if (l.trim() === "") {
+      if (current && current.lines.length > 0) pendingBreak = true;
+      continue;
+    }
 
     const label = detectSectionLabel(l);
     if (label) {
       startNew(label);
+      pendingBreak = false;
       continue;
     }
 
     if (/\[[A-G][^\]]*\]/.test(l)) {
-      ensure().lines.push(parseChordProLine(l));
+      target().lines.push(parseChordProLine(l));
       continue;
     }
 
@@ -884,18 +900,21 @@ export function parsePastedChart(text: string): {
         !isPastedChordLine(next) &&
         !detectSectionLabel(next);
 
+      // A chord line pairs with its lyric across blank lines, so resolve the
+      // target section once before consuming the pair (don't break between them).
+      const sec = target();
       if (nextIsLyric) {
         const chords = chordPositionsFromLine(l, next.length);
-        ensure().lines.push({ id: uid(), lyric: next, chords });
+        sec.lines.push({ id: uid(), lyric: next, chords });
         i = nextIdx;
       } else {
         const chords = chordPositionsFromLine(l);
-        ensure().lines.push({ id: uid(), lyric: "", chords });
+        sec.lines.push({ id: uid(), lyric: "", chords });
       }
       continue;
     }
 
-    ensure().lines.push({ id: uid(), lyric: l, chords: [] });
+    target().lines.push({ id: uid(), lyric: l, chords: [] });
   }
 
   if (!sections.length) startNew("Verse 1");
