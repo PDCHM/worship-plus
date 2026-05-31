@@ -2495,7 +2495,7 @@ export default function SongEditor({
                     <div className="flex items-start gap-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 px-3 py-2">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500 mt-0.5 shrink-0"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
                       <p className="text-[12px] leading-snug text-amber-700 dark:text-amber-300">
-                        <span className="font-semibold">Capo {suggestedCapo.capo} suggested</span> — play easy <span className="font-semibold">{suggestedCapo.shape}</span> shapes in the key of {genKey}.
+                        <span className="font-semibold">Capo {suggestedCapo.capo} suggested</span> — play in <span className="font-semibold">{suggestedCapo.shape}</span> shapes, sounds in {genKey}.
                       </p>
                     </div>
                   )}

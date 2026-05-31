@@ -220,16 +220,20 @@ const EASY_SHAPE_BY_INDEX: Record<number, string> = {
   9: "A",
 };
 
-// Suggest a capo position that turns a hard key (Eb, Ab, F#, Bb, …) into an easy
-// open-chord shape. Returns null when the key is already an easy open key, so
-// the UI only nudges when it actually helps. capo N on `shape` sounds as the
-// key `shape + N` semitones, so we search small capo positions for a shape that
-// lands on an easy open key.
+// Keys that are awkward on guitar (lots of barre chords): Db, Eb, F, F#/Gb, Ab,
+// Bb. We only surface a capo suggestion for these — easy open keys (C, D, E, G,
+// A and their relative minors) are left alone.
+const DIFFICULT_KEY_INDICES = new Set([1, 3, 5, 6, 8, 10]);
+
+// Suggest a capo position that turns a hard key into an easy open-chord shape.
+// Returns null for easy keys so the UI only nudges when it actually helps. capo
+// N on `shape` sounds as the key `shape + N` semitones, so we search small capo
+// positions for a shape that lands on an easy open key.
 export function suggestedCapoForKey(
   key: string,
 ): { capo: number; shape: string } | null {
   const base = noteToIndex(key);
-  if (base < 0 || base in EASY_SHAPE_BY_INDEX) return null;
+  if (base < 0 || !DIFFICULT_KEY_INDICES.has(base)) return null;
   for (let capo = 1; capo <= 5; capo++) {
     const shapeIdx = (((base - capo) % 12) + 12) % 12;
     const shape = EASY_SHAPE_BY_INDEX[shapeIdx];
@@ -288,7 +292,7 @@ export function detectProgression(
     return false;
   };
   const KNOWN: { pat: string[]; name: string }[] = [
-    { pat: ["I", "V", "vi", "IV"], name: "Pop/worship" },
+    { pat: ["I", "V", "vi", "IV"], name: "Contemporary worship" },
     { pat: ["vi", "IV", "I", "V"], name: "Minor worship" },
     { pat: ["I", "IV", "V"], name: "Classic worship" },
   ];
