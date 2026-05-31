@@ -12,7 +12,7 @@ type Props = {
   onOpen: (songId: string) => void;
   onToggleFavorite: (songId: string) => void;
   onDelete: (songId: string) => void;
-  onDuplicate?: (songId: string) => void;
+  onSaveAsCopy?: (songId: string) => void;
   onNewSong: () => void;
   onPasteChart: () => void;
   onAiChords: () => void;
@@ -28,7 +28,7 @@ export default function Library({
   onOpen,
   onToggleFavorite,
   onDelete,
-  onDuplicate,
+  onSaveAsCopy,
   onNewSong,
   onPasteChart,
   onAiChords,
@@ -328,11 +328,11 @@ export default function Library({
           >
             {menuSong.favorite ? "Unfavourite" : "Favourite"}
           </MenuItem>
-          {onDuplicate && (
+          {onSaveAsCopy && (
             <MenuItem
               onClick={() => {
                 setMenu(null);
-                onDuplicate(menuSong.id);
+                onSaveAsCopy(menuSong.id);
               }}
               icon={
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -341,7 +341,7 @@ export default function Library({
                 </svg>
               }
             >
-              Duplicate
+              Save as copy
             </MenuItem>
           )}
           <div className="my-1 h-px bg-slate-200 dark:bg-slate-700" />

@@ -725,23 +725,39 @@ export default function Home() {
     navigateTo({ kind: "editor", songId: song.id });
   };
 
-  const duplicateSong = (songId: string) => {
+  // "Save as copy" from a library card. Library songs are metadata-only until
+  // opened, so load full content first (else the copy would be empty), then
+  // create an owned copy titled "… (copy)" and open it.
+  const librarySaveAsCopy = async (songId: string) => {
     const source = songs.find(s => s.id === songId);
     if (!source || !user) return;
-    const newSong: Song = {
+    let sections = source.sections;
+    if (!sections.length) {
+      const { data, error } = await supabase.rpc("get_song_content", { p_song: songId });
+      if (error) { logErr("save as copy: load content", error); showToast("Could not copy song: " + error.message); return; }
+      const content = (data as unknown as { sections?: SectionRow[] } | null) ?? {};
+      sections = sectionRowsToSections(content.sections ?? []);
+    }
+    const copy: Song = {
       ...source,
       id: uid(),
-      title: "Copy of " + source.title,
+      userId: user.id,
+      title: (source.title.trim() || "Untitled Song") + " (copy)",
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      sections: source.sections.map(s => cloneSection(s)),
+      sections: sections.map(s => cloneSection(s)),
     };
-    setSongs(prev => [newSong, ...prev]);
-    lastSavedRef.current.set(newSong.id, newSong);
-    hydratedIdsRef.current.add(newSong.id);
-    void saveSongToDb(supabase, newSong, user.id);
-    setView({ kind: "editor", songId: newSong.id });
-    showToast('Duplicated "' + source.title + '"');
+    setSongs(prev => [copy, ...prev]);
+    lastSavedRef.current.set(copy.id, copy);
+    hydratedIdsRef.current.add(copy.id);
+    const result = await saveSongToDb(supabase, copy, user.id);
+    if (!result.ok) {
+      setSongs(prev => prev.filter(s => s.id !== copy.id));
+      showToast("Save failed: " + result.message);
+      return;
+    }
+    setView({ kind: "editor", songId: copy.id });
+    showToast("Saved as copy");
   };
 
   // Save the current (possibly unsaved) editor state as a brand-new song, owned
@@ -1128,7 +1144,7 @@ export default function Home() {
               onOpen={openSong}
               onToggleFavorite={toggleFavorite}
               onDelete={deleteSong}
-              onDuplicate={duplicateSong}
+              onSaveAsCopy={librarySaveAsCopy}
               onNewSong={newSong}
               onPasteChart={() => { setPasteAiIntent(false); setPasteOpen(true); }}
               onAiChords={() => { setPasteAiIntent(true); setPasteOpen(true); }}
