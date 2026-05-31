@@ -179,10 +179,18 @@ async function saveSongToDb(supabase: SupabaseClient, song: Song, userId: string
   const lineRows: Array<{ id: string; section_id: string; lyric: string; position: number }> = [];
   const chordRows: Array<{ id: string; line_id: string; chord_name: string; position_px: number; word_index: number }> = [];
 
+  // Fresh IDs on every save. The delete-then-reinsert pattern reuses the
+  // in-memory section/line/chord ids, which can collide on insert
+  // (sections_pkey / lines_pkey) when a prior save left rows behind, two saves
+  // overlap, or an id is shared with another song. Brand-new uuids never
+  // collide. FK references are remapped to the new ids within this build so the
+  // section→line→chord relationships stay intact; song_id is unchanged.
   song.sections.forEach((section, sIdx) => {
-    sectionRows.push({ id: section.id, song_id: song.id, label: section.label, type: getSectionColorKey(section.label), position: sIdx });
+    const sectionId = uid();
+    sectionRows.push({ id: sectionId, song_id: song.id, label: section.label, type: getSectionColorKey(section.label), position: sIdx });
     section.lines.forEach((line, lIdx) => {
-      lineRows.push({ id: line.id, section_id: section.id, lyric: line.lyric, position: lIdx });
+      const lineId = uid();
+      lineRows.push({ id: lineId, section_id: sectionId, lyric: line.lyric, position: lIdx });
       const wordCount = tokenizeWords(line.lyric).length;
       const lineHasWords = wordCount > 0;
       line.chords.forEach((chord) => {
@@ -195,8 +203,8 @@ async function saveSongToDb(supabase: SupabaseClient, song: Song, userId: string
         // rather than letting it attach to the last word (chord misalignment).
         if (lineHasWords && wordIndex >= wordCount) return;
         chordRows.push({
-          id: chord.id,
-          line_id: line.id,
+          id: uid(),
+          line_id: lineId,
           chord_name: chord.chord,
           position_px: lineHasWords ? wordStartOffset(line.lyric, wordIndex) : chord.pos,
           word_index: wordIndex,
