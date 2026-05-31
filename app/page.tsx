@@ -827,15 +827,19 @@ export default function Home() {
     setSongs((prev) => [copy, ...prev]);
     lastSavedRef.current.set(copy.id, copy);
     hydratedIdsRef.current.add(copy.id);
+    // Switch to the copy IMMEDIATELY (before the DB round trip) so the editor
+    // never stays on the original. setView (not navigateTo) so the dirty
+    // original doesn't trigger the unsaved-changes prompt.
+    setView({ kind: "editor", songId: copy.id });
     const result = await saveSongToDb(supabase, copy, user.id);
     if (!result.ok) {
-      setSongs((prev) => prev.filter((s) => s.id !== copy.id));
-      showToast("Save failed: " + result.message);
+      // Keep the copy open as an unsaved draft so the user can retry Save —
+      // don't yank them back to the original.
+      newSongIdsRef.current.add(copy.id);
+      setDirtyIds((prev) => new Set(prev).add(copy.id));
+      showToast("Copy opened but not saved — " + result.message);
       return;
     }
-    // Open the copy. setView (not navigateTo) so the dirty original doesn't
-    // trigger the unsaved-changes prompt — keeping it untouched is the point.
-    setView({ kind: "editor", songId: copy.id });
     showToast("Saved as copy");
   };
 
@@ -1212,6 +1216,7 @@ export default function Home() {
           )}
           {view.kind === "editor" && activeSong && !(hydratingId === view.songId && activeSong.sections.length === 0) && (
             <SongEditor
+              key={activeSong.id}
               song={activeSong}
               onChange={upsertSong}
               settings={settings}

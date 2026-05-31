@@ -341,7 +341,7 @@ export default function Library({
                 </svg>
               }
             >
-              Save as copy
+              Save as…
             </MenuItem>
           )}
           <div className="my-1 h-px bg-slate-200 dark:bg-slate-700" />

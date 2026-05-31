@@ -1546,7 +1546,7 @@ export default function SongEditor({
                     setSaveAsCopyOpen(true);
                   }}
                   className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
-                  Save as copy…
+                  Save as…
                 </button>
               </div>
             )}
@@ -2216,7 +2216,7 @@ export default function SongEditor({
           <div className="w-full sm:max-w-sm bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border-t sm:border border-slate-200 dark:border-slate-700 shadow-2xl pb-[env(safe-area-inset-bottom)] sm:pb-0"
             onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-5 pt-4 pb-2">
-              <h2 className="text-base font-semibold">Save as copy</h2>
+              <h2 className="text-base font-semibold">Save as</h2>
               <button type="button" onClick={() => setSaveAsCopyOpen(false)} aria-label="Close"
                 className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -2246,7 +2246,7 @@ export default function SongEditor({
                   disabled={!copyTitle.trim()}
                   onClick={() => { onSaveAsCopy(copyTitle.trim()); setSaveAsCopyOpen(false); }}
                   className="h-9 px-4 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed text-white transition-colors shadow-sm shadow-indigo-600/30">
-                  Save copy
+                  Save as
                 </button>
               </div>
             </div>
