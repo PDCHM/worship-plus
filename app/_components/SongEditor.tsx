@@ -819,27 +819,57 @@ export default function SongEditor({
         showToast(typeof data?.error === "string" ? data.error : "Chord generation failed.");
         return;
       }
-      // Flatten the model's lines (across its sections) and zip with our lyric
-      // lines by index; each chord's wordIndex maps to a word in that line.
-      const aiLines: Array<{ chords?: unknown }> = [];
+      // Flatten the model's lines across its sections.
+      const aiLines: Array<{ words?: unknown; chords?: unknown }> = [];
       for (const sec of Array.isArray(data?.sections) ? data.sections : []) {
         for (const ln of Array.isArray(sec?.lines) ? sec.lines : []) aiLines.push(ln);
       }
-      const chordsByLineId = new Map<string, Chord[]>();
-      for (let i = 0; i < Math.min(aiLines.length, lines.length); i++) {
-        const line = lines[i];
+
+      // Map AI lines back to the song's lyric lines by TEXT, not by index. The
+      // model labels repeated blocks as one section, so it returns fewer lines
+      // than the song has (a chorus once, not per occurrence). A positional zip
+      // therefore only covers the first few lines and misses everything after.
+      // Matching on the line's words lets every occurrence of a repeated line
+      // get chords; an index-based pass is the fallback for any unmatched line.
+      const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/gi, " ").replace(/\s+/g, " ").trim();
+      const aiByText = new Map<string, unknown[]>();
+      for (const ln of aiLines) {
+        const words = Array.isArray(ln?.words) ? (ln.words as unknown[]).map(String) : [];
+        const chords = Array.isArray(ln?.chords) ? (ln.chords as unknown[]) : [];
+        const key = normalize(words.join(" "));
+        if (key && chords.length && !aiByText.has(key)) aiByText.set(key, chords);
+      }
+
+      const toChords = (rawChords: unknown[], line: Line): Chord[] => {
         const wordCount = tokenizeWords(line.lyric).length;
-        const aiChords = Array.isArray(aiLines[i]?.chords) ? (aiLines[i].chords as unknown[]) : [];
         const made: Chord[] = [];
-        for (const raw of aiChords) {
+        for (const raw of rawChords) {
           const c = raw as { wordIndex?: unknown; chord?: unknown };
           const wi = Number(c?.wordIndex);
           const name = typeof c?.chord === "string" ? c.chord.trim() : "";
           if (!name || !Number.isInteger(wi) || wi < 0 || wi >= wordCount) continue;
           made.push({ id: uid(), chord: name, wordIndex: wi, pos: wordStartOffset(line.lyric, wi) });
         }
+        return made;
+      };
+
+      const chordsByLineId = new Map<string, Chord[]>();
+      let byText = 0;
+      let byIndex = 0;
+      lines.forEach((line, i) => {
+        let made = toChords(aiByText.get(normalize(line.lyric)) ?? [], line);
+        if (made.length) byText++;
+        // Fallback: positional match for a line the model didn't echo verbatim.
+        if (!made.length && i < aiLines.length) {
+          made = toChords(Array.isArray(aiLines[i]?.chords) ? (aiLines[i].chords as unknown[]) : [], line);
+          if (made.length) byIndex++;
+        }
         if (made.length) chordsByLineId.set(line.id, made);
-      }
+      });
+
+      console.log(
+        `[generate-chords] AI lines=${aiLines.length} · song lyric lines=${lines.length} · chorded=${chordsByLineId.size} (byText=${byText}, byIndex=${byIndex})`,
+      );
       if (chordsByLineId.size === 0) {
         showToast("No chords were generated. Try again.");
         return;

@@ -76,7 +76,7 @@ export async function POST(request: Request) {
     JSON.stringify(
       {
         model: MODEL,
-        max_tokens: 8000,
+        max_tokens: 16000,
         api_key_prefix: apiKey.slice(0, 14) + "…",
         system_chars: SYSTEM_PROMPT.length,
         user_message: userMessage,
@@ -89,7 +89,7 @@ export async function POST(request: Request) {
   try {
     const response = await client.messages.create({
       model: MODEL,
-      max_tokens: 8000,
+      max_tokens: 16000,
       system: [
         {
           type: "text",
