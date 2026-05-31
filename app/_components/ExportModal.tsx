@@ -35,8 +35,11 @@ function chordProLine(line: Line): string {
   return out;
 }
 
-function slug(title: string) {
-  return title.replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "song";
+// Use the song title as the filename, stripping only the characters that are
+// invalid in filenames (/ \ : * ? " < > |). Case and spaces are preserved.
+function safeFilename(title: string): string {
+  const cleaned = title.replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, " ").trim();
+  return cleaned || "Untitled Song";
 }
 
 function download(blob: Blob, filename: string) {
@@ -69,7 +72,7 @@ function doText(song: Song) {
   }
   download(
     new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" }),
-    `${slug(song.title)}.txt`,
+    `${safeFilename(song.title)}.txt`,
   );
 }
 
@@ -92,7 +95,7 @@ function doChordPro(song: Song) {
   }
   download(
     new Blob([out.join("\n") + "\n"], { type: "text/plain;charset=utf-8" }),
-    `${slug(song.title)}.chopro`,
+    `${safeFilename(song.title)}.chopro`,
   );
 }
 
@@ -101,7 +104,7 @@ function doWorshipPlus(song: Song) {
     { wpFormat: "worship-plus", version: 1, exportedAt: new Date().toISOString(), songs: [song] },
     null, 2,
   );
-  download(new Blob([payload], { type: "application/json" }), `${slug(song.title)}.worship`);
+  download(new Blob([payload], { type: "application/json" }), `${safeFilename(song.title)}.worship`);
 }
 
 async function doWord(song: Song) {
@@ -157,7 +160,7 @@ async function doWord(song: Song) {
 
   const doc = new Document({ sections: [{ properties: {}, children }] });
   const blob = await Packer.toBlob(doc);
-  download(blob, `${slug(song.title)}.docx`);
+  download(blob, `${safeFilename(song.title)}.docx`);
 }
 
 /* ─── format catalog ─────────────────────────────────────────────────────── */
