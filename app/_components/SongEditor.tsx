@@ -788,8 +788,9 @@ export default function SongEditor({
 
   // Serialize the song's lyrics for the model, and capture the lyric-bearing
   // lines in document order so the response can be mapped back by line index.
-  const buildLyricsPayload = (): { lyrics: string; lines: Line[] } => {
+  const buildLyricsPayload = (): { lyrics: string; lines: Line[]; lineSectionIds: string[] } => {
     const lines: Line[] = [];
+    const lineSectionIds: string[] = [];
     const parts: string[] = [];
     for (const sec of song.sections) {
       const secLines = sec.lines.filter((l) => l.lyric.trim() !== "");
@@ -798,14 +799,15 @@ export default function SongEditor({
       for (const l of secLines) {
         parts.push(l.lyric);
         lines.push(l);
+        lineSectionIds.push(sec.id);
       }
       parts.push("");
     }
-    return { lyrics: parts.join("\n").trim(), lines };
+    return { lyrics: parts.join("\n").trim(), lines, lineSectionIds };
   };
 
   const generateChords = async () => {
-    const { lyrics, lines } = buildLyricsPayload();
+    const { lyrics, lines, lineSectionIds } = buildLyricsPayload();
     if (!lyrics) {
       showToast("Add some lyrics first.");
       return;
@@ -822,10 +824,18 @@ export default function SongEditor({
         showToast(typeof data?.error === "string" ? data.error : "Chord generation failed.");
         return;
       }
-      // Flatten the model's lines across its sections.
+      // Flatten the model's lines across its sections, capturing each line's
+      // detected section label (parallel to aiLines) so we can relabel the
+      // song's sections — Verse / Chorus / Bridge / etc. — from the AI's
+      // structure analysis, not just attach chords.
       const aiLines: Array<{ words?: unknown; chords?: unknown }> = [];
+      const aiLineLabels: string[] = [];
       for (const sec of Array.isArray(data?.sections) ? data.sections : []) {
-        for (const ln of Array.isArray(sec?.lines) ? sec.lines : []) aiLines.push(ln);
+        const label = typeof sec?.label === "string" ? sec.label.trim() : "";
+        for (const ln of Array.isArray(sec?.lines) ? sec.lines : []) {
+          aiLines.push(ln);
+          aiLineLabels.push(label);
+        }
       }
 
       // Map AI lines back to the song's lyric lines by TEXT, not by index. The
@@ -836,12 +846,14 @@ export default function SongEditor({
       // get chords; an index-based pass is the fallback for any unmatched line.
       const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/gi, " ").replace(/\s+/g, " ").trim();
       const aiByText = new Map<string, unknown[]>();
-      for (const ln of aiLines) {
+      const aiLabelByText = new Map<string, string>();
+      aiLines.forEach((ln, idx) => {
         const words = Array.isArray(ln?.words) ? (ln.words as unknown[]).map(String) : [];
         const chords = Array.isArray(ln?.chords) ? (ln.chords as unknown[]) : [];
         const key = normalize(words.join(" "));
         if (key && chords.length && !aiByText.has(key)) aiByText.set(key, chords);
-      }
+        if (key && aiLineLabels[idx] && !aiLabelByText.has(key)) aiLabelByText.set(key, aiLineLabels[idx]);
+      });
 
       const toChords = (rawChords: unknown[], line: Line): Chord[] => {
         const wordCount = tokenizeWords(line.lyric).length;
@@ -857,6 +869,9 @@ export default function SongEditor({
       };
 
       const chordsByLineId = new Map<string, Chord[]>();
+      // Per song section: tally the AI's detected labels across that section's
+      // lines, so we can rename the section to the AI's dominant label.
+      const labelVotes = new Map<string, Map<string, number>>();
       let byIndex = 0;
       let byText = 0;
       // Positional zip in document order: AI line i ↔ song lyric line i. The
@@ -867,19 +882,37 @@ export default function SongEditor({
       // matched by text so every lyric line still gets chords.
       lines.forEach((line, i) => {
         let made: Chord[] = [];
+        let label = "";
         if (i < aiLines.length) {
           made = toChords(Array.isArray(aiLines[i]?.chords) ? (aiLines[i].chords as unknown[]) : [], line);
           if (made.length) byIndex++;
+          label = aiLineLabels[i] || "";
         }
         if (!made.length) {
           made = toChords(aiByText.get(normalize(line.lyric)) ?? [], line);
           if (made.length) byText++;
         }
+        if (!label) label = aiLabelByText.get(normalize(line.lyric)) || "";
         if (made.length) chordsByLineId.set(line.id, made);
+        if (label) {
+          const secId = lineSectionIds[i];
+          const votes = labelVotes.get(secId) ?? new Map<string, number>();
+          votes.set(label, (votes.get(label) ?? 0) + 1);
+          labelVotes.set(secId, votes);
+        }
       });
 
+      // Resolve each section's new label = the most-voted AI label for it.
+      const labelBySectionId = new Map<string, string>();
+      for (const [secId, votes] of labelVotes) {
+        let best = "";
+        let bestN = 0;
+        for (const [lbl, n] of votes) if (n > bestN) { best = lbl; bestN = n; }
+        if (best) labelBySectionId.set(secId, best);
+      }
+
       console.log(
-        `[generate-chords] AI lines=${aiLines.length} · song lyric lines=${lines.length} · chorded=${chordsByLineId.size} (byText=${byText}, byIndex=${byIndex})`,
+        `[generate-chords] AI lines=${aiLines.length} · song lyric lines=${lines.length} · chorded=${chordsByLineId.size} (byText=${byText}, byIndex=${byIndex}) · relabeled=${labelBySectionId.size}`,
       );
       if (chordsByLineId.size === 0) {
         showToast("No chords were generated. Try again.");
@@ -890,6 +923,7 @@ export default function SongEditor({
         key: genKey,
         sections: s.sections.map((sec) => ({
           ...sec,
+          label: labelBySectionId.get(sec.id) ?? sec.label,
           lines: sec.lines.map((l) =>
             chordsByLineId.has(l.id) ? { ...l, chords: chordsByLineId.get(l.id)! } : l,
           ),
