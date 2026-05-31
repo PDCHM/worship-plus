@@ -601,6 +601,7 @@ export default function SongEditor({
   const [saveMenuOpen, setSaveMenuOpen] = useState(false);
   const [saveAsCopyOpen, setSaveAsCopyOpen] = useState(false);
   const [copyTitle, setCopyTitle] = useState("");
+  const saveMenuRef = useRef<HTMLDivElement>(null);
   const bubbles = useSongBubbles(song.id, currentUserId, bubbleAuthors, showToast);
   const [editingChord, setEditingChord] = useState<string | null>(null);
   // The word a not-yet-created chord is being typed onto (tap a word → input).
@@ -713,9 +714,15 @@ export default function SongEditor({
 
   useEffect(() => {
     if (!saveMenuOpen) return;
-    const close = () => setSaveMenuOpen(false);
-    document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    // Close only on a click outside the split-button container, so clicking the
+    // ▾ toggle or a menu item (which opens the modal) isn't pre-closed.
+    const onDown = (e: MouseEvent) => {
+      if (saveMenuRef.current && !saveMenuRef.current.contains(e.target as Node)) {
+        setSaveMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
   }, [saveMenuOpen]);
 
   useEffect(() => {
@@ -1470,7 +1477,7 @@ export default function SongEditor({
             className="h-9 w-9 rounded-lg flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
           </button>
-          <div className="relative flex">
+          <div ref={saveMenuRef} className="relative flex">
             <button
               type="button"
               onClick={onSave}
@@ -1495,7 +1502,7 @@ export default function SongEditor({
             </button>
             {isDirty && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-400 border-2 border-white dark:border-slate-950 pointer-events-none" />}
             {saveMenuOpen && (
-              <div role="menu" onMouseDown={(e) => e.stopPropagation()}
+              <div role="menu"
                 className="absolute right-0 top-full mt-1 z-40 min-w-[180px] py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/20">
                 <button type="button" role="menuitem"
                   onClick={() => { setSaveMenuOpen(false); onSave(); }}

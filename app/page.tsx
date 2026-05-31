@@ -199,25 +199,22 @@ async function writeSongToDb(supabase: SupabaseClient, song: Song, userId: strin
   }
   if (songError) { logErr("save song failed", songError); return { ok: false, message: songError.message }; }
 
-  const { error: delError } = await supabase.from("sections").delete().eq("song_id", song.id);
-  if (delError) { logErr("delete old sections failed", delError); return { ok: false, message: delError.message }; }
-
+  // Build rows with STABLE ids (the in-memory section/line/chord ids) so the
+  // upserts below match existing rows and UPDATE them in place — no full delete
+  // + reinsert. Collect id lists so we can prune only the rows that are gone.
   const sectionRows: Array<{ id: string; song_id: string; label: string; type: string; position: number }> = [];
   const lineRows: Array<{ id: string; section_id: string; lyric: string; position: number }> = [];
   const chordRows: Array<{ id: string; line_id: string; chord_name: string; position_px: number; word_index: number }> = [];
+  const sectionIds: string[] = [];
+  const lineIds: string[] = [];
+  const chordIds: string[] = [];
 
-  // Fresh IDs on every save. The delete-then-reinsert pattern reuses the
-  // in-memory section/line/chord ids, which can collide on insert
-  // (sections_pkey / lines_pkey) when a prior save left rows behind, two saves
-  // overlap, or an id is shared with another song. Brand-new uuids never
-  // collide. FK references are remapped to the new ids within this build so the
-  // section→line→chord relationships stay intact; song_id is unchanged.
   song.sections.forEach((section, sIdx) => {
-    const sectionId = uid();
-    sectionRows.push({ id: sectionId, song_id: song.id, label: section.label, type: getSectionColorKey(section.label), position: sIdx });
+    sectionRows.push({ id: section.id, song_id: song.id, label: section.label, type: getSectionColorKey(section.label), position: sIdx });
+    sectionIds.push(section.id);
     section.lines.forEach((line, lIdx) => {
-      const lineId = uid();
-      lineRows.push({ id: lineId, section_id: sectionId, lyric: line.lyric, position: lIdx });
+      lineRows.push({ id: line.id, section_id: section.id, lyric: line.lyric, position: lIdx });
+      lineIds.push(line.id);
       const wordCount = tokenizeWords(line.lyric).length;
       const lineHasWords = wordCount > 0;
       line.chords.forEach((chord) => {
@@ -230,40 +227,55 @@ async function writeSongToDb(supabase: SupabaseClient, song: Song, userId: strin
         // rather than letting it attach to the last word (chord misalignment).
         if (lineHasWords && wordIndex >= wordCount) return;
         chordRows.push({
-          id: uid(),
-          line_id: lineId,
+          id: chord.id,
+          line_id: line.id,
           chord_name: chord.chord,
           position_px: lineHasWords ? wordStartOffset(line.lyric, wordIndex) : chord.pos,
           word_index: wordIndex,
         });
+        chordIds.push(chord.id);
       });
     });
   });
 
-  // Each table is inserted in a single batched call (3 round trips total, not
-  // one per row). No .select() — we don't need the rows echoed back. Each step
-  // is awaited and its error checked before the next, so lines never insert
-  // unless sections succeeded (the FK ordering invariant).
+  const inList = (ids: string[]) => `(${ids.join(",")})`;
+  const failed = (step: string, error: { message: string; details?: string | null; hint?: string | null }): { ok: false; message: string } => {
+    console.error(`[save] step=${step} song=${song.id} FAILED:`, error.message, error.details, error.hint);
+    return { ok: false, message: error.message };
+  };
+
+  // Upsert (INSERT … ON CONFLICT DO UPDATE) parents before children so FKs hold,
+  // then delete only the rows that are no longer present (orphans). This avoids
+  // the slow full-delete + reinsert and updates unchanged rows in place.
   if (sectionRows.length) {
-    const { error } = await supabase.from("sections").insert(sectionRows);
-    if (error) {
-      console.error(`[save] step=sections rows=${sectionRows.length} song=${song.id} FAILED:`, error.message, error.details, error.hint);
-      return { ok: false, message: error.message };
-    }
+    const { error } = await supabase.from("sections").upsert(sectionRows);
+    if (error) return failed("upsert-sections", error);
+  }
+  {
+    let q = supabase.from("sections").delete().eq("song_id", song.id);
+    if (sectionIds.length) q = q.not("id", "in", inList(sectionIds));
+    const { error } = await q;
+    if (error) return failed("prune-sections", error);
   }
   if (lineRows.length) {
-    const { error } = await supabase.from("lines").insert(lineRows);
-    if (error) {
-      console.error(`[save] step=lines rows=${lineRows.length} song=${song.id} FAILED:`, error.message, error.details, error.hint);
-      return { ok: false, message: error.message };
-    }
+    const { error } = await supabase.from("lines").upsert(lineRows);
+    if (error) return failed("upsert-lines", error);
+  }
+  if (sectionIds.length) {
+    let q = supabase.from("lines").delete().in("section_id", sectionIds);
+    if (lineIds.length) q = q.not("id", "in", inList(lineIds));
+    const { error } = await q;
+    if (error) return failed("prune-lines", error);
   }
   if (chordRows.length) {
-    const { error } = await supabase.from("chords").insert(chordRows);
-    if (error) {
-      console.error(`[save] step=chords rows=${chordRows.length} song=${song.id} FAILED:`, error.message, error.details, error.hint);
-      return { ok: false, message: error.message };
-    }
+    const { error } = await supabase.from("chords").upsert(chordRows);
+    if (error) return failed("upsert-chords", error);
+  }
+  if (lineIds.length) {
+    let q = supabase.from("chords").delete().in("line_id", lineIds);
+    if (chordIds.length) q = q.not("id", "in", inList(chordIds));
+    const { error } = await q;
+    if (error) return failed("prune-chords", error);
   }
   return { ok: true };
 }
