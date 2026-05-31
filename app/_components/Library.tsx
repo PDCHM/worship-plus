@@ -12,7 +12,7 @@ type Props = {
   onOpen: (songId: string) => void;
   onToggleFavorite: (songId: string) => void;
   onDelete: (songId: string) => void;
-  onSaveAsCopy?: (songId: string) => void;
+  onSaveAsCopy?: (songId: string, title: string) => void;
   onNewSong: () => void;
   onPasteChart: () => void;
   onAiChords: () => void;
@@ -49,6 +49,8 @@ export default function Library({
     songId: string;
     title: string;
   } | null>(null);
+  // "Save as…" title prompt before creating a copy.
+  const [saveAsTarget, setSaveAsTarget] = useState<{ songId: string; title: string } | null>(null);
   const [sortCol, setSortCol] = useState<"title"|"artist"|"key"|null>("title");
   const [sortDir, setSortDir] = useState<"asc"|"desc">("asc");
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -332,7 +334,7 @@ export default function Library({
             <MenuItem
               onClick={() => {
                 setMenu(null);
-                onSaveAsCopy(menuSong.id);
+                setSaveAsTarget({ songId: menuSong.id, title: (menuSong.title.trim() || "Untitled Song") + " (copy)" });
               }}
               icon={
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -410,6 +412,53 @@ export default function Library({
                 className="h-10 px-4 rounded-lg text-sm font-medium bg-rose-600 hover:bg-rose-700 text-white transition-colors shadow-sm shadow-rose-600/30"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {saveAsTarget && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onMouseDown={() => setSaveAsTarget(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            onMouseDown={(e) => e.stopPropagation()}
+            className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden"
+          >
+            <div className="p-5">
+              <h3 className="text-lg font-bold tracking-tight mb-3">Save as</h3>
+              <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5">New song title</label>
+              <input
+                autoFocus
+                value={saveAsTarget.title}
+                onChange={(e) => setSaveAsTarget((t) => (t ? { ...t, title: e.target.value } : t))}
+                onFocus={(e) => e.target.select()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && saveAsTarget.title.trim()) { onSaveAsCopy?.(saveAsTarget.songId, saveAsTarget.title.trim()); setSaveAsTarget(null); }
+                  else if (e.key === "Escape") setSaveAsTarget(null);
+                }}
+                className="w-full h-10 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-indigo-400 dark:focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 transition-colors text-sm"
+              />
+            </div>
+            <div className="px-5 pb-5 pt-1 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setSaveAsTarget(null)}
+                className="h-10 px-4 rounded-lg text-sm font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!saveAsTarget.title.trim()}
+                onClick={() => { onSaveAsCopy?.(saveAsTarget.songId, saveAsTarget.title.trim()); setSaveAsTarget(null); }}
+                className="h-10 px-4 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed text-white transition-colors shadow-sm shadow-indigo-600/30"
+              >
+                Save as
               </button>
             </div>
           </div>

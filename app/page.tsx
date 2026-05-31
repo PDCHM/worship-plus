@@ -199,83 +199,43 @@ async function writeSongToDb(supabase: SupabaseClient, song: Song, userId: strin
   }
   if (songError) { logErr("save song failed", songError); return { ok: false, message: songError.message }; }
 
-  // Build rows with STABLE ids (the in-memory section/line/chord ids) so the
-  // upserts below match existing rows and UPDATE them in place — no full delete
-  // + reinsert. Collect id lists so we can prune only the rows that are gone.
-  const sectionRows: Array<{ id: string; song_id: string; label: string; type: string; position: number }> = [];
-  const lineRows: Array<{ id: string; section_id: string; lyric: string; position: number }> = [];
-  const chordRows: Array<{ id: string; line_id: string; chord_name: string; position_px: number; word_index: number }> = [];
-  const sectionIds: string[] = [];
-  const lineIds: string[] = [];
-  const chordIds: string[] = [];
-
-  song.sections.forEach((section, sIdx) => {
-    sectionRows.push({ id: section.id, song_id: song.id, label: section.label, type: getSectionColorKey(section.label), position: sIdx });
-    sectionIds.push(section.id);
-    section.lines.forEach((line, lIdx) => {
-      lineRows.push({ id: line.id, section_id: section.id, lyric: line.lyric, position: lIdx });
-      lineIds.push(line.id);
+  // Build the nested payload (stable in-memory ids, FK references denormalized)
+  // for the atomic save RPC. save_song_content replaces the song's
+  // sections/lines/chords in ONE transaction, eliminating the slow client-side
+  // delete + 3 inserts and the FK race between those separate round trips.
+  const payload = song.sections.map((section, sIdx) => ({
+    id: section.id,
+    label: section.label,
+    type: getSectionColorKey(section.label),
+    position: sIdx,
+    lines: section.lines.map((line, lIdx) => {
       const wordCount = tokenizeWords(line.lyric).length;
       const lineHasWords = wordCount > 0;
-      line.chords.forEach((chord) => {
-        // Persist the word the chord attaches to, and resync position_px to that
-        // word's character offset so print/export/serialize stay correct. On
-        // chord-only lines (no lyric words) there is no word to anchor to, so
-        // pos/word_index act as a left-to-right ordinal — keep pos as stored.
+      const chords = line.chords.flatMap((chord) => {
+        // Persist the word the chord attaches to; resync position_px to that
+        // word's char offset for print/export. Drop chords whose word index is
+        // past the actual words (chord misalignment).
         const wordIndex = chord.wordIndex ?? findNearestWordIndex(chord.pos, line.lyric);
-        // Bounds-check: drop a chord whose word index is past the actual words
-        // rather than letting it attach to the last word (chord misalignment).
-        if (lineHasWords && wordIndex >= wordCount) return;
-        chordRows.push({
+        if (lineHasWords && wordIndex >= wordCount) return [];
+        return [{
           id: chord.id,
           line_id: line.id,
           chord_name: chord.chord,
           position_px: lineHasWords ? wordStartOffset(line.lyric, wordIndex) : chord.pos,
           word_index: wordIndex,
-        });
-        chordIds.push(chord.id);
+        }];
       });
-    });
+      return { id: line.id, section_id: section.id, lyric: line.lyric, position: lIdx, chords };
+    }),
+  }));
+
+  const { error: contentError } = await supabase.rpc("save_song_content", {
+    p_song_id: song.id,
+    p_sections: payload,
   });
-
-  const inList = (ids: string[]) => `(${ids.join(",")})`;
-  const failed = (step: string, error: { message: string; details?: string | null; hint?: string | null }): { ok: false; message: string } => {
-    console.error(`[save] step=${step} song=${song.id} FAILED:`, error.message, error.details, error.hint);
-    return { ok: false, message: error.message };
-  };
-
-  // Upsert (INSERT … ON CONFLICT DO UPDATE) parents before children so FKs hold,
-  // then delete only the rows that are no longer present (orphans). This avoids
-  // the slow full-delete + reinsert and updates unchanged rows in place.
-  if (sectionRows.length) {
-    const { error } = await supabase.from("sections").upsert(sectionRows);
-    if (error) return failed("upsert-sections", error);
-  }
-  {
-    let q = supabase.from("sections").delete().eq("song_id", song.id);
-    if (sectionIds.length) q = q.not("id", "in", inList(sectionIds));
-    const { error } = await q;
-    if (error) return failed("prune-sections", error);
-  }
-  if (lineRows.length) {
-    const { error } = await supabase.from("lines").upsert(lineRows);
-    if (error) return failed("upsert-lines", error);
-  }
-  if (sectionIds.length) {
-    let q = supabase.from("lines").delete().in("section_id", sectionIds);
-    if (lineIds.length) q = q.not("id", "in", inList(lineIds));
-    const { error } = await q;
-    if (error) return failed("prune-lines", error);
-  }
-  if (chordRows.length) {
-    const { error } = await supabase.from("chords").upsert(chordRows);
-    if (error) return failed("upsert-chords", error);
-  }
-  if (lineIds.length) {
-    let q = supabase.from("chords").delete().in("line_id", lineIds);
-    if (chordIds.length) q = q.not("id", "in", inList(chordIds));
-    const { error } = await q;
-    if (error) return failed("prune-chords", error);
+  if (contentError) {
+    console.error(`[save] step=save_song_content song=${song.id} FAILED:`, contentError.message, contentError.details, contentError.hint);
+    return { ok: false, message: contentError.message };
   }
   return { ok: true };
 }
@@ -778,7 +738,7 @@ export default function Home() {
   // "Save as copy" from a library card. Library songs are metadata-only until
   // opened, so load full content first (else the copy would be empty), then
   // create an owned copy titled "… (copy)" and open it.
-  const librarySaveAsCopy = async (songId: string) => {
+  const librarySaveAsCopy = async (songId: string, title?: string) => {
     const source = songs.find(s => s.id === songId);
     if (!source || !user) return;
     let sections = source.sections;
@@ -792,7 +752,7 @@ export default function Home() {
       ...source,
       id: uid(),
       userId: user.id,
-      title: (source.title.trim() || "Untitled Song") + " (copy)",
+      title: title?.trim() || (source.title.trim() || "Untitled Song") + " (copy)",
       createdAt: Date.now(),
       updatedAt: Date.now(),
       sections: sections.map(s => cloneSection(s)),
@@ -800,13 +760,15 @@ export default function Home() {
     setSongs(prev => [copy, ...prev]);
     lastSavedRef.current.set(copy.id, copy);
     hydratedIdsRef.current.add(copy.id);
+    // Open the copy immediately so the user lands on it regardless of save speed.
+    setView({ kind: "editor", songId: copy.id });
     const result = await saveSongToDb(supabase, copy, user.id);
     if (!result.ok) {
-      setSongs(prev => prev.filter(s => s.id !== copy.id));
-      showToast("Save failed: " + result.message);
+      newSongIdsRef.current.add(copy.id);
+      setDirtyIds(prev => new Set(prev).add(copy.id));
+      showToast("Copy opened but not saved — " + result.message);
       return;
     }
-    setView({ kind: "editor", songId: copy.id });
     showToast("Saved as copy");
   };
 

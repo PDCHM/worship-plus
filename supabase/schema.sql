@@ -967,6 +967,41 @@ revoke all on function public.get_song_content(uuid) from public;
 grant execute on function public.get_song_content(uuid) to authenticated;
 
 -- ============================================================
+-- save_song_content: atomically replace a song's content (sections → lines →
+-- chords) in ONE transaction. Replaces the slow client-side delete + 3 inserts
+-- (and the FK race between them) with a single round trip. SECURITY DEFINER, so
+-- it MUST gate on can_write_song() — otherwise any authenticated user could
+-- overwrite any song's content by passing its id (RLS is bypassed in DEFINER).
+-- p_sections shape: [{id,label,type,position,lines:[{id,section_id,lyric,
+-- position,chords:[{id,line_id,chord_name,position_px,word_index}]}]}]
+-- ============================================================
+create or replace function public.save_song_content(p_song_id uuid, p_sections jsonb)
+returns void language plpgsql security definer set search_path = public
+as $$
+begin
+  if not public.can_write_song(p_song_id) then
+    raise exception 'access denied';
+  end if;
+
+  delete from public.sections where song_id = p_song_id;
+
+  insert into public.sections (id, song_id, label, type, position)
+  select (s->>'id')::uuid, p_song_id, s->>'label', s->>'type', (s->>'position')::int
+  from jsonb_array_elements(p_sections) s;
+
+  insert into public.lines (id, section_id, lyric, position)
+  select (l->>'id')::uuid, (l->>'section_id')::uuid, l->>'lyric', (l->>'position')::int
+  from jsonb_array_elements(p_sections) s, jsonb_array_elements(s->'lines') l;
+
+  insert into public.chords (id, line_id, chord_name, position_px, word_index)
+  select (c->>'id')::uuid, (c->>'line_id')::uuid, c->>'chord_name', (c->>'position_px')::numeric, (c->>'word_index')::int
+  from jsonb_array_elements(p_sections) s, jsonb_array_elements(s->'lines') l, jsonb_array_elements(l->'chords') c;
+end;
+$$;
+revoke all on function public.save_song_content(uuid, jsonb) from public;
+grant execute on function public.save_song_content(uuid, jsonb) to authenticated;
+
+-- ============================================================
 -- Setlist events — scheduled rehearsals / services attached to a
 -- setlist (folder). Owner manages; group members of a shared setlist
 -- can read.
