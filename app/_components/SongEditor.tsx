@@ -911,26 +911,71 @@ export default function SongEditor({
         if (best) labelBySectionId.set(secId, best);
       }
 
-      console.log(
-        `[generate-chords] AI lines=${aiLines.length} · song lyric lines=${lines.length} · chorded=${chordsByLineId.size} (byText=${byText}, byIndex=${byIndex}) · relabeled=${labelBySectionId.size}`,
-      );
       if (chordsByLineId.size === 0) {
+        console.log(`[generate-chords] AI lines=${aiLines.length} · song lyric lines=${lines.length} · chorded=0`);
         showToast("No chords were generated. Try again.");
         return;
       }
-      update((s) => ({
-        ...s,
-        key: genKey,
-        sections: s.sections.map((sec) => ({
+
+      // Decide whether to RESTRUCTURE the song from the AI's section structure.
+      // A pasted song with no explicit labels lands in a single "Verse 1"
+      // section, so renaming alone can't surface Verse/Chorus/Bridge — there's
+      // only one section to rename. When the song has no real structure (≤1
+      // lyric-bearing section) and the AI detected multiple distinctly-labelled
+      // sections, rebuild the sections from the AI response: the AI is the
+      // source of truth for structure here.
+      const aiSecCounts = (Array.isArray(data?.sections) ? data.sections : [])
+        .map((sec: { label?: unknown; lines?: unknown }) => ({
+          label: typeof sec?.label === "string" ? sec.label.trim() : "",
+          count: Array.isArray(sec?.lines) ? sec.lines.length : 0,
+        }))
+        .filter((s: { count: number }) => s.count > 0);
+      const distinctLabels = new Set(aiSecCounts.map((s: { label: string }) => s.label).filter(Boolean));
+      const songLyricSections = song.sections.filter((sec) => sec.lines.some((l) => l.lyric.trim() !== ""));
+      const shouldRestructure = songLyricSections.length <= 1 && aiSecCounts.length >= 2 && distinctLabels.size >= 2;
+
+      const withChords = (l: Line): Line => ({ ...l, chords: chordsByLineId.get(l.id) ?? l.chords });
+
+      let nextSections: Section[] | null = null;
+      if (shouldRestructure) {
+        const built: Section[] = [];
+        let cursor = 0;
+        aiSecCounts.forEach((aiSec: { label: string; count: number }, idx: number) => {
+          const remaining = lines.length - cursor;
+          if (remaining <= 0) return;
+          const isLast = idx === aiSecCounts.length - 1;
+          const take = isLast ? remaining : Math.min(aiSec.count, remaining);
+          const slice = lines.slice(cursor, cursor + take);
+          cursor += take;
+          if (slice.length) {
+            built.push({ id: uid(), label: aiSec.label || `Section ${idx + 1}`, lines: slice.map(withChords) });
+          }
+        });
+        // Any lyric lines the AI undercounted: append to the final section.
+        if (cursor < lines.length && built.length) {
+          built[built.length - 1].lines.push(...lines.slice(cursor).map(withChords));
+        }
+        if (built.length >= 2) nextSections = built;
+      }
+
+      // Fallback / no-restructure: keep existing sections, rename them to the
+      // AI's dominant label, and attach the generated chords in place.
+      if (!nextSections) {
+        nextSections = song.sections.map((sec) => ({
           ...sec,
           label: labelBySectionId.get(sec.id) ?? sec.label,
-          lines: sec.lines.map((l) =>
-            chordsByLineId.has(l.id) ? { ...l, chords: chordsByLineId.get(l.id)! } : l,
-          ),
-        })),
-      }));
+          lines: sec.lines.map((l) => (chordsByLineId.has(l.id) ? withChords(l) : l)),
+        }));
+      }
+
+      console.log(
+        `[generate-chords] AI lines=${aiLines.length} · song lyric lines=${lines.length} · chorded=${chordsByLineId.size} (byText=${byText}, byIndex=${byIndex}) · relabeled=${labelBySectionId.size} · restructured=${shouldRestructure && nextSections.length >= 2 ? nextSections.length : 0}`,
+      );
+
+      const restructured = shouldRestructure && nextSections.length !== song.sections.length;
+      update((s) => ({ ...s, key: genKey, sections: nextSections! }));
       setGenerateOpen(false);
-      showToast("Chords generated — review and save");
+      showToast(restructured ? "Chords generated — structure detected, review and save" : "Chords generated — review and save");
     } catch {
       showToast("Chord generation failed. Check your connection.");
     } finally {
