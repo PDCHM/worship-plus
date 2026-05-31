@@ -229,13 +229,58 @@ async function writeSongToDb(supabase: SupabaseClient, song: Song, userId: strin
     }),
   }));
 
+  // Primary path: atomic SECURITY DEFINER RPC. p_sections is a jsonb param, so
+  // pass the array object directly — supabase-js serializes it as a JSON array
+  // that jsonb_array_elements can iterate. (Do NOT JSON.stringify it: that would
+  // arrive as a jsonb *string* scalar and break jsonb_array_elements.)
   const { error: contentError } = await supabase.rpc("save_song_content", {
     p_song_id: song.id,
     p_sections: payload,
   });
   if (contentError) {
+    // Fall back to the legacy client-side delete + insert when the RPC isn't
+    // deployed yet (schema migration lag). PostgREST reports a missing function
+    // as PGRST202 / "Could not find the function … in the schema cache".
+    const notFound =
+      contentError.code === "PGRST202" ||
+      /could not find the function|does not exist|schema cache|not found|404/i.test(
+        (contentError.message || "") + " " + (contentError.details || ""),
+      );
+    if (notFound) {
+      console.warn(`[save] save_song_content RPC unavailable — using legacy delete+insert for song=${song.id}`);
+      return writeSongContentLegacy(supabase, song.id, payload);
+    }
     console.error(`[save] step=save_song_content song=${song.id} FAILED:`, contentError.message, contentError.details, contentError.hint);
     return { ok: false, message: contentError.message };
+  }
+  return { ok: true };
+}
+
+// Legacy save path (pre-RPC): replace a song's content with a client-side delete
+// of its sections (lines/chords cascade) followed by flat batch inserts. Used
+// only as a fallback when the save_song_content RPC isn't deployed.
+async function writeSongContentLegacy(
+  supabase: SupabaseClient,
+  songId: string,
+  payload: Array<{ id: string; label: string; type: string; position: number; lines: Array<{ id: string; section_id: string; lyric: string; position: number; chords: Array<{ id: string; line_id: string; chord_name: string; position_px: number; word_index: number }> }> }>,
+): Promise<SaveResult> {
+  const { error: delError } = await supabase.from("sections").delete().eq("song_id", songId);
+  if (delError) { logErr("legacy save: delete sections", delError); return { ok: false, message: delError.message }; }
+
+  const sectionsFlat = payload.map((s) => ({ id: s.id, song_id: songId, label: s.label, type: s.type, position: s.position }));
+  if (sectionsFlat.length) {
+    const { error } = await supabase.from("sections").insert(sectionsFlat);
+    if (error) { logErr("legacy save: insert sections", error); return { ok: false, message: error.message }; }
+  }
+  const linesFlat = payload.flatMap((s) => s.lines.map((l) => ({ id: l.id, section_id: l.section_id, lyric: l.lyric, position: l.position })));
+  if (linesFlat.length) {
+    const { error } = await supabase.from("lines").insert(linesFlat);
+    if (error) { logErr("legacy save: insert lines", error); return { ok: false, message: error.message }; }
+  }
+  const chordsFlat = payload.flatMap((s) => s.lines.flatMap((l) => l.chords));
+  if (chordsFlat.length) {
+    const { error } = await supabase.from("chords").insert(chordsFlat);
+    if (error) { logErr("legacy save: insert chords", error); return { ok: false, message: error.message }; }
   }
   return { ok: true };
 }

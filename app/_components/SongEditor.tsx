@@ -857,15 +857,23 @@ export default function SongEditor({
       };
 
       const chordsByLineId = new Map<string, Chord[]>();
-      let byText = 0;
       let byIndex = 0;
+      let byText = 0;
+      // Positional zip in document order: AI line i ↔ song lyric line i. The
+      // model is asked to echo EVERY line in order (no collapsing of repeated
+      // sections), so this covers every section, not just the first. For any
+      // line past the AI's returned count — e.g. the model still collapsed a
+      // repeated block — fall back to reusing chords from an identical line
+      // matched by text so every lyric line still gets chords.
       lines.forEach((line, i) => {
-        let made = toChords(aiByText.get(normalize(line.lyric)) ?? [], line);
-        if (made.length) byText++;
-        // Fallback: positional match for a line the model didn't echo verbatim.
-        if (!made.length && i < aiLines.length) {
+        let made: Chord[] = [];
+        if (i < aiLines.length) {
           made = toChords(Array.isArray(aiLines[i]?.chords) ? (aiLines[i].chords as unknown[]) : [], line);
           if (made.length) byIndex++;
+        }
+        if (!made.length) {
+          made = toChords(aiByText.get(normalize(line.lyric)) ?? [], line);
+          if (made.length) byText++;
         }
         if (made.length) chordsByLineId.set(line.id, made);
       });
