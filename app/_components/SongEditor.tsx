@@ -27,6 +27,7 @@ import {
   tokenizeWords,
   transposeChord,
   uid,
+  vocalKeySuggestion,
   wordStartOffset,
   type Chord,
   type EditorPrefs,
@@ -39,6 +40,7 @@ import {
 } from "@/lib/song";
 
 type ViewMode = "standard" | "split-2" | "split-3";
+type Complexity = "simple" | "standard" | "complex";
 
 export type SetlistContext = {
   setlistId: string;
@@ -641,6 +643,10 @@ export default function SongEditor({
   const [generating, setGenerating] = useState(false);
   const [genKey, setGenKey] = useState(song.key);
   const [genStyle, setGenStyle] = useState<"Worship" | "Gospel" | "Contemporary" | "Traditional">("Worship");
+  const [genComplexity, setGenComplexity] = useState<Complexity>("standard");
+  // Set once a generation succeeds in the open sheet: reveals the transpose
+  // suggestion and the "Try another style" complexity variations.
+  const [generatedOnce, setGeneratedOnce] = useState(false);
 
   useEffect(() => {
     const touch = typeof navigator !== "undefined" && (navigator.maxTouchPoints ?? 0) > 0;
@@ -773,6 +779,7 @@ export default function SongEditor({
 
   const openGenerate = () => {
     setGenKey(song.key);
+    setGeneratedOnce(false);
     setGenerateOpen(true);
   };
 
@@ -781,6 +788,7 @@ export default function SongEditor({
   useEffect(() => {
     if (!autoGenerateChords) return;
     setGenKey(song.key);
+    setGeneratedOnce(false);
     setGenerateOpen(true);
     onAutoGenerateConsumed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -806,18 +814,20 @@ export default function SongEditor({
     return { lyrics: parts.join("\n").trim(), lines, lineSectionIds };
   };
 
-  const generateChords = async () => {
+  const generateChords = async (complexityOverride?: Complexity) => {
     const { lyrics, lines, lineSectionIds } = buildLyricsPayload();
     if (!lyrics) {
       showToast("Add some lyrics first.");
       return;
     }
+    const complexity = complexityOverride ?? genComplexity;
+    if (complexityOverride) setGenComplexity(complexityOverride);
     setGenerating(true);
     try {
       const res = await fetch("/api/generate-chords", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: song.title, key: genKey, style: genStyle, lyrics }),
+        body: JSON.stringify({ title: song.title, key: genKey, style: genStyle, lyrics, complexity }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -974,8 +984,10 @@ export default function SongEditor({
 
       const restructured = shouldRestructure && nextSections.length !== song.sections.length;
       update((s) => ({ ...s, key: genKey, sections: nextSections! }));
-      setGenerateOpen(false);
-      showToast(restructured ? "Chords generated — structure detected, review and save" : "Chords generated — review and save");
+      // Keep the sheet open so the user can try other style variations and
+      // compare before saving; this state reveals the transpose suggestion too.
+      setGeneratedOnce(true);
+      showToast(restructured ? "Chords generated — structure detected" : "Chords generated");
     } catch {
       showToast("Chord generation failed. Check your connection.");
     } finally {
@@ -2303,23 +2315,76 @@ export default function SongEditor({
                 </div>
               </div>
 
-              <button type="button" onClick={generateChords} disabled={generating}
-                className="w-full h-11 rounded-xl text-sm font-semibold bg-gradient-to-br from-indigo-500 to-violet-600 text-white hover:from-indigo-600 hover:to-violet-700 shadow-sm shadow-indigo-600/30 transition-colors flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
-                {generating ? (
-                  <>
-                    <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-                    Generating…
-                  </>
-                ) : (
-                  <>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z"/></svg>
-                    Generate Chords
-                  </>
-                )}
-              </button>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center">
-                Review the generated chords, then Save to keep them.
-              </p>
+              {!generatedOnce ? (
+                <>
+                  <button type="button" onClick={() => generateChords()} disabled={generating}
+                    className="w-full h-11 rounded-xl text-sm font-semibold bg-gradient-to-br from-indigo-500 to-violet-600 text-white hover:from-indigo-600 hover:to-violet-700 shadow-sm shadow-indigo-600/30 transition-colors flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
+                    {generating ? (
+                      <>
+                        <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                        Generating…
+                      </>
+                    ) : (
+                      <>
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z"/></svg>
+                        Generate Chords
+                      </>
+                    )}
+                  </button>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center">
+                    Review the generated chords, then Save to keep them.
+                  </p>
+                </>
+              ) : (
+                <>
+                  {/* Feature 4 — transpose / vocal-range suggestion based on the generated key. */}
+                  {(() => {
+                    const vk = vocalKeySuggestion(genKey);
+                    if (!vk) return null;
+                    return (
+                      <div className="flex items-start gap-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 px-3 py-2">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-500 mt-0.5 shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                        <p className="text-[12px] leading-snug text-slate-500 dark:text-slate-400">
+                          Typically played in <span className="font-semibold text-slate-700 dark:text-slate-200">{vk.typical}</span>. For male vocalist: <span className="font-semibold text-slate-700 dark:text-slate-200">{vk.male.join(" or ")}</span>. For female: <span className="font-semibold text-slate-700 dark:text-slate-200">{vk.female.join(" or ")}</span>.
+                        </p>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Feature 5 — regenerate with a different arrangement complexity to compare. */}
+                  <div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5">Try another style</div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {([
+                        { key: "simple" as const, label: "Simple", sub: "3 chords" },
+                        { key: "standard" as const, label: "Standard", sub: "balanced" },
+                        { key: "complex" as const, label: "Complex", sub: "full" },
+                      ]).map((v) => (
+                        <button key={v.key} type="button" onClick={() => generateChords(v.key)} disabled={generating}
+                          className={"h-12 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex flex-col items-center justify-center leading-none gap-0.5 " + (genComplexity === v.key ? "bg-indigo-600 text-white" : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300")}>
+                          <span>{v.label}</span>
+                          <span className={"text-[10px] " + (genComplexity === v.key ? "text-indigo-100" : "text-slate-400 dark:text-slate-500")}>{v.sub}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button type="button" onClick={() => setGenerateOpen(false)} disabled={generating}
+                    className="w-full h-11 rounded-xl text-sm font-semibold bg-gradient-to-br from-indigo-500 to-violet-600 text-white hover:from-indigo-600 hover:to-violet-700 shadow-sm shadow-indigo-600/30 transition-colors flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
+                    {generating ? (
+                      <>
+                        <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                        Generating…
+                      </>
+                    ) : (
+                      "Done — review chords"
+                    )}
+                  </button>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center">
+                    Try a variation, then Save to keep the version you like.
+                  </p>
+                </>
+              )}
             </div>
           </div>
         </div>

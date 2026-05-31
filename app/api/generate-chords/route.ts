@@ -30,6 +30,18 @@ type GenerateBody = {
   key?: unknown;
   style?: unknown;
   lyrics?: unknown;
+  complexity?: unknown;
+};
+
+// Per-request arrangement complexity, appended to the prompt so the user can
+// regenerate variations and compare before saving.
+const COMPLEXITY_INSTRUCTION: Record<string, string> = {
+  simple:
+    "Arrangement complexity: SIMPLE. Use at most 3 distinct chords for the entire song — primarily the I, IV, and V of the key (add the vi if truly needed). Use only basic major/minor chords; do NOT use 7ths, sus, add9, or slash chords. Place chords sparingly, roughly one per line.",
+  standard:
+    "Arrangement complexity: STANDARD. Use common, singable chords for the key with a natural number of chord changes — typically the I, IV, V, and vi with the occasional passing chord.",
+  complex:
+    "Arrangement complexity: COMPLEX. Use a full, rich arrangement: more frequent chord changes, and tasteful 7ths, sus2/sus4, add9, and slash/bass-walking chords where musically appropriate. Aim for a fuller worship-band feel.",
 };
 
 // Pull the JSON object out of Claude's reply. The prompt asks for bare JSON, but
@@ -63,6 +75,10 @@ export async function POST(request: Request) {
   const key = typeof body.key === "string" && body.key.trim() ? body.key : "C";
   const style = typeof body.style === "string" && body.style.trim() ? body.style : "Worship";
   const lyrics = typeof body.lyrics === "string" ? body.lyrics.trim() : "";
+  const complexity =
+    typeof body.complexity === "string" && body.complexity in COMPLEXITY_INSTRUCTION
+      ? body.complexity
+      : "standard";
 
   if (!lyrics) {
     return NextResponse.json({ error: "This song has no lyrics to generate chords for." }, { status: 400 });
@@ -70,7 +86,7 @@ export async function POST(request: Request) {
 
   const client = new Anthropic({ apiKey });
 
-  const userMessage = `Song: ${title}\nKey: ${key}\nStyle: ${style}\n\nLyrics:\n${lyrics}`;
+  const userMessage = `Song: ${title}\nKey: ${key}\nStyle: ${style}\n${COMPLEXITY_INSTRUCTION[complexity]}\n\nLyrics:\n${lyrics}`;
   // Log the exact request shape being sent to Anthropic (key never logged).
   console.log(
     "[generate-chords] → Anthropic request",

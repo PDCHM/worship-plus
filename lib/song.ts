@@ -192,6 +192,24 @@ export function noteToIndex(note: string): number {
   return NOTES.indexOf(normalized);
 }
 
+// Suggest comfortable singing keys based on the chart's key and typical vocal
+// ranges. Worship songs are commonly transposed down for male leads (~a fourth)
+// and up for female leads. Returns the typical key plus two candidate keys for
+// each voice, spelled with the app's preferred key names (KEYS is a chromatic
+// scale, so a chromatic index maps straight to a nicely-spelled key).
+export function vocalKeySuggestion(
+  key: string,
+): { typical: string; male: [string, string]; female: [string, string] } | null {
+  const base = noteToIndex(key);
+  if (base < 0) return null;
+  const at = (semi: number) => KEYS[(((base + semi) % 12) + 12) % 12];
+  return {
+    typical: KEYS[base],
+    male: [at(-5), at(-3)], // down a perfect fourth / minor third
+    female: [at(2), at(4)], // up a major second / major third
+  };
+}
+
 export function transposeChord(
   chord: string,
   semitones: number,
