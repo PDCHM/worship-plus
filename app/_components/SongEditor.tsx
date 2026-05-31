@@ -59,7 +59,7 @@ type Props = {
   onExport: () => void;
   onPasteSong: () => void;
   onSave: () => void;
-  onSaveAsCopy: () => void;
+  onSaveAsCopy: (title: string) => void;
   // When true (set by the "AI Chords" flow after a lyrics paste), the editor
   // auto-opens the Generate Chords sheet once, then calls onAutoGenerateConsumed.
   autoGenerateChords?: boolean;
@@ -597,6 +597,10 @@ export default function SongEditor({
   onBack,
 }: Props) {
   const [moreOpen, setMoreOpen] = useState(false);
+  // Split Save button dropdown + the "Save as copy" title modal.
+  const [saveMenuOpen, setSaveMenuOpen] = useState(false);
+  const [saveAsCopyOpen, setSaveAsCopyOpen] = useState(false);
+  const [copyTitle, setCopyTitle] = useState("");
   const bubbles = useSongBubbles(song.id, currentUserId, bubbleAuthors, showToast);
   const [editingChord, setEditingChord] = useState<string | null>(null);
   // The word a not-yet-created chord is being typed onto (tap a word → input).
@@ -706,6 +710,13 @@ export default function SongEditor({
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [keyPickerOpen, capoPickerOpen]);
+
+  useEffect(() => {
+    if (!saveMenuOpen) return;
+    const close = () => setSaveMenuOpen(false);
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [saveMenuOpen]);
 
   useEffect(() => {
     if (!autoScrolling) {
@@ -1486,11 +1497,11 @@ export default function SongEditor({
             className="h-9 w-9 rounded-lg flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
           </button>
-          <div className="relative">
+          <div className="relative flex">
             <button
               type="button"
               onClick={onSave}
-              className="h-9 px-3 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center gap-1.5 shadow-sm shadow-indigo-600/30"
+              className="h-9 pl-3 pr-2.5 rounded-l-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center gap-1.5 shadow-sm shadow-indigo-600/30"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
@@ -1499,7 +1510,36 @@ export default function SongEditor({
               </svg>
               <span className="hidden sm:inline">Save</span>
             </button>
+            <button
+              type="button"
+              onClick={() => setSaveMenuOpen((o) => !o)}
+              aria-label="Save options"
+              aria-haspopup="menu"
+              aria-expanded={saveMenuOpen}
+              className="h-9 px-1.5 rounded-r-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center justify-center border-l border-indigo-500/60 shadow-sm shadow-indigo-600/30"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
+            </button>
             {isDirty && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-amber-400 border-2 border-white dark:border-slate-950 pointer-events-none" />}
+            {saveMenuOpen && (
+              <div role="menu" onMouseDown={(e) => e.stopPropagation()}
+                className="absolute right-0 top-full mt-1 z-40 min-w-[180px] py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/20">
+                <button type="button" role="menuitem"
+                  onClick={() => { setSaveMenuOpen(false); onSave(); }}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
+                  Save
+                </button>
+                <button type="button" role="menuitem"
+                  onClick={() => {
+                    setSaveMenuOpen(false);
+                    setCopyTitle((song.title.trim() || "Untitled Song") + " (copy)");
+                    setSaveAsCopyOpen(true);
+                  }}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
+                  Save as copy…
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -2074,7 +2114,6 @@ export default function SongEditor({
                 { label: "Section styles", onClick: () => setStylesPanelOpen(true), icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg> },
                 { label: "Print", onClick: () => setPreviewOpen(true), icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> },
                 { label: "Export", onClick: onExport, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> },
-                { label: "Save as copy", onClick: onSaveAsCopy, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> },
                 { label: autoScrolling ? "Pause auto-scroll" : "Auto-scroll", onClick: () => setAutoScrolling((o) => !o), icon: autoScrolling ? <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> : <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> },
                 { label: "Larger text", onClick: () => setZoomOffset((z) => Math.min(z + 2, 14)), icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> },
                 { label: "Smaller text", onClick: () => setZoomOffset((z) => Math.max(z - 2, -8)), icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> },
@@ -2156,6 +2195,50 @@ export default function SongEditor({
               <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center">
                 Review the generated chords, then Save to keep them.
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {saveAsCopyOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4 print:hidden"
+          onClick={() => setSaveAsCopyOpen(false)}>
+          <div className="w-full sm:max-w-sm bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border-t sm:border border-slate-200 dark:border-slate-700 shadow-2xl pb-[env(safe-area-inset-bottom)] sm:pb-0"
+            onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 pt-4 pb-2">
+              <h2 className="text-base font-semibold">Save as copy</h2>
+              <button type="button" onClick={() => setSaveAsCopyOpen(false)} aria-label="Close"
+                className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+            <div className="px-5 pb-5 pt-1 space-y-3">
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5">New song title</label>
+                <input
+                  autoFocus
+                  value={copyTitle}
+                  onChange={(e) => setCopyTitle(e.target.value)}
+                  onFocus={(e) => e.target.select()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && copyTitle.trim()) { onSaveAsCopy(copyTitle.trim()); setSaveAsCopyOpen(false); }
+                    else if (e.key === "Escape") setSaveAsCopyOpen(false);
+                  }}
+                  className="w-full h-10 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-indigo-400 dark:focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 transition-colors text-sm"
+                />
+              </div>
+              <div className="flex items-center justify-end gap-2">
+                <button type="button" onClick={() => setSaveAsCopyOpen(false)}
+                  className="h-9 px-3 rounded-lg text-sm font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors">
+                  Cancel
+                </button>
+                <button type="button"
+                  disabled={!copyTitle.trim()}
+                  onClick={() => { onSaveAsCopy(copyTitle.trim()); setSaveAsCopyOpen(false); }}
+                  className="h-9 px-4 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed text-white transition-colors shadow-sm shadow-indigo-600/30">
+                  Save copy
+                </button>
+              </div>
             </div>
           </div>
         </div>

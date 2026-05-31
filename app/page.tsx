@@ -801,13 +801,13 @@ export default function Home() {
   // Save the current (possibly unsaved) editor state as a brand-new song, owned
   // by the current user, leaving the original untouched. Used by the editor's
   // "Save as copy" — e.g. keep the original and save an AI-chorded version.
-  const saveAsCopy = async (song: Song) => {
+  const saveAsCopy = async (song: Song, title?: string) => {
     if (!user) return;
     const copy: Song = {
       ...song,
       id: uid(),
       userId: user.id,
-      title: (song.title.trim() || "Untitled Song") + " (copy)",
+      title: title?.trim() || (song.title.trim() || "Untitled Song") + " (copy)",
       createdAt: Date.now(),
       updatedAt: Date.now(),
       sections: song.sections.map((s) => cloneSection(s)),
@@ -1210,7 +1210,7 @@ export default function Home() {
               onPasteSong={() => setPasteOpen(true)}
               isDirty={view.kind === "editor" && dirtyIds.has((view as { kind: "editor"; songId: string }).songId)}
               onSave={() => { const s = songs.find(x => view.kind === "editor" && x.id === (view as { kind: "editor"; songId: string }).songId); if (s) void saveSong(s); }}
-              onSaveAsCopy={() => { const s = songs.find(x => view.kind === "editor" && x.id === (view as { kind: "editor"; songId: string }).songId); if (s) void saveAsCopy(s); }}
+              onSaveAsCopy={(title) => { const s = songs.find(x => view.kind === "editor" && x.id === (view as { kind: "editor"; songId: string }).songId); if (s) void saveAsCopy(s, title); }}
               autoGenerateChords={aiGenerateSongId === activeSong.id}
               onAutoGenerateConsumed={() => setAiGenerateSongId(null)}
               currentUserId={user.id}
