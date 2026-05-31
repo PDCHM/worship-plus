@@ -17,6 +17,7 @@ import {
   cloneSection,
   defaultStyleForKey,
   effectiveWordIndex,
+  detectProgression,
   findNearestWordIndex,
   getEffectiveStyle,
   getSectionColorKey,
@@ -24,6 +25,7 @@ import {
   mapLine,
   noteToIndex,
   styleLabelFor,
+  suggestedCapoForKey,
   tokenizeWords,
   transposeChord,
   uid,
@@ -647,6 +649,14 @@ export default function SongEditor({
   // Set once a generation succeeds in the open sheet: reveals the transpose
   // suggestion and the "Try another style" complexity variations.
   const [generatedOnce, setGeneratedOnce] = useState(false);
+  // Capo suggestion (feature 1) — shown in the sheet after generation.
+  const [suggestedCapo, setSuggestedCapo] = useState<{ capo: number; shape: string } | null>(null);
+  // Chord progression info card (feature 3) — shown below the song after generation.
+  const [progressionInfo, setProgressionInfo] = useState<
+    { key: string; progression: string; name: string | null; style: string; complexity: Complexity } | null
+  >(null);
+  // Per-section regenerate (feature 2) — id of the section currently regenerating.
+  const [regeneratingSectionId, setRegeneratingSectionId] = useState<string | null>(null);
 
   useEffect(() => {
     const touch = typeof navigator !== "undefined" && (navigator.maxTouchPoints ?? 0) > 0;
@@ -780,6 +790,7 @@ export default function SongEditor({
   const openGenerate = () => {
     setGenKey(song.key);
     setGeneratedOnce(false);
+    setSuggestedCapo(null);
     setGenerateOpen(true);
   };
 
@@ -789,6 +800,7 @@ export default function SongEditor({
     if (!autoGenerateChords) return;
     setGenKey(song.key);
     setGeneratedOnce(false);
+    setSuggestedCapo(null);
     setGenerateOpen(true);
     onAutoGenerateConsumed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -812,6 +824,90 @@ export default function SongEditor({
       parts.push("");
     }
     return { lyrics: parts.join("\n").trim(), lines, lineSectionIds };
+  };
+
+  // Convert one AI line's raw chord list into validated Chord objects anchored
+  // to the line's words. Shared by full-song generation and per-section regen.
+  const aiChordsForLine = (rawChords: unknown[], line: Line): Chord[] => {
+    const wordCount = tokenizeWords(line.lyric).length;
+    const made: Chord[] = [];
+    for (const raw of rawChords) {
+      const c = raw as { wordIndex?: unknown; chord?: unknown };
+      const wi = Number(c?.wordIndex);
+      const name = typeof c?.chord === "string" ? c.chord.trim() : "";
+      if (!name || !Number.isInteger(wi) || wi < 0 || wi >= wordCount) continue;
+      made.push({ id: uid(), chord: name, wordIndex: wi, pos: wordStartOffset(line.lyric, wi) });
+    }
+    return made;
+  };
+
+  // Regenerate chords for a SINGLE section: send only that section's lyrics to
+  // the API and replace only that section's chords, leaving everything else
+  // untouched. Uses the same key/style/complexity as the last full generation.
+  const regenerateSection = async (sectionId: string) => {
+    const section = song.sections.find((s) => s.id === sectionId);
+    if (!section) return;
+    const secLines = section.lines.filter((l) => l.lyric.trim() !== "");
+    if (!secLines.length) {
+      showToast("This section has no lyrics.");
+      return;
+    }
+    setRegeneratingSectionId(sectionId);
+    try {
+      const lyrics = [section.label, ...secLines.map((l) => l.lyric)].join("\n");
+      const res = await fetch("/api/generate-chords", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: song.title, key: song.key, style: genStyle, lyrics, complexity: genComplexity }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast(typeof data?.error === "string" ? data.error : "Regeneration failed.");
+        return;
+      }
+      const aiLines: Array<{ words?: unknown; chords?: unknown }> = [];
+      for (const sec of Array.isArray(data?.sections) ? data.sections : []) {
+        for (const ln of Array.isArray(sec?.lines) ? sec.lines : []) aiLines.push(ln);
+      }
+      const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/gi, " ").replace(/\s+/g, " ").trim();
+      const aiByText = new Map<string, unknown[]>();
+      for (const ln of aiLines) {
+        const words = Array.isArray(ln?.words) ? (ln.words as unknown[]).map(String) : [];
+        const chords = Array.isArray(ln?.chords) ? (ln.chords as unknown[]) : [];
+        const k = normalize(words.join(" "));
+        if (k && chords.length && !aiByText.has(k)) aiByText.set(k, chords);
+      }
+      const chordsByLineId = new Map<string, Chord[]>();
+      secLines.forEach((line, i) => {
+        let made = i < aiLines.length
+          ? aiChordsForLine(Array.isArray(aiLines[i]?.chords) ? (aiLines[i].chords as unknown[]) : [], line)
+          : [];
+        if (!made.length) made = aiChordsForLine(aiByText.get(normalize(line.lyric)) ?? [], line);
+        if (made.length) chordsByLineId.set(line.id, made);
+      });
+      if (chordsByLineId.size === 0) {
+        showToast("No chords generated for this section. Try again.");
+        return;
+      }
+      update((s) => ({
+        ...s,
+        sections: s.sections.map((sec) =>
+          sec.id !== sectionId
+            ? sec
+            : {
+                ...sec,
+                lines: sec.lines.map((l) =>
+                  chordsByLineId.has(l.id) ? { ...l, chords: chordsByLineId.get(l.id)! } : l,
+                ),
+              },
+        ),
+      }));
+      showToast("Section chords regenerated");
+    } catch {
+      showToast("Regeneration failed. Check your connection.");
+    } finally {
+      setRegeneratingSectionId(null);
+    }
   };
 
   const generateChords = async (complexityOverride?: Complexity) => {
@@ -865,18 +961,7 @@ export default function SongEditor({
         if (key && aiLineLabels[idx] && !aiLabelByText.has(key)) aiLabelByText.set(key, aiLineLabels[idx]);
       });
 
-      const toChords = (rawChords: unknown[], line: Line): Chord[] => {
-        const wordCount = tokenizeWords(line.lyric).length;
-        const made: Chord[] = [];
-        for (const raw of rawChords) {
-          const c = raw as { wordIndex?: unknown; chord?: unknown };
-          const wi = Number(c?.wordIndex);
-          const name = typeof c?.chord === "string" ? c.chord.trim() : "";
-          if (!name || !Number.isInteger(wi) || wi < 0 || wi >= wordCount) continue;
-          made.push({ id: uid(), chord: name, wordIndex: wi, pos: wordStartOffset(line.lyric, wi) });
-        }
-        return made;
-      };
+      const toChords = aiChordsForLine;
 
       const chordsByLineId = new Map<string, Chord[]>();
       // Per song section: tally the AI's detected labels across that section's
@@ -984,6 +1069,19 @@ export default function SongEditor({
 
       const restructured = shouldRestructure && nextSections.length !== song.sections.length;
       update((s) => ({ ...s, key: genKey, sections: nextSections! }));
+
+      // Feature 1 — capo suggestion for hard keys (shown in the sheet).
+      setSuggestedCapo(suggestedCapoForKey(genKey));
+      // Feature 3 — progression info card below the song. Detect from the
+      // chords we just generated, in document order.
+      const generatedChordNames = nextSections.flatMap((sec) =>
+        sec.lines.flatMap((l) => l.chords.map((c) => c.chord)),
+      );
+      const prog = detectProgression(generatedChordNames, genKey);
+      setProgressionInfo(
+        prog ? { key: genKey, progression: prog.progression, name: prog.name, style: genStyle, complexity } : null,
+      );
+
       // Keep the sheet open so the user can try other style variations and
       // compare before saving; this state reveals the transpose suggestion too.
       setGeneratedOnce(true);
@@ -1787,6 +1885,22 @@ export default function SongEditor({
                           <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
                         </svg>
                       </ToolBtn>
+                      {section.lines.some((l) => l.lyric.trim() !== "") && (
+                        <>
+                          <span className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1" />
+                          <ToolBtn
+                            onClick={() => regenerateSection(section.id)}
+                            disabled={regeneratingSectionId !== null}
+                            title="Regenerate chords for this section"
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className={regeneratingSectionId === section.id ? "animate-spin" : ""}>
+                              <polyline points="23 4 23 10 17 10" />
+                              <polyline points="1 20 1 14 7 14" />
+                              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                            </svg>
+                          </ToolBtn>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2092,6 +2206,31 @@ export default function SongEditor({
         )}
       </div>
 
+      {/* Feature 3 — chord progression info card, shown after AI generation. */}
+      {progressionInfo && (
+        <div className="mt-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 px-4 py-3 print:hidden">
+          <div className="flex items-center justify-between gap-3 mb-2">
+            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-500"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+              Chord progression
+            </div>
+            <button type="button" onClick={() => setProgressionInfo(null)} aria-label="Dismiss"
+              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-sm leading-none">×</button>
+          </div>
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className="text-lg font-bold tracking-tight text-slate-800 dark:text-slate-100">{progressionInfo.progression}</span>
+            {progressionInfo.name && (
+              <span className="text-sm text-slate-500 dark:text-slate-400">· {progressionInfo.name}</span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap mt-2.5">
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900">Key of {progressionInfo.key}</span>
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">{progressionInfo.style}</span>
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 capitalize">{progressionInfo.complexity}</span>
+          </div>
+        </div>
+      )}
+
       <div className="mt-5 text-xs text-slate-500 dark:text-slate-400 px-1 leading-relaxed space-y-1 print:hidden">
         {readOnly ? (
           <p>
@@ -2350,6 +2489,16 @@ export default function SongEditor({
                       </div>
                     );
                   })()}
+
+                  {/* Feature 1 — capo suggestion for hard keys. */}
+                  {suggestedCapo && (
+                    <div className="flex items-start gap-2 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 px-3 py-2">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500 mt-0.5 shrink-0"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                      <p className="text-[12px] leading-snug text-amber-700 dark:text-amber-300">
+                        <span className="font-semibold">Capo {suggestedCapo.capo} suggested</span> — play easy <span className="font-semibold">{suggestedCapo.shape}</span> shapes in the key of {genKey}.
+                      </p>
+                    </div>
+                  )}
 
                   {/* Feature 5 — regenerate with a different arrangement complexity to compare. */}
                   <div>

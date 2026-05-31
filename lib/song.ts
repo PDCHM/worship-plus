@@ -210,6 +210,99 @@ export function vocalKeySuggestion(
   };
 }
 
+// Open-chord-friendly keys (CAGED open shapes). Playing in one of these needs
+// no capo; everything else can usually be made easier with a capo.
+const EASY_SHAPE_BY_INDEX: Record<number, string> = {
+  0: "C",
+  2: "D",
+  4: "E",
+  7: "G",
+  9: "A",
+};
+
+// Suggest a capo position that turns a hard key (Eb, Ab, F#, Bb, …) into an easy
+// open-chord shape. Returns null when the key is already an easy open key, so
+// the UI only nudges when it actually helps. capo N on `shape` sounds as the
+// key `shape + N` semitones, so we search small capo positions for a shape that
+// lands on an easy open key.
+export function suggestedCapoForKey(
+  key: string,
+): { capo: number; shape: string } | null {
+  const base = noteToIndex(key);
+  if (base < 0 || base in EASY_SHAPE_BY_INDEX) return null;
+  for (let capo = 1; capo <= 5; capo++) {
+    const shapeIdx = (((base - capo) % 12) + 12) % 12;
+    const shape = EASY_SHAPE_BY_INDEX[shapeIdx];
+    if (shape) return { capo, shape };
+  }
+  return null;
+}
+
+// Roman-numeral label for a chord root relative to a key (diatonic major-key
+// degrees; casing follows the diatonic quality so pattern matching is stable).
+const ROMAN_BY_OFFSET: Record<number, string> = {
+  0: "I",
+  1: "♭II",
+  2: "ii",
+  3: "♭III",
+  4: "iii",
+  5: "IV",
+  6: "♭V",
+  7: "V",
+  8: "♭VI",
+  9: "vi",
+  10: "♭VII",
+  11: "vii",
+};
+
+function chordRootIndex(chord: string): number {
+  const m = chord.trim().match(/^([A-Ga-g])([#b])?/);
+  if (!m) return -1;
+  return noteToIndex(m[1].toUpperCase() + (m[2] ?? ""));
+}
+
+// Map an ordered list of chord names to Roman numerals relative to `key`, then
+// detect a recognizable progression. Known worship/pop patterns get a name;
+// otherwise we surface the most-used degrees so the card still says something.
+export function detectProgression(
+  chordNames: string[],
+  key: string,
+): { progression: string; name: string | null } | null {
+  const tonic = noteToIndex(key);
+  if (tonic < 0) return null;
+  const roman: string[] = [];
+  for (const name of chordNames) {
+    const root = chordRootIndex(name);
+    if (root < 0) continue;
+    const offset = ((root - tonic) % 12 + 12) % 12;
+    roman.push(ROMAN_BY_OFFSET[offset]);
+  }
+  if (!roman.length) return null;
+
+  // Collapse immediate repeats so "I I I IV" reads as "I IV".
+  const seq = roman.filter((r, i) => i === 0 || r !== roman[i - 1]);
+  const contains = (pat: string[]) => {
+    for (let i = 0; i + pat.length <= seq.length; i++) {
+      if (pat.every((p, j) => seq[i + j] === p)) return true;
+    }
+    return false;
+  };
+  const KNOWN: { pat: string[]; name: string }[] = [
+    { pat: ["I", "V", "vi", "IV"], name: "Pop/worship" },
+    { pat: ["vi", "IV", "I", "V"], name: "Minor worship" },
+    { pat: ["I", "IV", "V"], name: "Classic worship" },
+  ];
+  for (const k of KNOWN) {
+    if (contains(k.pat)) return { progression: k.pat.join("–"), name: k.name };
+  }
+
+  // No known pattern: show the most frequent degrees (up to 4) in rank order.
+  const freq = new Map<string, number>();
+  for (const r of roman) freq.set(r, (freq.get(r) ?? 0) + 1);
+  const top = [...freq.entries()].sort((a, b) => b[1] - a[1]).slice(0, 4).map((e) => e[0]);
+  return { progression: top.join("–"), name: null };
+}
+
 export function transposeChord(
   chord: string,
   semitones: number,
