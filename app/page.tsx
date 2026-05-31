@@ -292,6 +292,9 @@ export default function Home() {
   const hydratedIdsRef = useRef<Set<string>>(new Set());
   const [hydratingId, setHydratingId] = useState<string | null>(null);
   const [unsavedModal, setUnsavedModal] = useState<{ pendingView: View } | null>(null);
+  // "Save as…" title prompt launched from the unsaved-changes modal; after
+  // saving the copy we navigate to `after` (where the user was headed).
+  const [saveAsPrompt, setSaveAsPrompt] = useState<{ song: Song; title: string; after: View } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isFirstRender = useRef(true);
@@ -775,7 +778,7 @@ export default function Home() {
   // Save the current (possibly unsaved) editor state as a brand-new song, owned
   // by the current user, leaving the original untouched. Used by the editor's
   // "Save as copy" — e.g. keep the original and save an AI-chorded version.
-  const saveAsCopy = async (song: Song, title?: string) => {
+  const saveAsCopy = async (song: Song, title?: string, afterView?: View) => {
     if (!user) return;
     const copy: Song = {
       ...song,
@@ -789,10 +792,11 @@ export default function Home() {
     setSongs((prev) => [copy, ...prev]);
     lastSavedRef.current.set(copy.id, copy);
     hydratedIdsRef.current.add(copy.id);
-    // Switch to the copy IMMEDIATELY (before the DB round trip) so the editor
-    // never stays on the original. setView (not navigateTo) so the dirty
-    // original doesn't trigger the unsaved-changes prompt.
-    setView({ kind: "editor", songId: copy.id });
+    // Switch view IMMEDIATELY (before the DB round trip): to the pending
+    // destination when invoked from the unsaved-changes prompt, otherwise open
+    // the copy itself. setView (not navigateTo) so the dirty original doesn't
+    // re-trigger the unsaved prompt.
+    setView(afterView ?? { kind: "editor", songId: copy.id });
     const result = await saveSongToDb(supabase, copy, user.id);
     if (!result.ok) {
       // Keep the copy open as an unsaved draft so the user can retry Save —
@@ -916,7 +920,15 @@ export default function Home() {
     style.id = "wp-print-page-size";
     style.textContent = "@page { size: " + (settings.printLayout === "A4" ? "A4" : "letter") + " " + (settings.printOrientation ?? "portrait") + "; margin: 0.6in; }";
     document.head.appendChild(style);
+    // Browsers seed the "Save as PDF" default filename from document.title.
+    // Swap in the song title for the print, then restore it afterward.
+    const prevTitle = document.title;
+    document.title = activeSong.title.trim() || "Untitled Song";
+    const restore = () => { document.title = prevTitle; window.removeEventListener("afterprint", restore); };
+    window.addEventListener("afterprint", restore);
     window.print();
+    // Fallback restore for browsers that don't reliably fire afterprint.
+    setTimeout(restore, 1000);
   };
 
   // ─── Folder / Setlist CRUD ────────────────────────────────────────────────
@@ -1190,6 +1202,7 @@ export default function Home() {
               isDirty={view.kind === "editor" && dirtyIds.has((view as { kind: "editor"; songId: string }).songId)}
               onSave={() => { const s = songs.find(x => view.kind === "editor" && x.id === (view as { kind: "editor"; songId: string }).songId); if (s) void saveSong(s); }}
               onSaveAsCopy={(title) => { const s = songs.find(x => view.kind === "editor" && x.id === (view as { kind: "editor"; songId: string }).songId); if (s) void saveAsCopy(s, title); }}
+              onDelete={() => { void deleteSong(activeSong.id); }}
               autoGenerateChords={aiGenerateSongId === activeSong.id}
               onAutoGenerateConsumed={() => setAiGenerateSongId(null)}
               currentUserId={user.id}
@@ -1307,8 +1320,49 @@ export default function Home() {
             setView(unsavedModal.pendingView);
             setUnsavedModal(null);
           }}
+          onSaveAs={() => {
+            const s = songs.find(x => view.kind === "editor" && x.id === (view as { kind: "editor"; songId: string }).songId);
+            const pending = unsavedModal.pendingView;
+            setUnsavedModal(null);
+            if (s) setSaveAsPrompt({ song: s, title: (s.title.trim() || "Untitled Song") + " (copy)", after: pending });
+          }}
           onCancel={() => setUnsavedModal(null)}
         />
+      )}
+
+      {saveAsPrompt && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+          onMouseDown={() => setSaveAsPrompt(null)}>
+          <div className="w-full sm:max-w-sm bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden"
+            onMouseDown={(e) => e.stopPropagation()}>
+            <div className="p-5">
+              <h3 className="text-lg font-bold tracking-tight mb-3">Save as</h3>
+              <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5">New song title</label>
+              <input
+                autoFocus
+                value={saveAsPrompt.title}
+                onChange={(e) => setSaveAsPrompt((p) => (p ? { ...p, title: e.target.value } : p))}
+                onFocus={(e) => e.target.select()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && saveAsPrompt.title.trim()) { void saveAsCopy(saveAsPrompt.song, saveAsPrompt.title.trim(), saveAsPrompt.after); setSaveAsPrompt(null); }
+                  else if (e.key === "Escape") setSaveAsPrompt(null);
+                }}
+                className="w-full h-10 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-indigo-400 dark:focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 transition-colors text-sm"
+              />
+            </div>
+            <div className="px-5 pb-5 pt-1 flex items-center justify-end gap-2">
+              <button type="button" onClick={() => setSaveAsPrompt(null)}
+                className="h-10 px-4 rounded-lg text-sm font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors">
+                Cancel
+              </button>
+              <button type="button" disabled={!saveAsPrompt.title.trim()}
+                onClick={() => { void saveAsCopy(saveAsPrompt.song, saveAsPrompt.title.trim(), saveAsPrompt.after); setSaveAsPrompt(null); }}
+                className="h-10 px-4 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed text-white transition-colors shadow-sm shadow-indigo-600/30">
+                Save as
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {toast && (
@@ -1320,7 +1374,7 @@ export default function Home() {
   );
 }
 
-function UnsavedModal({ onSave, onDiscard, onCancel }: { onSave: () => void; onDiscard: () => void; onCancel: () => void }) {
+function UnsavedModal({ onSave, onSaveAs, onDiscard, onCancel }: { onSave: () => void; onSaveAs: () => void; onDiscard: () => void; onCancel: () => void }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="w-full sm:max-w-sm bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-6">
@@ -1331,6 +1385,7 @@ function UnsavedModal({ onSave, onDiscard, onCancel }: { onSave: () => void; onD
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Save your changes before leaving, or discard them.</p>
         <div className="flex flex-col gap-2">
           <button type="button" onClick={onSave} className="w-full h-10 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors">Save changes</button>
+          <button type="button" onClick={onSaveAs} className="w-full h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">Save as…</button>
           <button type="button" onClick={onDiscard} className="w-full h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">Discard changes</button>
           <button type="button" onClick={onCancel} className="w-full h-10 text-slate-400 dark:text-slate-500 text-sm hover:text-slate-600 dark:hover:text-slate-300 transition-colors">Cancel — keep editing</button>
         </div>

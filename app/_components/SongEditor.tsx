@@ -60,6 +60,7 @@ type Props = {
   onPasteSong: () => void;
   onSave: () => void;
   onSaveAsCopy: (title: string) => void;
+  onDelete: () => void;
   // When true (set by the "AI Chords" flow after a lyrics paste), the editor
   // auto-opens the Generate Chords sheet once, then calls onAutoGenerateConsumed.
   autoGenerateChords?: boolean;
@@ -584,6 +585,7 @@ export default function SongEditor({
   onPasteSong,
   onSave,
   onSaveAsCopy,
+  onDelete,
   autoGenerateChords,
   onAutoGenerateConsumed,
   isDirty,
@@ -597,6 +599,7 @@ export default function SongEditor({
   onBack,
 }: Props) {
   const [moreOpen, setMoreOpen] = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   // Split Save button dropdown + the "Save as copy" title modal.
   const [saveMenuOpen, setSaveMenuOpen] = useState(false);
   const [saveAsCopyOpen, setSaveAsCopyOpen] = useState(false);
@@ -2139,6 +2142,31 @@ export default function SongEditor({
                   {item.label}
                 </button>
               ))}
+              <div className="my-1 border-t border-slate-200 dark:border-slate-700" />
+              <button
+                type="button"
+                onClick={() => { setMoreOpen(false); setConfirmDeleteOpen(true); }}
+                className="w-full min-h-[48px] px-5 flex items-center gap-3.5 text-[15px] text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+              >
+                <span className="shrink-0 w-5 flex justify-center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></span>
+                Delete song
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 print:hidden" onClick={() => setConfirmDeleteOpen(false)}>
+          <div className="w-full sm:max-w-sm bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="w-10 h-10 rounded-full bg-red-50 dark:bg-red-950/60 flex items-center justify-center mb-4">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-500"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+            </div>
+            <h2 className="font-bold text-lg mb-1">Delete song?</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">&ldquo;{song.title.trim() || "Untitled Song"}&rdquo; will be permanently deleted. This can&rsquo;t be undone.</p>
+            <div className="flex flex-col gap-2">
+              <button type="button" onClick={() => { setConfirmDeleteOpen(false); onDelete(); }} className="w-full h-10 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition-colors">Delete song</button>
+              <button type="button" onClick={() => setConfirmDeleteOpen(false)} className="w-full h-10 text-slate-400 dark:text-slate-500 text-sm hover:text-slate-600 dark:hover:text-slate-300 transition-colors">Cancel</button>
             </div>
           </div>
         </div>
