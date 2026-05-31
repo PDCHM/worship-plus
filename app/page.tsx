@@ -147,7 +147,34 @@ function logErr(label: string, err: { message?: string; details?: string; hint?:
   console.error(label, err.message, err.details, err.hint);
 }
 
-async function saveSongToDb(supabase: SupabaseClient, song: Song, userId: string): Promise<{ ok: true } | { ok: false; message: string }> {
+type SaveResult = { ok: true } | { ok: false; message: string };
+
+// Serialize saves per song id. The write does delete-then-reinsert, which is
+// not atomic across the section/line/chord inserts — if two saves of the same
+// song overlap, one save's `delete from sections` can wipe the other save's
+// just-inserted sections before its lines are inserted, causing
+// lines_section_id_fkey violations (and previously sections_pkey collisions).
+// Chaining same-song saves makes each run start only after the prior finishes.
+const saveChain = new Map<string, Promise<unknown>>();
+
+async function saveSongToDb(supabase: SupabaseClient, song: Song, userId: string): Promise<SaveResult> {
+  const key = song.id;
+  const prior = saveChain.get(key) ?? Promise.resolve();
+  // Run after the prior save settles (success or failure).
+  const task: Promise<SaveResult> = prior.then(
+    () => writeSongToDb(supabase, song, userId),
+    () => writeSongToDb(supabase, song, userId),
+  );
+  saveChain.set(key, task);
+  try {
+    return await task;
+  } finally {
+    // Only clear if no newer save was queued after this one.
+    if (saveChain.get(key) === task) saveChain.delete(key);
+  }
+}
+
+async function writeSongToDb(supabase: SupabaseClient, song: Song, userId: string): Promise<SaveResult> {
   const songRow = {
     id: song.id,
     user_id: song.userId ?? userId,
@@ -214,18 +241,29 @@ async function saveSongToDb(supabase: SupabaseClient, song: Song, userId: string
   });
 
   // Each table is inserted in a single batched call (3 round trips total, not
-  // one per row). No .select() — we don't need the rows echoed back.
+  // one per row). No .select() — we don't need the rows echoed back. Each step
+  // is awaited and its error checked before the next, so lines never insert
+  // unless sections succeeded (the FK ordering invariant).
   if (sectionRows.length) {
     const { error } = await supabase.from("sections").insert(sectionRows);
-    if (error) { logErr("insert sections failed", error); return { ok: false, message: error.message }; }
+    if (error) {
+      console.error(`[save] step=sections rows=${sectionRows.length} song=${song.id} FAILED:`, error.message, error.details, error.hint);
+      return { ok: false, message: error.message };
+    }
   }
   if (lineRows.length) {
     const { error } = await supabase.from("lines").insert(lineRows);
-    if (error) { logErr("insert lines failed", error); return { ok: false, message: error.message }; }
+    if (error) {
+      console.error(`[save] step=lines rows=${lineRows.length} song=${song.id} FAILED:`, error.message, error.details, error.hint);
+      return { ok: false, message: error.message };
+    }
   }
   if (chordRows.length) {
     const { error } = await supabase.from("chords").insert(chordRows);
-    if (error) { logErr("insert chords failed", error); return { ok: false, message: error.message }; }
+    if (error) {
+      console.error(`[save] step=chords rows=${chordRows.length} song=${song.id} FAILED:`, error.message, error.details, error.hint);
+      return { ok: false, message: error.message };
+    }
   }
   return { ok: true };
 }
