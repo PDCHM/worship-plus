@@ -20,7 +20,7 @@ export default function LoginPage() {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (cancelled) return;
       if (user) {
-        router.replace("/");
+        router.replace("/app");
       } else {
         setCheckingAuth(false);
       }
