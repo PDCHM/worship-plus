@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { type Chord, type Song } from "@/lib/song";
+import { effectiveWordIndex, getSectionColorKey, wordStartOffset, type Chord, type Line, type Song } from "@/lib/song";
 
 /* ─── helpers ────────────────────────────────────────────────────────────── */
 
@@ -14,6 +14,25 @@ function buildChordLine(chords: Chord[], pxPerChar: number): string {
     result = result.padEnd(target) + c.chord;
   }
   return result;
+}
+
+// One ChordPro line: inline [Chord] markers spliced in just before the word
+// each chord is anchored to (word-block model → char offset of that word).
+function chordProLine(line: Line): string {
+  const hasWords = line.lyric.trim() !== "";
+  const placed = line.chords
+    .filter((c) => c.chord.trim() !== "")
+    .map((c) => ({
+      chord: c.chord.trim(),
+      pos: hasWords ? wordStartOffset(line.lyric, effectiveWordIndex(c, line.lyric)) : c.pos,
+    }))
+    .sort((a, b) => b.pos - a.pos); // splice right-to-left so offsets stay valid
+  let out = line.lyric;
+  for (const c of placed) {
+    const p = Math.max(0, Math.min(out.length, c.pos));
+    out = out.slice(0, p) + `[${c.chord}]` + out.slice(p);
+  }
+  return out;
 }
 
 // Use the song title as the filename, stripping only the characters that are
@@ -54,6 +73,30 @@ function doText(song: Song) {
   download(
     new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" }),
     `${safeFilename(song.title)}.txt`,
+  );
+}
+
+// Standard ChordPro: {title}/{artist}/{key}/{capo} directives, each section
+// wrapped in {start_of_*}/{end_of_*}, lyrics with inline [Chord] markers. The
+// broadest interchange format — opens in most other worship/chord apps.
+function doChordPro(song: Song) {
+  const out: string[] = [];
+  out.push(`{title: ${song.title}}`);
+  if (song.artist) out.push(`{artist: ${song.artist}}`);
+  out.push(`{key: ${song.key}}`);
+  if (song.capo != null) out.push(`{capo: ${song.capo}}`);
+  for (const section of song.sections) {
+    const type = getSectionColorKey(section.label); // verse|chorus|bridge|prechorus|tag|default
+    const env = type === "verse" ? "verse" : type === "chorus" ? "chorus" : type === "bridge" ? "bridge" : null;
+    out.push("");
+    if (env) out.push(`{start_of_${env}: ${section.label}}`);
+    else out.push(`{comment: ${section.label}}`);
+    for (const line of section.lines) out.push(chordProLine(line));
+    if (env) out.push(`{end_of_${env}}`);
+  }
+  download(
+    new Blob([out.join("\n") + "\n"], { type: "text/plain;charset=utf-8" }),
+    `${safeFilename(song.title)}.chopro`,
   );
 }
 
@@ -123,9 +166,11 @@ async function doWord(song: Song) {
 
 /* ─── format catalog ─────────────────────────────────────────────────────── */
 
-type Format = "pdf" | "word" | "worship" | "text";
+type Format = "pdf" | "word" | "worship" | "text" | "others";
 
-type FormatDef = { id: Format; label: string; ext: string; desc: string; color: string; icon: React.ReactNode };
+// ext omitted for formats whose extension we don't surface to the user (e.g.
+// "Others", which exports ChordPro but is presented generically).
+type FormatDef = { id: Format; label: string; ext?: string; desc: string; color: string; icon: React.ReactNode };
 
 // Clean document icon used as a base for several formats.
 const fileBase = (
@@ -185,12 +230,26 @@ const FORMATS: Record<Format, FormatDef> = {
       </svg>
     ),
   },
+  // Exports ChordPro under the hood, but we don't show the extension — it's
+  // presented as the generic "compatible with other apps" option.
+  others: {
+    id: "others", label: "Others",
+    desc: "Compatible with most worship apps",
+    color: "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+        <line x1="8.6" y1="10.5" x2="15.4" y2="6.5" /><line x1="8.6" y1="13.5" x2="15.4" y2="17.5" />
+      </svg>
+    ),
+  },
 };
 
 const GROUPS: { label: string; ids: Format[] }[] = [
   { label: "Share with musicians", ids: ["worship"] },
   { label: "Print & document", ids: ["pdf", "word"] },
   { label: "Backup", ids: ["text"] },
+  { label: "Share with other apps", ids: ["others"] },
 ];
 
 /* ─── Modal ──────────────────────────────────────────────────────────────── */
@@ -207,6 +266,7 @@ export default function ExportModal({ song, onPrint, onClose }: Props) {
       if (id === "text")    { doText(song);        onClose(); }
       if (id === "word")    { await doWord(song);   onClose(); }
       if (id === "worship") { doWorshipPlus(song);  onClose(); }
+      if (id === "others")  { doChordPro(song);     onClose(); }
       if (id === "pdf")     { onClose(); setTimeout(onPrint, 80); }
     } finally {
       setLoading(null);
@@ -252,7 +312,7 @@ export default function ExportModal({ song, onPrint, onClose }: Props) {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{f.label}</span>
-                        <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-1 rounded">{f.ext}</span>
+                        {f.ext && <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-1 rounded">{f.ext}</span>}
                       </div>
                       <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 leading-snug truncate">{f.desc}</p>
                     </div>
