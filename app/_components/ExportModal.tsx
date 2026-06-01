@@ -79,7 +79,9 @@ function doText(song: Song) {
 // Standard ChordPro: {title}/{artist}/{key}/{capo} directives, each section
 // wrapped in {start_of_*}/{end_of_*}, lyrics with inline [Chord] markers. The
 // broadest interchange format — opens in most other worship/chord apps.
-function doChordPro(song: Song) {
+// ChordPro body, reused for SongBook Pro (.sbp), ChordPro (.chopro) and OnSong
+// (.onsong) — all three read ChordPro, so only the file extension differs.
+function doChordPro(song: Song, ext: "sbp" | "chopro" | "onsong" = "chopro") {
   const out: string[] = [];
   out.push(`{title: ${song.title}}`);
   if (song.artist) out.push(`{artist: ${song.artist}}`);
@@ -96,7 +98,7 @@ function doChordPro(song: Song) {
   }
   download(
     new Blob([out.join("\n") + "\n"], { type: "text/plain;charset=utf-8" }),
-    `${safeFilename(song.title)}.chopro`,
+    `${safeFilename(song.title)}.${ext}`,
   );
 }
 
@@ -166,10 +168,8 @@ async function doWord(song: Song) {
 
 /* ─── format catalog ─────────────────────────────────────────────────────── */
 
-type Format = "pdf" | "word" | "worship" | "text" | "others";
+type Format = "pdf" | "word" | "worship" | "text";
 
-// ext omitted for formats whose extension we don't surface to the user (e.g.
-// "Others", which exports ChordPro but is presented generically).
 type FormatDef = { id: Format; label: string; ext?: string; desc: string; color: string; icon: React.ReactNode };
 
 // Clean document icon used as a base for several formats.
@@ -230,26 +230,27 @@ const FORMATS: Record<Format, FormatDef> = {
       </svg>
     ),
   },
-  // Exports ChordPro under the hood, but we don't show the extension — it's
-  // presented as the generic "compatible with other apps" option.
-  others: {
-    id: "others", label: "Others",
-    desc: "Compatible with most worship apps",
-    color: "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
-        <line x1="8.6" y1="10.5" x2="15.4" y2="6.5" /><line x1="8.6" y1="13.5" x2="15.4" y2="17.5" />
-      </svg>
-    ),
-  },
 };
 
 const GROUPS: { label: string; ids: Format[] }[] = [
   { label: "Share with musicians", ids: ["worship"] },
   { label: "Print & document", ids: ["pdf", "word"] },
   { label: "Backup", ids: ["text"] },
-  { label: "Share with other apps", ids: ["others"] },
+];
+
+// "Share with other apps" — an expandable group. All three sub-formats export
+// ChordPro content (see doChordPro); only the file extension differs.
+const OTHERS_COLOR = "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400";
+const OTHERS_ICON = (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+    <line x1="8.6" y1="10.5" x2="15.4" y2="6.5" /><line x1="8.6" y1="13.5" x2="15.4" y2="17.5" />
+  </svg>
+);
+const OTHER_FORMATS: { ext: "sbp" | "chopro" | "onsong"; label: string }[] = [
+  { ext: "sbp",    label: "SongBook Pro" },
+  { ext: "chopro", label: "ChordPro" },
+  { ext: "onsong", label: "OnSong" },
 ];
 
 /* ─── Modal ──────────────────────────────────────────────────────────────── */
@@ -257,7 +258,8 @@ const GROUPS: { label: string; ids: Format[] }[] = [
 type Props = { song: Song; onPrint: () => void; onClose: () => void };
 
 export default function ExportModal({ song, onPrint, onClose }: Props) {
-  const [loading, setLoading] = useState<Format | null>(null);
+  const [loading, setLoading] = useState<string | null>(null);
+  const [othersOpen, setOthersOpen] = useState(false);
 
   const handle = async (id: Format) => {
     if (loading) return;
@@ -266,11 +268,16 @@ export default function ExportModal({ song, onPrint, onClose }: Props) {
       if (id === "text")    { doText(song);        onClose(); }
       if (id === "word")    { await doWord(song);   onClose(); }
       if (id === "worship") { doWorshipPlus(song);  onClose(); }
-      if (id === "others")  { doChordPro(song);     onClose(); }
       if (id === "pdf")     { onClose(); setTimeout(onPrint, 80); }
     } finally {
       setLoading(null);
     }
+  };
+
+  const handleOther = (ext: "sbp" | "chopro" | "onsong") => {
+    if (loading) return;
+    doChordPro(song, ext);
+    onClose();
   };
 
   return (
@@ -326,6 +333,51 @@ export default function ExportModal({ song, onPrint, onClose }: Props) {
               })}
             </div>
           ))}
+
+          {/* Share with other apps — expandable; sub-formats are all ChordPro. */}
+          <div>
+            <div className="px-5 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              Share with other apps
+            </div>
+            <button
+              type="button"
+              onClick={() => setOthersOpen((o) => !o)}
+              disabled={!!loading}
+              aria-expanded={othersOpen}
+              className="w-full flex items-center gap-3.5 px-5 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors text-left disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${OTHERS_COLOR}`}>
+                {OTHERS_ICON}
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Others</span>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 leading-snug truncate">SongBook Pro · ChordPro · OnSong</p>
+              </div>
+              <svg className={`shrink-0 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${othersOpen ? "rotate-180" : ""}`} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+
+            {othersOpen && OTHER_FORMATS.map((o) => (
+              <button
+                key={o.ext}
+                type="button"
+                onClick={() => handleOther(o.ext)}
+                disabled={!!loading}
+                className="w-full flex items-center gap-3.5 pl-12 pr-5 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors text-left disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <div className="min-w-0 flex-1 flex items-center gap-1.5">
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{o.label}</span>
+                  <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-1 rounded">.{o.ext}</span>
+                </div>
+                <svg className="shrink-0 text-slate-300 dark:text-slate-600" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+              </button>
+            ))}
+          </div>
         </div>
 
         <p className="text-xs text-slate-400 dark:text-slate-500 text-center px-5 py-3 border-t border-slate-100 dark:border-slate-800">
