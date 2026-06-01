@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { effectiveWordIndex, getSectionColorKey, wordStartOffset, type Chord, type Line, type Song } from "@/lib/song";
+import { type Chord, type Song } from "@/lib/song";
 
 /* ─── helpers ────────────────────────────────────────────────────────────── */
 
@@ -14,25 +14,6 @@ function buildChordLine(chords: Chord[], pxPerChar: number): string {
     result = result.padEnd(target) + c.chord;
   }
   return result;
-}
-
-// One ChordPro line: inline [Chord] markers spliced in just before the word
-// each chord is anchored to (word-block model → char offset of that word).
-function chordProLine(line: Line): string {
-  const hasWords = line.lyric.trim() !== "";
-  const placed = line.chords
-    .filter((c) => c.chord.trim() !== "")
-    .map((c) => ({
-      chord: c.chord.trim(),
-      pos: hasWords ? wordStartOffset(line.lyric, effectiveWordIndex(c, line.lyric)) : c.pos,
-    }))
-    .sort((a, b) => b.pos - a.pos); // splice right-to-left so offsets stay valid
-  let out = line.lyric;
-  for (const c of placed) {
-    const p = Math.max(0, Math.min(out.length, c.pos));
-    out = out.slice(0, p) + `[${c.chord}]` + out.slice(p);
-  }
-  return out;
 }
 
 // Use the song title as the filename, stripping only the characters that are
@@ -73,29 +54,6 @@ function doText(song: Song) {
   download(
     new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" }),
     `${safeFilename(song.title)}.txt`,
-  );
-}
-
-// Standard ChordPro: {title}/{artist}/{key}/{capo} directives, each section
-// wrapped in {start_of_*}/{end_of_*}, lyrics with inline [Chord] markers.
-function doChordPro(song: Song) {
-  const out: string[] = [];
-  out.push(`{title: ${song.title}}`);
-  if (song.artist) out.push(`{artist: ${song.artist}}`);
-  out.push(`{key: ${song.key}}`);
-  if (song.capo != null) out.push(`{capo: ${song.capo}}`);
-  for (const section of song.sections) {
-    const type = getSectionColorKey(section.label); // verse|chorus|bridge|prechorus|tag|default
-    const env = type === "verse" ? "verse" : type === "chorus" ? "chorus" : type === "bridge" ? "bridge" : null;
-    out.push("");
-    if (env) out.push(`{start_of_${env}: ${section.label}}`);
-    else out.push(`{comment: ${section.label}}`);
-    for (const line of section.lines) out.push(chordProLine(line));
-    if (env) out.push(`{end_of_${env}}`);
-  }
-  download(
-    new Blob([out.join("\n") + "\n"], { type: "text/plain;charset=utf-8" }),
-    `${safeFilename(song.title)}.chopro`,
   );
 }
 
@@ -165,7 +123,7 @@ async function doWord(song: Song) {
 
 /* ─── format catalog ─────────────────────────────────────────────────────── */
 
-type Format = "pdf" | "word" | "chopro" | "worship" | "text";
+type Format = "pdf" | "word" | "worship" | "text";
 
 type FormatDef = { id: Format; label: string; ext: string; desc: string; color: string; icon: React.ReactNode };
 
@@ -180,7 +138,7 @@ const fileBase = (
 const FORMATS: Record<Format, FormatDef> = {
   pdf: {
     id: "pdf", label: "PDF", ext: ".pdf",
-    desc: "Print-ready chart, via the print dialog",
+    desc: "Print-ready chord chart",
     color: "bg-orange-50 dark:bg-orange-950/50 text-orange-600 dark:text-orange-400",
     // Tabler `file-type-pdf`: a document with the "PDF" letters, unambiguous.
     icon: (
@@ -196,7 +154,7 @@ const FORMATS: Record<Format, FormatDef> = {
   },
   word: {
     id: "word", label: "Word", ext: ".docx",
-    desc: "Microsoft Word document",
+    desc: "Edit in Microsoft Word",
     color: "bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -205,20 +163,9 @@ const FORMATS: Record<Format, FormatDef> = {
       </svg>
     ),
   },
-  chopro: {
-    id: "chopro", label: "ChordPro", ext: ".chopro",
-    desc: "Inline [Chord] markers, opens in chord apps",
-    color: "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400",
-    icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <polyline points="8 4 4 4 4 20 8 20" />
-        <polyline points="16 4 20 4 20 20 16 20" />
-      </svg>
-    ),
-  },
   worship: {
     id: "worship", label: "Worship+", ext: ".worship",
-    desc: "Re-import directly into Worship+",
+    desc: "Anyone with Worship+ can open instantly",
     color: "bg-violet-50 dark:bg-violet-950/50 text-violet-600 dark:text-violet-400",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -229,7 +176,7 @@ const FORMATS: Record<Format, FormatDef> = {
   },
   text: {
     id: "text", label: "Plain text", ext: ".txt",
-    desc: "Chord-over-lyric, opens in any app",
+    desc: "Opens in any app, anywhere",
     color: "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -241,8 +188,9 @@ const FORMATS: Record<Format, FormatDef> = {
 };
 
 const GROUPS: { label: string; ids: Format[] }[] = [
-  { label: "Print & share", ids: ["pdf", "word"] },
-  { label: "Chord chart formats", ids: ["chopro", "worship", "text"] },
+  { label: "Share with musicians", ids: ["worship"] },
+  { label: "Print & document", ids: ["pdf", "word"] },
+  { label: "Backup", ids: ["text"] },
 ];
 
 /* ─── Modal ──────────────────────────────────────────────────────────────── */
@@ -257,7 +205,6 @@ export default function ExportModal({ song, onPrint, onClose }: Props) {
     setLoading(id);
     try {
       if (id === "text")    { doText(song);        onClose(); }
-      if (id === "chopro")  { doChordPro(song);     onClose(); }
       if (id === "word")    { await doWord(song);   onClose(); }
       if (id === "worship") { doWorshipPlus(song);  onClose(); }
       if (id === "pdf")     { onClose(); setTimeout(onPrint, 80); }
