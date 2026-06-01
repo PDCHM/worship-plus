@@ -58,7 +58,8 @@ export async function POST(request: Request) {
     const session = await stripe.checkout.sessions.create({
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${origin}/app?subscription=success`,
+      // plan is echoed back so the app can apply it on return (beta: no webhook).
+      success_url: `${origin}/app?subscription=success&plan=${encodeURIComponent(plan)}`,
       cancel_url: `${origin}/app?subscription=cancelled`,
       allow_promotion_codes: true,
       ...(userEmail ? { customer_email: userEmail } : {}),

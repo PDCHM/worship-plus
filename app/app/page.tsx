@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import AddSongSheet from "@/app/_components/AddSongSheet";
 import SongSearchSheet, { type SongSearchResult } from "@/app/_components/SongSearchSheet";
 import UpgradeModal from "@/app/_components/UpgradeModal";
-import { isPaidPlan, type Plan } from "@/lib/plans";
+import { isPaidPlan, PLANS, type Plan } from "@/lib/plans";
 import ExportModal from "@/app/_components/ExportModal";
 import Library from "@/app/_components/Library";
 import PasteSongModal from "@/app/_components/PasteSongModal";
@@ -428,31 +428,40 @@ export default function Home() {
     };
   }, [sidebarOpen]);
 
-  // Re-fetch the current plan from profiles (e.g. after returning from Stripe).
-  const refreshPlan = async () => {
-    if (!user) return;
-    const { data, error } = await supabase.from("profiles").select(PROFILE_COLS).eq("id", user.id).maybeSingle();
-    if (error || !data) return;
-    const p = data as Profile;
-    setProfile((prev) => (prev ? { ...prev, plan: (p.plan as Plan | undefined) ?? "free", stripe_customer_id: p.stripe_customer_id } : prev));
-  };
-
-  // Reflect the Stripe Checkout return. The webhook updates the plan
-  // asynchronously, so re-fetch shortly after a successful return too.
+  // Reflect the Stripe Checkout return. Beta: rather than wait for the Stripe
+  // webhook, apply the plan from the success URL directly — the signed-in user
+  // can update their own profiles row via RLS (profiles_self_update).
   useEffect(() => {
     if (!user) return;
     const params = new URLSearchParams(window.location.search);
     const sub = params.get("subscription");
     if (!sub) return;
     if (sub === "success") {
-      showToast("Subscription started — welcome aboard!");
-      void refreshPlan();
-      window.setTimeout(() => { void refreshPlan(); }, 4000);
+      const planParam = params.get("plan");
+      if (planParam && isPaidPlan(planParam)) {
+        const plan = planParam as Plan;
+        void (async () => {
+          const { error } = await supabase
+            .from("profiles")
+            .update({ plan, updated_at: new Date().toISOString() })
+            .eq("id", user.id);
+          if (error) {
+            logErr("apply plan from success url", error);
+            showToast("Payment succeeded, but updating your plan failed: " + error.message);
+            return;
+          }
+          setProfile((prev) => (prev ? { ...prev, plan } : prev));
+          showToast(`Welcome to Worship+ ${PLANS[plan].name}! Your 14-day trial has started.`);
+        })();
+      } else {
+        showToast("Subscription started — welcome aboard!");
+      }
     } else if (sub === "cancelled") {
       showToast("Checkout cancelled — no changes made.");
     }
     const url = new URL(window.location.href);
     url.searchParams.delete("subscription");
+    url.searchParams.delete("plan");
     window.history.replaceState({}, "", url.toString());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
