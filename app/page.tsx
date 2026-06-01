@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import AddSongSheet from "@/app/_components/AddSongSheet";
+import SongSearchSheet, { type SongSearchResult } from "@/app/_components/SongSearchSheet";
 import ExportModal from "@/app/_components/ExportModal";
 import Library from "@/app/_components/Library";
 import PasteSongModal from "@/app/_components/PasteSongModal";
@@ -360,6 +361,7 @@ export default function Home() {
   const [pasteAiIntent, setPasteAiIntent] = useState(false);
   const [aiGenerateSongId, setAiGenerateSongId] = useState<string | null>(null);
   const [addSheetOpen, setAddSheetOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [libraryView, setLibraryView] = useState<LibraryView>("grid");
@@ -1085,6 +1087,37 @@ export default function Home() {
     if (user) void saveSongToDb(supabase, song, user.id);
   };
 
+  // AI song search: find a library song whose title matches (case/space
+  // insensitive), so the search result can offer "Open in library".
+  const findSongInLibrary = (title: string): string | null => {
+    const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+    const t = norm(title);
+    if (!t) return null;
+    const hit = songs.find((s) => norm(s.title) === t);
+    return hit ? hit.id : null;
+  };
+
+  // "Create with AI Chords" from a search result: build a song from the
+  // identified lyrics + metadata, then route through the paste flow so the
+  // editor opens and auto-launches Generate Chords.
+  const handleSearchCreate = (result: SongSearchResult) => {
+    const base = result.lyrics.trim() ? parseSongText(result.lyrics) : makeNewSong();
+    const song: Song = {
+      ...base,
+      id: uid(),
+      userId: user?.id,
+      title: result.title || base.title,
+      artist: result.artist || "",
+      key: result.key || base.key || "C",
+      capo: base.capo ?? null,
+      favorite: false,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    setSearchOpen(false);
+    handleImportPasted(song, true);
+  };
+
   const handleImport = async (file: File) => {
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
     if (ext === "worship") {
@@ -1479,6 +1512,7 @@ export default function Home() {
               onPasteChart={() => { setPasteAiIntent(false); setPasteOpen(true); }}
               onAiChords={() => { setPasteAiIntent(true); setPasteOpen(true); }}
               onImportFile={() => fileInputRef.current?.click()}
+              onSearchOnline={() => setSearchOpen(true)}
               showToast={showToast}
               filter={view.filter}
               libraryView={libraryView}
@@ -1503,7 +1537,7 @@ export default function Home() {
               onPasteSong={() => setPasteOpen(true)}
               isDirty={view.kind === "editor" && dirtyIds.has((view as { kind: "editor"; songId: string }).songId)}
               onSave={() => { const s = songs.find(x => view.kind === "editor" && x.id === (view as { kind: "editor"; songId: string }).songId); if (s) void saveSong(s); }}
-              onSaveAsCopy={(title) => { const s = songs.find(x => view.kind === "editor" && x.id === (view as { kind: "editor"; songId: string }).songId); if (s) void saveAsCopy(s, title); }}
+              onSaveAsCopy={(title, liveSong) => { void saveAsCopy(liveSong, title); }}
               onDelete={() => { void deleteSong(activeSong.id); }}
               autoGenerateChords={aiGenerateSongId === activeSong.id}
               onAutoGenerateConsumed={() => setAiGenerateSongId(null)}
@@ -1605,7 +1639,17 @@ export default function Home() {
           onPasteChart={() => { setPasteAiIntent(false); setPasteOpen(true); }}
           onAiChords={() => { setPasteAiIntent(true); setPasteOpen(true); }}
           onImportFile={() => fileInputRef.current?.click()}
+          onSearchOnline={() => setSearchOpen(true)}
           onClose={() => setAddSheetOpen(false)}
+        />
+      )}
+
+      {searchOpen && (
+        <SongSearchSheet
+          findInLibrary={findSongInLibrary}
+          onOpenExisting={(songId) => { setSearchOpen(false); navigateTo({ kind: "editor", songId }); }}
+          onCreateWithAi={handleSearchCreate}
+          onClose={() => setSearchOpen(false)}
         />
       )}
 

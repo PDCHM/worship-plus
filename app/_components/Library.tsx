@@ -17,6 +17,7 @@ type Props = {
   onPasteChart: () => void;
   onAiChords: () => void;
   onImportFile: () => void;
+  onSearchOnline: () => void;
   showToast: (msg: string) => void;
   filter: LibraryFilter;
   libraryView: LibraryView;
@@ -33,6 +34,7 @@ export default function Library({
   onPasteChart,
   onAiChords,
   onImportFile,
+  onSearchOnline,
   showToast,
   filter,
   libraryView,
@@ -465,7 +467,7 @@ export default function Library({
         </div>
       )}
 
-      {addSheetOpen && <AddSongSheet onBuildNew={onNewSong} onPasteChart={onPasteChart} onAiChords={onAiChords} onImportFile={onImportFile} onClose={()=>setAddSheetOpen(false)} />}
+      {addSheetOpen && <AddSongSheet onBuildNew={onNewSong} onPasteChart={onPasteChart} onAiChords={onAiChords} onImportFile={onImportFile} onSearchOnline={onSearchOnline} onClose={()=>setAddSheetOpen(false)} />}
     </div>
   );
 }

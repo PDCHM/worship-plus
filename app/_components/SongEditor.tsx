@@ -63,7 +63,7 @@ type Props = {
   onExport: () => void;
   onPasteSong: () => void;
   onSave: () => void;
-  onSaveAsCopy: (title: string) => void;
+  onSaveAsCopy: (title: string, song: Song) => void;
   onDelete: () => void;
   // When true (set by the "AI Chords" flow after a lyrics paste), the editor
   // auto-opens the Generate Chords sheet once, then calls onAutoGenerateConsumed.
@@ -791,6 +791,7 @@ export default function SongEditor({
     setGenKey(song.key);
     setGeneratedOnce(false);
     setSuggestedCapo(null);
+    setProgressionInfo(null);
     setGenerateOpen(true);
   };
 
@@ -801,6 +802,7 @@ export default function SongEditor({
     setGenKey(song.key);
     setGeneratedOnce(false);
     setSuggestedCapo(null);
+    setProgressionInfo(null);
     setGenerateOpen(true);
     onAutoGenerateConsumed?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2560,7 +2562,7 @@ export default function SongEditor({
                   onChange={(e) => setCopyTitle(e.target.value)}
                   onFocus={(e) => e.target.select()}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && copyTitle.trim()) { onSaveAsCopy(copyTitle.trim()); setSaveAsCopyOpen(false); }
+                    if (e.key === "Enter" && copyTitle.trim()) { onSaveAsCopy(copyTitle.trim(), song); setSaveAsCopyOpen(false); }
                     else if (e.key === "Escape") setSaveAsCopyOpen(false);
                   }}
                   className="w-full h-10 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-indigo-400 dark:focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 transition-colors text-sm"
@@ -2573,7 +2575,7 @@ export default function SongEditor({
                 </button>
                 <button type="button"
                   disabled={!copyTitle.trim()}
-                  onClick={() => { onSaveAsCopy(copyTitle.trim()); setSaveAsCopyOpen(false); }}
+                  onClick={() => { onSaveAsCopy(copyTitle.trim(), song); setSaveAsCopyOpen(false); }}
                   className="h-9 px-4 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed text-white transition-colors shadow-sm shadow-indigo-600/30">
                   Save as
                 </button>

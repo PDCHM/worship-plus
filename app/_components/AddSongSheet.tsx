@@ -7,6 +7,7 @@ type Props = {
   onPasteChart: () => void;
   onAiChords: () => void;
   onImportFile: () => void;
+  onSearchOnline: () => void;
   onClose: () => void;
 };
 
@@ -26,7 +27,7 @@ const ICON_GLOBE = (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
 );
 
-export default function AddSongSheet({ onBuildNew, onPasteChart, onAiChords, onImportFile, onClose }: Props) {
+export default function AddSongSheet({ onBuildNew, onPasteChart, onAiChords, onImportFile, onSearchOnline, onClose }: Props) {
   // Second-level "Paste Song" menu: paste text vs import a file.
   const [pasteSubOpen, setPasteSubOpen] = useState(false);
 
@@ -68,9 +69,9 @@ export default function AddSongSheet({ onBuildNew, onPasteChart, onAiChords, onI
             <SheetBtn onClick={() => { onAiChords(); onClose(); }}
               icon={ICON_SPARKLE}
               label="AI Chords" desc="Paste lyrics — Claude generates the chords" />
-            <SheetBtn onClick={() => {}}
+            <SheetBtn onClick={() => { onSearchOnline(); onClose(); }}
               icon={ICON_GLOBE}
-              label="Search Online" desc="Coming soon" disabled />
+              label="Search Online" desc="Find a song by lyrics — Claude identifies it" />
           </div>
         )}
         <div className="h-safe-area-bottom" />
