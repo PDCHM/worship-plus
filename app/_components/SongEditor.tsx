@@ -69,6 +69,10 @@ type Props = {
   // auto-opens the Generate Chords sheet once, then calls onAutoGenerateConsumed.
   autoGenerateChords?: boolean;
   onAutoGenerateConsumed?: () => void;
+  // Plan gating: AI chord generation is a paid feature. When false, tapping
+  // Generate Chords (or the auto-open flow) calls onRequireUpgrade instead.
+  canUseAiChords: boolean;
+  onRequireUpgrade: () => void;
   isDirty: boolean;
   currentUserId: string;
   setlistContext: SetlistContext | null;
@@ -592,6 +596,8 @@ export default function SongEditor({
   onDelete,
   autoGenerateChords,
   onAutoGenerateConsumed,
+  canUseAiChords,
+  onRequireUpgrade,
   isDirty,
   currentUserId,
   setlistContext,
@@ -799,6 +805,13 @@ export default function SongEditor({
   // Generate Chords sheet once automatically, then clear the flag.
   useEffect(() => {
     if (!autoGenerateChords) return;
+    // Free plan: the AI Chords add-flow lands here — prompt to upgrade instead
+    // of opening the generator. Consume the flag either way so it fires once.
+    if (!canUseAiChords) {
+      onRequireUpgrade();
+      onAutoGenerateConsumed?.();
+      return;
+    }
     setGenKey(song.key);
     setGeneratedOnce(false);
     setSuggestedCapo(null);
@@ -1673,7 +1686,7 @@ export default function SongEditor({
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
           {canGenerateChords && (
-            <button type="button" onClick={openGenerate}
+            <button type="button" onClick={canUseAiChords ? openGenerate : onRequireUpgrade}
               title="Generate chords with AI"
               aria-label="Generate chords with AI"
               className="h-9 px-3 rounded-lg text-sm font-medium flex items-center gap-1.5 bg-gradient-to-br from-indigo-500 to-violet-600 text-white hover:from-indigo-600 hover:to-violet-700 shadow-sm shadow-indigo-600/30 transition-colors">

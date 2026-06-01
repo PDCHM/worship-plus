@@ -6,6 +6,8 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import AddSongSheet from "@/app/_components/AddSongSheet";
 import SongSearchSheet, { type SongSearchResult } from "@/app/_components/SongSearchSheet";
+import UpgradeModal from "@/app/_components/UpgradeModal";
+import { isPaidPlan, type Plan } from "@/lib/plans";
 import ExportModal from "@/app/_components/ExportModal";
 import Library from "@/app/_components/Library";
 import PasteSongModal from "@/app/_components/PasteSongModal";
@@ -92,7 +94,15 @@ type Profile = {
   full_name: string | null;
   avatar_url: string | null;
   section_styles?: unknown;
+  plan?: Plan;
+  stripe_customer_id?: string | null;
 };
+
+// Full profile columns incl. billing; falls back to base if the billing
+// migration hasn't been applied yet (so a missing column never blanks the
+// profile — see the manual-migration note in AGENTS/memory).
+const PROFILE_COLS = "id, email, full_name, avatar_url, section_styles, plan, stripe_customer_id, plan_expires_at, trial_ends_at";
+const PROFILE_COLS_BASE = "id, email, full_name, avatar_url, section_styles";
 
 type SongRow = {
   id: string;
@@ -362,6 +372,7 @@ export default function Home() {
   const [aiGenerateSongId, setAiGenerateSongId] = useState<string | null>(null);
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [upgradeModal, setUpgradeModal] = useState<{ reason?: string } | null>(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [libraryView, setLibraryView] = useState<LibraryView>("grid");
@@ -417,6 +428,35 @@ export default function Home() {
     };
   }, [sidebarOpen]);
 
+  // Re-fetch the current plan from profiles (e.g. after returning from Stripe).
+  const refreshPlan = async () => {
+    if (!user) return;
+    const { data, error } = await supabase.from("profiles").select(PROFILE_COLS).eq("id", user.id).maybeSingle();
+    if (error || !data) return;
+    const p = data as Profile;
+    setProfile((prev) => (prev ? { ...prev, plan: (p.plan as Plan | undefined) ?? "free", stripe_customer_id: p.stripe_customer_id } : prev));
+  };
+
+  // Reflect the Stripe Checkout return. The webhook updates the plan
+  // asynchronously, so re-fetch shortly after a successful return too.
+  useEffect(() => {
+    if (!user) return;
+    const params = new URLSearchParams(window.location.search);
+    const sub = params.get("subscription");
+    if (!sub) return;
+    if (sub === "success") {
+      showToast("Subscription started — welcome aboard!");
+      void refreshPlan();
+      window.setTimeout(() => { void refreshPlan(); }, 4000);
+    } else if (sub === "cancelled") {
+      showToast("Checkout cancelled — no changes made.");
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.delete("subscription");
+    window.history.replaceState({}, "", url.toString());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
   // Load user, profile, songs, folders from Supabase.
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -442,25 +482,28 @@ export default function Home() {
         setUser(u);
         setAuthChecked(true);
 
-        void supabase
-          .from("profiles")
-          .select("id, email, full_name, avatar_url, section_styles")
-          .eq("id", u.id)
-          .maybeSingle()
-          .then(({ data: profileRow }) => {
-            if (cancelled) return;
-            if (profileRow) {
-              setProfile(profileRow as Profile);
-              setSectionStyles(mergeSectionStyles((profileRow as Profile).section_styles));
-            } else {
-              setProfile({
-                id: u.id,
-                email: u.email ?? null,
-                full_name: (u.user_metadata?.full_name as string | undefined) ?? (u.user_metadata?.name as string | undefined) ?? null,
-                avatar_url: (u.user_metadata?.avatar_url as string | undefined) ?? null,
-              });
-            }
-          });
+        void (async () => {
+          let { data: profileRow, error: profErr } = await supabase
+            .from("profiles").select(PROFILE_COLS).eq("id", u.id).maybeSingle();
+          // Billing columns not migrated yet → retry with the base columns.
+          if (profErr && /plan|stripe_customer_id|trial_ends_at|plan_expires_at|column|42703/i.test(profErr.message || "")) {
+            ({ data: profileRow } = await supabase.from("profiles").select(PROFILE_COLS_BASE).eq("id", u.id).maybeSingle());
+          }
+          if (cancelled) return;
+          if (profileRow) {
+            const p = profileRow as Profile;
+            setProfile({ ...p, plan: (p.plan as Plan | undefined) ?? "free" });
+            setSectionStyles(mergeSectionStyles(p.section_styles));
+          } else {
+            setProfile({
+              id: u.id,
+              email: u.email ?? null,
+              full_name: (u.user_metadata?.full_name as string | undefined) ?? (u.user_metadata?.name as string | undefined) ?? null,
+              avatar_url: (u.user_metadata?.avatar_url as string | undefined) ?? null,
+              plan: "free",
+            });
+          }
+        })();
 
         // Metadata-only startup. Two phases so the heavier shared-song RLS
         // path (group_songs + setlist folder_songs) doesn't block the library
@@ -1012,6 +1055,10 @@ export default function Home() {
   };
 
   const newSong = () => {
+    // Beta soft limit: warn free users past 10 songs, but don't block.
+    if (!isPaidPlan(profile?.plan) && songs.filter((s) => s.userId === user?.id).length >= 10) {
+      showToast("You have 10+ songs on the Free plan — upgrade for unlimited.");
+    }
     const song = makeNewSong();
     setSongs(prev => [song, ...prev]);
     setDirtyIds(prev => new Set(prev).add(song.id));
@@ -1019,6 +1066,15 @@ export default function Home() {
     newSongIdsRef.current.add(song.id);
     hydratedIdsRef.current.add(song.id);
     navigateTo({ kind: "editor", songId: song.id });
+  };
+
+  // Team creation is a paid feature — free users get the upgrade prompt instead.
+  const gatedCreateTeam = async (name: string): Promise<Group | null> => {
+    if (!isPaidPlan(profile?.plan)) {
+      setUpgradeModal({ reason: "Creating a team" });
+      return null;
+    }
+    return createGroup(name);
   };
 
   // "Save as copy" from a library card. Library songs are metadata-only until
@@ -1535,7 +1591,7 @@ export default function Home() {
           onAddSong={() => setAddSheetOpen(true)}
           onCreateFolder={(name) => createFolder(name, "folder", null)}
           onCreateSetlist={(name) => createFolder(name, "setlist", null)}
-          onCreateTeam={(name) => createGroup(name)}
+          onCreateTeam={gatedCreateTeam}
         />
         <main className="w-full overflow-x-hidden pb-20 md:pb-0 md:pl-[240px] transition-[padding] duration-200">
           {view.kind === "library" && !songsLoaded && (
@@ -1583,6 +1639,8 @@ export default function Home() {
               onDelete={() => { void deleteSong(activeSong.id); }}
               autoGenerateChords={aiGenerateSongId === activeSong.id}
               onAutoGenerateConsumed={() => setAiGenerateSongId(null)}
+              canUseAiChords={isPaidPlan(profile?.plan)}
+              onRequireUpgrade={() => setUpgradeModal({ reason: "AI chord generation" })}
               currentUserId={user.id}
               setlistContext={setlistContext}
               onBack={() => navigateTo(view.kind === "editor" && view.setlistId
@@ -1640,7 +1698,7 @@ export default function Home() {
             </div>
           )}
           {view.kind === "groups" && groupsLoaded && (
-            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={songs} folders={folders} onCreateGroup={createGroup} onUpdateGroup={updateGroupName} onAddMember={addGroupMember} onRemoveMember={removeGroupMember} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onDeleteGroup={deleteGroup} onOpenSong={openSong} onOpenSetlist={(id) => navigateTo({ kind: "folders", subview: id })} showToast={showToast}/>
+            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={songs} folders={folders} onCreateGroup={gatedCreateTeam} onUpdateGroup={updateGroupName} onAddMember={addGroupMember} onRemoveMember={removeGroupMember} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onDeleteGroup={deleteGroup} onOpenSong={openSong} onOpenSetlist={(id) => navigateTo({ kind: "folders", subview: id })} showToast={showToast}/>
           )}
         </main>
       </div>
@@ -1692,6 +1750,16 @@ export default function Home() {
           onOpenExisting={(songId) => { setSearchOpen(false); navigateTo({ kind: "editor", songId }); }}
           onCreateWithAi={handleSearchCreate}
           onClose={() => setSearchOpen(false)}
+        />
+      )}
+
+      {upgradeModal && (
+        <UpgradeModal
+          currentPlan={(profile?.plan as Plan) ?? "free"}
+          userId={user.id}
+          userEmail={profile?.email ?? user.email ?? null}
+          reason={upgradeModal.reason}
+          onClose={() => setUpgradeModal(null)}
         />
       )}
 

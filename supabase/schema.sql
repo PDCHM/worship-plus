@@ -167,6 +167,14 @@ create table if not exists public.profiles (
 -- Per-user UI preferences. Maps SectionStyleKey -> { chordColor: hex, bold: bool }.
 alter table public.profiles add column if not exists section_styles jsonb default '{}'::jsonb;
 
+-- Stripe subscription / billing. Written by the Stripe webhook (service role,
+-- bypasses RLS); read by the owner via profiles_self_read. Client code must
+-- tolerate these columns not existing yet (defaults to the 'free' plan).
+alter table public.profiles add column if not exists stripe_customer_id text;
+alter table public.profiles add column if not exists plan text not null default 'free' check (plan in ('free','personal','team','church'));
+alter table public.profiles add column if not exists plan_expires_at timestamptz;
+alter table public.profiles add column if not exists trial_ends_at timestamptz;
+
 alter table public.profiles enable row level security;
 
 drop policy if exists profiles_self_read on public.profiles;
