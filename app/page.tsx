@@ -53,6 +53,20 @@ const SONG_META_COLUMNS = "id, user_id, title, artist, key, bpm, capo, favorite,
 // missing column can never empty the library.
 const SONG_META_COLUMNS_OWN = "id, user_id, title, artist, key, bpm, capo, favorite, is_draft, created_at, updated_at";
 
+// Strip filename-invalid characters (/ \ : * ? " < > |); keep case and spaces.
+function safeFilename(title: string): string {
+  const cleaned = title.replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, " ").trim();
+  return cleaned || "Setlist";
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
 type LibraryView = "grid" | "list";
 
 type Profile = {
@@ -740,6 +754,46 @@ export default function Home() {
     });
   };
 
+  // Export a whole setlist as a single .worship bundle. Library songs are
+  // metadata-only until opened, so each song's full content (sections → lines →
+  // chords) is hydrated via get_song_content before it goes into the bundle.
+  const exportSetlist = async (folderId: string) => {
+    const folder = folders.find((f) => f.id === folderId);
+    if (!folder) return;
+    const ordered = folderSongs
+      .filter((fs) => fs.folderId === folderId)
+      .sort((a, b) => a.position - b.position)
+      .map((fs) => songs.find((s) => s.id === fs.songId))
+      .filter((s): s is Song => Boolean(s));
+    if (ordered.length === 0) { showToast("No songs to export"); return; }
+
+    const hydrated: Song[] = [];
+    for (const s of ordered) {
+      // Already-open songs hold their content locally; only fetch the rest.
+      if (s.sections.length > 0) { hydrated.push(s); continue; }
+      const { data, error } = await supabase.rpc("get_song_content", { p_song: s.id });
+      if (error) {
+        logErr("export: load song content", error);
+        showToast("Could not load \"" + s.title + "\": " + error.message);
+        return;
+      }
+      const content = (data as unknown as { sections?: SectionRow[] } | null) ?? {};
+      hydrated.push({ ...s, sections: sectionRowsToSections(content.sections ?? []) });
+    }
+
+    const payload = JSON.stringify(
+      {
+        type: "worship-setlist-bundle",
+        version: 1,
+        setlist: { name: folder.name, date: folder.date ?? null },
+        songs: hydrated,
+      },
+      null, 2,
+    );
+    downloadBlob(new Blob([payload], { type: "application/json" }), safeFilename(folder.name) + ".worship");
+    showToast("Exported " + hydrated.length + (hydrated.length === 1 ? " song" : " songs"));
+  };
+
   // Hydrate the song under the editor; load a setlist's songs when it opens.
   useEffect(() => {
     if (view.kind === "editor") void hydrateSong(view.songId);
@@ -885,6 +939,52 @@ export default function Home() {
       try {
         const text = await file.text();
         const data = JSON.parse(text);
+        // Setlist bundle: import every song into the library, then rebuild the
+        // setlist (folder + ordered folder_songs) those songs belonged to.
+        if (data.type === "worship-setlist-bundle" && Array.isArray(data.songs)) {
+          const setlistName = (typeof data.setlist?.name === "string" && data.setlist.name.trim()) || "Imported setlist";
+          const imported: Song[] = data.songs.map((s: Song) => ({
+            ...s,
+            id: uid(),
+            sections: (s.sections ?? []).map(sec => cloneSection(sec)),
+            favorite: false,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          }));
+          for (const s of imported) hydratedIdsRef.current.add(s.id);
+          setSongs(prev => [...imported, ...prev]);
+          if (!user) {
+            showToast("Imported " + imported.length + " songs from " + setlistName);
+            navigateTo({ kind: "library", filter: "all" });
+            return;
+          }
+          let failed = 0;
+          for (const s of imported) {
+            try { const r = await saveSongToDb(supabase, s, user.id); if (!r.ok) failed++; } catch { failed++; }
+          }
+          const folder = await createFolder(setlistName, "setlist", null);
+          if (folder) {
+            // Insert with explicit positions so the saved order matches the
+            // bundle — addSongToFolder derives position from (stale) state, which
+            // would collide when looping over a freshly-created empty folder.
+            const newRows: FolderSong[] = [];
+            for (let i = 0; i < imported.length; i++) {
+              const { data: r, error } = await supabase.rpc("add_song_to_folder", { p_folder_id: folder.id, p_song_id: imported[i].id, p_position: i });
+              if (error) { logErr("import bundle: add song to folder", error); continue; }
+              const row = r as { id: string; folder_id: string; song_id: string; position: number };
+              newRows.push({ id: row.id, folderId: row.folder_id, songId: row.song_id, position: row.position });
+            }
+            if (newRows.length) setFolderSongs(prev => [...prev, ...newRows]);
+            // createFolder seeds setlists with today's date — restore the bundle's.
+            const bundleDate = typeof data.setlist?.date === "string" ? data.setlist.date : null;
+            if (bundleDate) await updateFolderDate(folder.id, bundleDate);
+          }
+          showToast("Imported " + imported.length + " songs from " + setlistName);
+          if (folder) navigateTo({ kind: "folders", subview: folder.id });
+          else navigateTo({ kind: "library", filter: "all" });
+          if (failed) showToast(failed + " of " + imported.length + " songs failed to save");
+          return;
+        }
         if (data.wpFormat === "worship-plus" && Array.isArray(data.songs)) {
           const imported: Song[] = data.songs.map((s: Song) => ({
             ...s,
@@ -1294,6 +1394,7 @@ export default function Home() {
               onCommitOrder={commitSetlistOrder}
               onOpenSong={openSong}
               onUpdateDate={updateFolderDate}
+              onExportSetlist={exportSetlist}
               setlistEvents={setlistEvents}
               onAddEvent={addSetlistEvent}
               onDeleteEvent={deleteSetlistEvent}
