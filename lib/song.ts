@@ -716,8 +716,12 @@ export function parseSongText(text: string): Song {
       continue;
     }
 
-    // A bare "Verse 1:" / "Chorus" / "Pre-Chorus:" line → start a new section.
-    const bareLabel = parseBareSectionLabel(l);
+    // A section-label line → start a new section. Plain-text imports are
+    // lenient (detectSectionLabel): bare headers like "Verse 1" or "CHORUS"
+    // without a colon still count, since they're common in pasted .txt charts.
+    // (The editor's typed-label path uses the stricter, colon-required
+    // parseBareSectionLabel to avoid converting lyric lines.)
+    const bareLabel = detectSectionLabel(l);
     if (bareLabel) {
       startNew(bareLabel);
       continue;
