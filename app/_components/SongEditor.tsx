@@ -24,6 +24,7 @@ import {
   getSectionStyleKey,
   mapLine,
   noteToIndex,
+  parseBareSectionLabel,
   styleLabelFor,
   suggestedCapoForKey,
   tokenizeWords,
@@ -1253,6 +1254,13 @@ export default function SongEditor({
   // existing word: keep its word index, clamped into the new word count, and
   // resync the char position from that word.
   const commitLine = (lineId: string, value: string) => {
+    // Typing a bare section label ("Chorus", "Verse 2:", "Pre-Chorus") turns
+    // the line into a new section rather than a lyric line.
+    const label = parseBareSectionLabel(value);
+    if (label) {
+      convertLineToSection(lineId, label);
+      return;
+    }
     update((s) =>
       mapLine(s, lineId, (line) => {
         const newCount = tokenizeWords(value).length;
@@ -1268,6 +1276,47 @@ export default function SongEditor({
       }),
     );
     setEditingLine(null);
+  };
+
+  // Remove a single line from its section.
+  const deleteLine = (sectionId: string, lineId: string) => {
+    update((s) => ({
+      ...s,
+      sections: s.sections.map((sec) =>
+        sec.id !== sectionId ? sec : { ...sec, lines: sec.lines.filter((l) => l.id !== lineId) },
+      ),
+    }));
+    setEditingLine((cur) => (cur === lineId ? null : cur));
+  };
+
+  // Turn a typed label line into a section: split the section at that line —
+  // lines before stay, the label line is dropped, lines after (or one empty
+  // line) move into a new section with the detected label.
+  const convertLineToSection = (lineId: string, label: string) => {
+    const secIdx = song.sections.findIndex((sec) => sec.lines.some((l) => l.id === lineId));
+    if (secIdx === -1) { setEditingLine(null); return; }
+    const sec = song.sections[secIdx];
+    const idx = sec.lines.findIndex((l) => l.id === lineId);
+    const before = sec.lines.slice(0, idx);
+    const after = sec.lines.slice(idx + 1);
+    const emptyId = uid();
+    const newLines = after.length ? after : [{ id: emptyId, lyric: "", chords: [] }];
+    const focusId = after.length ? after[0].id : emptyId;
+    if (before.length === 0) {
+      // Label was the first line — relabel this section instead of leaving an
+      // empty one in front of the new section.
+      update((s) => ({
+        ...s,
+        sections: s.sections.map((x, i) => (i === secIdx ? { ...x, label, lines: newLines } : x)),
+      }));
+    } else {
+      update((s) => {
+        const next = [...s.sections];
+        next.splice(secIdx, 1, { ...sec, lines: before }, { id: uid(), label, lines: newLines });
+        return { ...s, sections: next };
+      });
+    }
+    setEditingLine(focusId);
   };
 
   // Create a chord on a word from the tap-a-word input. Empty input is a no-op.
@@ -2027,7 +2076,8 @@ export default function SongEditor({
                     );
 
                     return (
-                      <div key={line.id} className="group/line">
+                      <div key={line.id} className="group/line flex items-start gap-1">
+                        <div className="flex-1 min-w-0">
                         {editingLine === line.id && !readOnly ? (
                           <input
                             autoFocus
@@ -2176,6 +2226,18 @@ export default function SongEditor({
                           </>
                         )}
                         <LineBubbles sectionId={section.id} lineIndex={lIdx} api={bubbles} readOnly={readOnly} />
+                        </div>
+                        {!readOnly && (
+                          <button
+                            type="button"
+                            onClick={() => deleteLine(section.id, line.id)}
+                            title="Delete line"
+                            aria-label="Delete line"
+                            className="shrink-0 w-7 h-7 mt-0.5 rounded-md flex items-center justify-center text-slate-300 dark:text-slate-600 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-all opacity-60 sm:opacity-0 sm:group-hover/line:opacity-100 focus-visible:opacity-100 print:hidden"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                          </button>
+                        )}
                       </div>
                     );
                   })}

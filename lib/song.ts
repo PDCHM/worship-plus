@@ -654,6 +654,15 @@ function isLikelySectionLabel(text: string): boolean {
   return SECTION_KEYWORD.test(trimmed);
 }
 
+// A whole line that is just a section label — "Verse", "Verse 1", "Chorus:",
+// "Pre-Chorus 2" (case-insensitive, optional number/colon, optional [ ]/( )
+// wrap). Returns a normalized label ("Verse 1", "Pre-Chorus") or null. Thin
+// export over the canonical detectSectionLabel so the paste parser and the
+// editor (typed labels) share one definition.
+export function parseBareSectionLabel(line: string): string | null {
+  return detectSectionLabel(line);
+}
+
 export function parseSongText(text: string): Song {
   const rawLines = text.replace(/\r/g, "").split("\n");
   let title = "Imported Song";
@@ -700,6 +709,13 @@ export function parseSongText(text: string): Song {
     const bareSection = l.match(/^\s*\[([^\]]+)\]\s*$/);
     if (bareSection && isLikelySectionLabel(bareSection[1])) {
       startNew(bareSection[1].trim());
+      continue;
+    }
+
+    // A bare "Verse 1:" / "Chorus" / "Pre-Chorus:" line → start a new section.
+    const bareLabel = parseBareSectionLabel(l);
+    if (bareLabel) {
+      startNew(bareLabel);
       continue;
     }
 
