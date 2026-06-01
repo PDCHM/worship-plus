@@ -29,6 +29,7 @@ import {
   mergeSectionStyles,
   parseSongText,
   uid,
+  type Chord,
   type SectionStyles,
   type Settings,
   type Song,
@@ -67,6 +68,19 @@ function downloadBlob(blob: Blob, filename: string) {
   a.href = url; a.download = filename;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
+}
+
+// Render a chord row as a monospace chord-over-lyric line (mirrors the song
+// Word/text export): each chord padded to its pixel position / chars-per-px.
+function buildChordLine(chords: Chord[], pxPerChar: number): string {
+  if (!chords.length) return "";
+  const sorted = [...chords].sort((a, b) => a.pos - b.pos);
+  let result = "";
+  for (const c of sorted) {
+    const target = Math.max(result.length + 1, Math.round(c.pos / pxPerChar));
+    result = result.padEnd(target) + c.chord;
+  }
+  return result;
 }
 
 type LibraryView = "grid" | "list";
@@ -830,6 +844,82 @@ export default function Home() {
     showToast("Exported song list");
   };
 
+  // Export the whole setlist as one .docx — songs in order, each starting on a
+  // new page with its title, key/capo/bpm, and full chord chart.
+  const exportSetlistWord = async (folderId: string) => {
+    const folder = folders.find((f) => f.id === folderId);
+    if (!folder) return;
+    const hydrated = await hydrateSetlistSongs(folderId);
+    if (!hydrated) return;
+    if (hydrated.length === 0) { showToast("No songs to export"); return; }
+
+    const { Document, Packer, Paragraph, TextRun, HeadingLevel } = await import("docx");
+    const pxPerChar = 17 * 0.55;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const children: any[] = [];
+
+    // Setlist title page header.
+    children.push(new Paragraph({
+      children: [new TextRun({ text: folder.name, bold: true, size: 40, color: "4338CA" })],
+      spacing: { after: folder.date ? 20 : 200 },
+    }));
+    if (folder.date) {
+      children.push(new Paragraph({
+        children: [new TextRun({ text: new Date(folder.date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }), size: 22, color: "555555" })],
+        spacing: { after: 200 },
+      }));
+    }
+
+    hydrated.forEach((song, idx) => {
+      children.push(new Paragraph({
+        heading: HeadingLevel.HEADING_1,
+        pageBreakBefore: idx > 0,
+        children: [new TextRun({ text: `${idx + 1}. ${song.title}`, bold: true, size: 48 })],
+      }));
+      if (song.artist) {
+        children.push(new Paragraph({
+          children: [new TextRun({ text: song.artist, size: 24, color: "555555" })],
+          spacing: { after: 40 },
+        }));
+      }
+      const meta = [
+        song.key && `Key: ${song.key}`,
+        song.capo != null && `Capo: ${song.capo}`,
+        song.bpm  != null && `BPM: ${song.bpm}`,
+      ].filter(Boolean).join("   ");
+      if (meta) {
+        children.push(new Paragraph({
+          children: [new TextRun({ text: meta, size: 20, color: "444444" })],
+          spacing: { after: 120 },
+        }));
+      }
+      for (const section of song.sections) {
+        children.push(new Paragraph({
+          children: [new TextRun({ text: section.label.toUpperCase(), bold: true, size: 18, color: "4338CA" })],
+          spacing: { before: 280, after: 40 },
+        }));
+        for (const line of section.lines) {
+          if (line.chords.length > 0) {
+            children.push(new Paragraph({
+              children: [new TextRun({
+                text: buildChordLine(line.chords, pxPerChar),
+                font: "Courier New", bold: true, size: 18, color: "1D4ED8",
+              })],
+            }));
+          }
+          children.push(new Paragraph({
+            children: [new TextRun({ text: line.lyric || " ", size: 22 })],
+          }));
+        }
+      }
+    });
+
+    const doc = new Document({ sections: [{ properties: {}, children }] });
+    const blob = await Packer.toBlob(doc);
+    downloadBlob(blob, safeFilename(folder.name) + ".docx");
+    showToast("Exported " + hydrated.length + (hydrated.length === 1 ? " song" : " songs"));
+  };
+
   // Print all charts in a setlist: hydrate every song, then queue them for the
   // SetlistPrintLayout (the print effect fires once they mount).
   const printSetlist = async (folderId: string) => {
@@ -1493,6 +1583,8 @@ export default function Home() {
             setlistName={folder.name}
             songCount={count}
             onExportBundle={() => exportSetlistBundle(exportSetlistId)}
+            onExportPdf={() => printSetlist(exportSetlistId)}
+            onExportWord={() => exportSetlistWord(exportSetlistId)}
             onExportSongList={() => exportSetlistSongList(exportSetlistId)}
             onPrintAll={() => printSetlist(exportSetlistId)}
             onClose={() => setExportSetlistId(null)}

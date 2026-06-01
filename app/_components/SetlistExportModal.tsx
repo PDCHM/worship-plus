@@ -4,14 +4,22 @@ import { useState } from "react";
 
 /* ─── format catalog ─────────────────────────────────────────────────────── */
 
-type Action = "bundle" | "songlist" | "printall";
+type Action = "bundle" | "pdf" | "word" | "songlist" | "printall";
 
 type ActionDef = { id: Action; label: string; ext?: string; desc: string; color: string; icon: React.ReactNode };
+
+// Clean document icon used as a base for the Word format.
+const fileBase = (
+  <>
+    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+    <polyline points="14 2 14 8 20 8" />
+  </>
+);
 
 const ACTIONS: Record<Action, ActionDef> = {
   bundle: {
     id: "bundle", label: "Worship+ Bundle", ext: ".worship",
-    desc: "All songs, re-import into Worship+",
+    desc: "Share with team — all songs + setlist in one tap",
     color: "bg-violet-50 dark:bg-violet-950/50 text-violet-600 dark:text-violet-400",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -20,9 +28,36 @@ const ACTIONS: Record<Action, ActionDef> = {
       </svg>
     ),
   },
+  pdf: {
+    id: "pdf", label: "PDF", ext: ".pdf",
+    desc: "All chord charts, print-ready",
+    color: "bg-orange-50 dark:bg-orange-950/50 text-orange-600 dark:text-orange-400",
+    // Tabler `file-type-pdf`: a document with the "PDF" letters, unambiguous.
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M14 3v4a1 1 0 0 0 1 1h4" />
+        <path d="M5 12v-7a2 2 0 0 1 2 -2h7l5 5v4" />
+        <path d="M5 18h1.5a1.5 1.5 0 0 0 0 -3h-1.5v6" />
+        <path d="M17 18h2" />
+        <path d="M20 15h-3v6" />
+        <path d="M11 15v6h1a2 2 0 0 0 2 -2v-2a2 2 0 0 0 -2 -2h-1z" />
+      </svg>
+    ),
+  },
+  word: {
+    id: "word", label: "Word", ext: ".docx",
+    desc: "Edit and format in Microsoft Word",
+    color: "bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        {fileBase}
+        <path d="M8 13l1.2 4 1.3-3 1.3 3 1.2-4" />
+      </svg>
+    ),
+  },
   songlist: {
     id: "songlist", label: "Song list", ext: ".txt",
-    desc: "Titles, keys and artists only",
+    desc: "Titles, keys, artists only",
     color: "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400",
     icon: (
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -46,7 +81,9 @@ const ACTIONS: Record<Action, ActionDef> = {
 };
 
 const GROUPS: { label: string; ids: Action[] }[] = [
-  { label: "Setlist formats", ids: ["bundle", "songlist"] },
+  { label: "Share with musicians", ids: ["bundle"] },
+  { label: "Print & document", ids: ["pdf", "word"] },
+  { label: "Setlist summary", ids: ["songlist"] },
   { label: "Print all songs", ids: ["printall"] },
 ];
 
@@ -56,13 +93,15 @@ type Props = {
   setlistName: string;
   songCount: number;
   onExportBundle: () => Promise<void> | void;
+  onExportPdf: () => Promise<void> | void;
+  onExportWord: () => Promise<void> | void;
   onExportSongList: () => Promise<void> | void;
   onPrintAll: () => Promise<void> | void;
   onClose: () => void;
 };
 
 export default function SetlistExportModal({
-  setlistName, songCount, onExportBundle, onExportSongList, onPrintAll, onClose,
+  setlistName, songCount, onExportBundle, onExportPdf, onExportWord, onExportSongList, onPrintAll, onClose,
 }: Props) {
   const [loading, setLoading] = useState<Action | null>(null);
 
@@ -71,6 +110,8 @@ export default function SetlistExportModal({
     setLoading(id);
     try {
       if (id === "bundle")   { await onExportBundle();   onClose(); }
+      if (id === "pdf")      { await onExportPdf();       onClose(); }
+      if (id === "word")     { await onExportWord();      onClose(); }
       if (id === "songlist") { await onExportSongList();  onClose(); }
       if (id === "printall") { await onPrintAll();        onClose(); }
     } finally {
@@ -136,7 +177,7 @@ export default function SetlistExportModal({
         </div>
 
         <p className="text-xs text-slate-400 dark:text-slate-500 text-center px-5 py-3 border-t border-slate-100 dark:border-slate-800">
-          Print all opens the print dialog — choose <span className="font-medium">Save as PDF</span> to export
+          PDF & Print all open the print dialog — choose <span className="font-medium">Save as PDF</span> to export
         </p>
       </div>
     </div>
