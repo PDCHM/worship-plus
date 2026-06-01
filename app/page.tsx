@@ -13,6 +13,8 @@ import SongEditor from "@/app/_components/SongEditor";
 import FoldersView, { type Folder, type FolderSong, type SetlistEvent } from "@/app/_components/FoldersView";
 import GroupsView, { type Group, type GroupMember, type GroupSong } from "@/app/_components/GroupsView";
 import PrintLayout from "@/app/_components/PrintLayout";
+import SetlistPrintLayout from "@/app/_components/SetlistPrintLayout";
+import SetlistExportModal from "@/app/_components/SetlistExportModal";
 import {
   DEFAULT_SETTINGS,
   DEFAULT_SECTION_COLORS_DARK,
@@ -313,6 +315,11 @@ export default function Home() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [folderSongs, setFolderSongs] = useState<FolderSong[]>([]);
   const [setlistEvents, setSetlistEvents] = useState<SetlistEvent[]>([]);
+  // Setlist export modal target (folder id) + the hydrated songs queued for a
+  // whole-setlist print run.
+  const [exportSetlistId, setExportSetlistId] = useState<string | null>(null);
+  const [printSongs, setPrintSongs] = useState<Song[] | null>(null);
+  const printTitleRef = useRef<string>("Setlist");
   const [groups, setGroups] = useState<Group[]>([]);
   const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
   const [groupSongs, setGroupSongs] = useState<GroupSong[]>([]);
@@ -754,33 +761,41 @@ export default function Home() {
     });
   };
 
-  // Export a whole setlist as a single .worship bundle. Library songs are
-  // metadata-only until opened, so each song's full content (sections → lines →
-  // chords) is hydrated via get_song_content before it goes into the bundle.
-  const exportSetlist = async (folderId: string) => {
-    const folder = folders.find((f) => f.id === folderId);
-    if (!folder) return;
-    const ordered = folderSongs
+  // Ordered songs of a setlist (metadata-only entries are fine for listing).
+  const orderedFolderSongs = (folderId: string): Song[] =>
+    folderSongs
       .filter((fs) => fs.folderId === folderId)
       .sort((a, b) => a.position - b.position)
       .map((fs) => songs.find((s) => s.id === fs.songId))
       .filter((s): s is Song => Boolean(s));
-    if (ordered.length === 0) { showToast("No songs to export"); return; }
 
+  // Hydrate every song in a setlist (library songs are metadata-only until
+  // opened — load each one's sections via get_song_content). Returns null on
+  // the first load error so callers can abort.
+  const hydrateSetlistSongs = async (folderId: string): Promise<Song[] | null> => {
+    const ordered = orderedFolderSongs(folderId);
     const hydrated: Song[] = [];
     for (const s of ordered) {
-      // Already-open songs hold their content locally; only fetch the rest.
       if (s.sections.length > 0) { hydrated.push(s); continue; }
       const { data, error } = await supabase.rpc("get_song_content", { p_song: s.id });
       if (error) {
-        logErr("export: load song content", error);
+        logErr("setlist export: load song content", error);
         showToast("Could not load \"" + s.title + "\": " + error.message);
-        return;
+        return null;
       }
       const content = (data as unknown as { sections?: SectionRow[] } | null) ?? {};
       hydrated.push({ ...s, sections: sectionRowsToSections(content.sections ?? []) });
     }
+    return hydrated;
+  };
 
+  // Export a whole setlist as a single .worship bundle.
+  const exportSetlistBundle = async (folderId: string) => {
+    const folder = folders.find((f) => f.id === folderId);
+    if (!folder) return;
+    const hydrated = await hydrateSetlistSongs(folderId);
+    if (!hydrated) return;
+    if (hydrated.length === 0) { showToast("No songs to export"); return; }
     const payload = JSON.stringify(
       {
         type: "worship-setlist-bundle",
@@ -793,6 +808,53 @@ export default function Home() {
     downloadBlob(new Blob([payload], { type: "application/json" }), safeFilename(folder.name) + ".worship");
     showToast("Exported " + hydrated.length + (hydrated.length === 1 ? " song" : " songs"));
   };
+
+  // Export a plain-text song list (titles, artists, keys) — no song content,
+  // so no hydration needed.
+  const exportSetlistSongList = (folderId: string) => {
+    const folder = folders.find((f) => f.id === folderId);
+    if (!folder) return;
+    const ordered = orderedFolderSongs(folderId);
+    if (ordered.length === 0) { showToast("No songs to export"); return; }
+    const lines: string[] = [folder.name];
+    if (folder.date) {
+      lines.push(new Date(folder.date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" }));
+    }
+    lines.push("");
+    ordered.forEach((s, i) => {
+      lines.push(`${i + 1}. ${s.title}` + (s.artist ? ` — ${s.artist}` : "") + (s.key ? `  (${s.key})` : ""));
+    });
+    lines.push("");
+    lines.push("Worship+ · https://worshipplus.life");
+    downloadBlob(new Blob([lines.join("\n") + "\n"], { type: "text/plain;charset=utf-8" }), safeFilename(folder.name) + " — songs.txt");
+    showToast("Exported song list");
+  };
+
+  // Print all charts in a setlist: hydrate every song, then queue them for the
+  // SetlistPrintLayout (the print effect fires once they mount).
+  const printSetlist = async (folderId: string) => {
+    const hydrated = await hydrateSetlistSongs(folderId);
+    if (!hydrated) return;
+    if (hydrated.length === 0) { showToast("No songs to print"); return; }
+    printTitleRef.current = folders.find((f) => f.id === folderId)?.name || "Setlist";
+    setPrintSongs(hydrated);
+  };
+
+  // Once the whole-setlist print layout has mounted, fire the print dialog and
+  // clear the queued songs when it's dismissed (afterprint), with a fallback.
+  useEffect(() => {
+    if (!printSongs) return;
+    const start = window.setTimeout(() => triggerPrint(printTitleRef.current), 120);
+    const clear = () => setPrintSongs(null);
+    window.addEventListener("afterprint", clear);
+    const fallback = window.setTimeout(clear, 60000);
+    return () => {
+      window.clearTimeout(start);
+      window.clearTimeout(fallback);
+      window.removeEventListener("afterprint", clear);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [printSongs]);
 
   // Hydrate the song under the editor; load a setlist's songs when it opens.
   useEffect(() => {
@@ -1057,23 +1119,28 @@ export default function Home() {
     router.replace("/login");
   };
 
-  const handlePrint = () => {
-    if (!activeSong) return;
+  // Shared print trigger: applies the @page size from settings, swaps the doc
+  // title (browsers seed the "Save as PDF" filename from it), prints, then
+  // restores the title. Used for single-song and whole-setlist print alike.
+  const triggerPrint = (docTitle: string) => {
     const existing = document.getElementById("wp-print-page-size");
     if (existing) existing.remove();
     const style = document.createElement("style");
     style.id = "wp-print-page-size";
     style.textContent = "@page { size: " + (settings.printLayout === "A4" ? "A4" : "letter") + " " + (settings.printOrientation ?? "portrait") + "; margin: 0.6in; }";
     document.head.appendChild(style);
-    // Browsers seed the "Save as PDF" default filename from document.title.
-    // Swap in the song title for the print, then restore it afterward.
     const prevTitle = document.title;
-    document.title = activeSong.title.trim() || "Untitled Song";
+    document.title = docTitle || "Worship+";
     const restore = () => { document.title = prevTitle; window.removeEventListener("afterprint", restore); };
     window.addEventListener("afterprint", restore);
     window.print();
     // Fallback restore for browsers that don't reliably fire afterprint.
     setTimeout(restore, 1000);
+  };
+
+  const handlePrint = () => {
+    if (!activeSong) return;
+    triggerPrint(activeSong.title.trim() || "Untitled Song");
   };
 
   // ─── Folder / Setlist CRUD ────────────────────────────────────────────────
@@ -1394,7 +1461,7 @@ export default function Home() {
               onCommitOrder={commitSetlistOrder}
               onOpenSong={openSong}
               onUpdateDate={updateFolderDate}
-              onExportSetlist={exportSetlist}
+              onExportSetlist={setExportSetlistId}
               setlistEvents={setlistEvents}
               onAddEvent={addSetlistEvent}
               onDeleteEvent={deleteSetlistEvent}
@@ -1415,6 +1482,23 @@ export default function Home() {
       <BottomTabs view={view} onNavigate={navigateTo} onAdd={() => setAddSheetOpen(true)} />
 
       {activeSong && <PrintLayout song={activeSong} settings={settings} sectionStyles={sectionStyles} />}
+      {printSongs && <SetlistPrintLayout songs={printSongs} settings={settings} sectionStyles={sectionStyles} />}
+
+      {exportSetlistId && (() => {
+        const folder = folders.find((f) => f.id === exportSetlistId);
+        if (!folder) return null;
+        const count = folderSongs.filter((fs) => fs.folderId === exportSetlistId).length;
+        return (
+          <SetlistExportModal
+            setlistName={folder.name}
+            songCount={count}
+            onExportBundle={() => exportSetlistBundle(exportSetlistId)}
+            onExportSongList={() => exportSetlistSongList(exportSetlistId)}
+            onPrintAll={() => printSetlist(exportSetlistId)}
+            onClose={() => setExportSetlistId(null)}
+          />
+        );
+      })()}
 
       <PasteSongModal
         open={pasteOpen}

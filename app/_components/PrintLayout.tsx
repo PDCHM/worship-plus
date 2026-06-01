@@ -25,33 +25,33 @@ const MONO_FAMILY = "ui-monospace, Menlo, Consolas, 'Courier New', monospace";
 
 type Props = { song: Song; settings: Settings; sectionStyles: SectionStyles };
 
-export default function PrintLayout({ song, settings, sectionStyles }: Props) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+// Shared root styling for the off-screen print container. The font context set
+// here is inherited by every SongSheet rendered inside it.
+export function printRootStyle(settings: Settings): React.CSSProperties {
+  return {
+    fontFamily: FONT_CSS[settings.fontFamily ?? "system"],
+    fontSize: `${settings.fontSize ?? 17}px`,
+    lineHeight: 1.5,
+    color: "#000",
+    background: "#fff",
+    WebkitPrintColorAdjust: "exact",
+    printColorAdjust: "exact",
+  } as React.CSSProperties;
+}
 
-  const fontFamily   = FONT_CSS[settings.fontFamily ?? "system"];
-  const fontSize     = settings.fontSize ?? 17;
-  const showChords   = settings.showChords ?? true;
-  const cols         = settings.printColumns ?? 1;
-  const colorMap     = settings.darkMode
+// One song's printable sheet (header + sections). No portal / no #wp-print-root
+// of its own — the caller wraps it so this can be reused for single-song print
+// (PrintLayout) and whole-setlist print (SetlistPrintLayout).
+export function SongSheet({ song, settings, sectionStyles }: Props) {
+  const fontSize   = settings.fontSize ?? 17;
+  const showChords = settings.showChords ?? true;
+  const cols       = settings.printColumns ?? 1;
+  const colorMap   = settings.darkMode
     ? settings.sectionColorsDark
     : settings.sectionColorsLight;
 
-  if (!mounted) return null;
-
-  return createPortal(
-    <div
-      id="wp-print-root"
-      style={{
-        fontFamily,
-        fontSize: `${fontSize}px`,
-        lineHeight: 1.5,
-        color: "#000",
-        background: "#fff",
-        WebkitPrintColorAdjust: "exact",
-        printColorAdjust: "exact",
-      } as React.CSSProperties}
-    >
+  return (
+    <>
       {/* ── Header ── */}
       <div style={{
         display: "flex",
@@ -146,7 +146,7 @@ export default function PrintLayout({ song, settings, sectionStyles }: Props) {
                         {buildChordLine(line.chords)}
                       </pre>
                     )}
-                    {/* Lyric line \u2014 forced monospace so chord columns align */}
+                    {/* Lyric line — forced monospace so chord columns align */}
                     <div style={{
                       whiteSpace: "pre",
                       lineHeight: 1.4,
@@ -156,7 +156,7 @@ export default function PrintLayout({ song, settings, sectionStyles }: Props) {
                       overflow: "hidden",
                       width: "100%",
                     }}>
-                      {line.lyric || "\u00a0"}
+                      {line.lyric || " "}
                     </div>
                   </div>
                 );
@@ -165,6 +165,19 @@ export default function PrintLayout({ song, settings, sectionStyles }: Props) {
           );
         })}
       </div>
+    </>
+  );
+}
+
+export default function PrintLayout({ song, settings, sectionStyles }: Props) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  if (!mounted) return null;
+
+  return createPortal(
+    <div id="wp-print-root" style={printRootStyle(settings)}>
+      <SongSheet song={song} settings={settings} sectionStyles={sectionStyles} />
     </div>,
     document.body,
   );
