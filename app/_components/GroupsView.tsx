@@ -22,6 +22,10 @@ export type GroupsViewProps = {
   onOpenSong: (id: string) => void;
   onOpenSetlist: (id: string) => void;
   showToast: (msg: string) => void;
+  // Optional: drive team selection from the parent (so the left-nav highlight
+  // tracks the open team). Falls back to internal state when not provided.
+  selectedTeamId?: string | null;
+  onSelectTeam?: (id: string | null) => void;
 };
 
 const INSTRUMENTS = [
@@ -41,7 +45,14 @@ type Membership = { group: Group; role: GroupMember["role"]; memberCount: number
 
 export default function GroupsView(props: GroupsViewProps) {
   const { userId, groups, groupMembers } = props;
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Parent-driven selection (so the left-nav active highlight matches the open
+  // team) with a graceful fallback to local state.
+  const [localSelected, setLocalSelected] = useState<string | null>(null);
+  const selectedId = props.selectedTeamId !== undefined ? props.selectedTeamId : localSelected;
+  const setSelectedId = (id: string | null) => {
+    if (props.onSelectTeam) props.onSelectTeam(id);
+    else setLocalSelected(id);
+  };
 
   const myMemberships: Membership[] = groups
     .map(g => {

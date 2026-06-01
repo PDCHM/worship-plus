@@ -43,7 +43,7 @@ type View =
   | { kind: "editor"; songId: string; setlistId?: string }
   | { kind: "settings" }
   | { kind: "folders"; subview: "all" | string }
-  | { kind: "groups" };
+  | { kind: "groups"; teamId?: string };
 
 const SETTINGS_KEY = "wp-settings-v1";
 const LIBRARY_VIEW_KEY = "wp-library-view-v1";
@@ -1707,7 +1707,7 @@ export default function Home() {
             </div>
           )}
           {view.kind === "groups" && groupsLoaded && (
-            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={songs} folders={folders} onCreateGroup={gatedCreateTeam} onUpdateGroup={updateGroupName} onAddMember={addGroupMember} onRemoveMember={removeGroupMember} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onDeleteGroup={deleteGroup} onOpenSong={openSong} onOpenSetlist={(id) => navigateTo({ kind: "folders", subview: id })} showToast={showToast}/>
+            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={songs} folders={folders} onCreateGroup={gatedCreateTeam} onUpdateGroup={updateGroupName} onAddMember={addGroupMember} onRemoveMember={removeGroupMember} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onDeleteGroup={deleteGroup} onOpenSong={openSong} onOpenSetlist={(id) => navigateTo({ kind: "folders", subview: id })} showToast={showToast} selectedTeamId={view.kind === "groups" ? (view.teamId ?? null) : null} onSelectTeam={(id) => navigateTo({ kind: "groups", teamId: id ?? undefined })}/>
           )}
         </main>
       </div>
@@ -2014,6 +2014,12 @@ function Sidebar({
     view.kind === "library" && view.filter === filter;
   const isFolderActive = (id: string) =>
     view.kind === "folders" && view.subview === id;
+  const isTeamActive = (id: string) =>
+    view.kind === "groups" && view.teamId === id;
+
+  // Navigate + auto-hide the panel. onClose closes it on mobile; on desktop the
+  // panel is permanently visible (md:translate-x-0) so this is a no-op there.
+  const go = (v: View) => { onNavigate(v); onClose(); };
 
   const folderList = folders.filter((f) => f.type === "folder");
   const setlistList = folders.filter((f) => f.type === "setlist" && !f.groupId);
@@ -2058,15 +2064,15 @@ function Sidebar({
         onToggle={() => toggle("library")} onAdd={onAddSong} addLabel="Add song" />
       {!collapsed.library && (
         <>
-          <SidebarItem active={isLibrary("all")} onClick={() => { onNavigate({ kind: "library", filter: "all" }); onClose(); }}
+          <SidebarItem active={isLibrary("all")} onClick={() => go({ kind: "library", filter: "all" })}
             icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 17V5l12-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="15" r="3"/></svg>}>
             All Songs
           </SidebarItem>
-          <SidebarItem active={isLibrary("favorites")} onClick={() => { onNavigate({ kind: "library", filter: "favorites" }); onClose(); }}
+          <SidebarItem active={isLibrary("favorites")} onClick={() => go({ kind: "library", filter: "favorites" })}
             icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15 9 22 9.5 17 14.5 18.5 22 12 18 5.5 22 7 14.5 2 9.5 9 9 12 2"/></svg>}>
             Favourites
           </SidebarItem>
-          <SidebarItem active={isLibrary("recent")} onClick={() => { onNavigate({ kind: "library", filter: "recent" }); onClose(); }}
+          <SidebarItem active={isLibrary("recent")} onClick={() => go({ kind: "library", filter: "recent" })}
             icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>}>
             Recent
           </SidebarItem>
@@ -2082,13 +2088,13 @@ function Sidebar({
             <NavCreateInput placeholder="Folder name" value={createValue} onChange={setCreateValue} onSubmit={submitCreate} onCancel={cancelCreate} />
           )}
           <SidebarItem active={view.kind === "folders" && view.subview === "all"}
-            onClick={() => { onNavigate({ kind: "folders", subview: "all" }); onClose(); }}
+            onClick={() => go({ kind: "folders", subview: "all" })}
             icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>}>
             All Folders
           </SidebarItem>
           {folderList.map((f) => (
             <SidebarItem key={f.id} active={isFolderActive(f.id)}
-              onClick={() => { onNavigate({ kind: "folders", subview: f.id }); onClose(); }}
+              onClick={() => go({ kind: "folders", subview: f.id })}
               icon={FOLDER_ICON}>
               {f.name}
             </SidebarItem>
@@ -2107,7 +2113,7 @@ function Sidebar({
           {setlistList.length === 0 && creating !== "setlist" && <NavEmpty>No setlists yet</NavEmpty>}
           {setlistList.map((f) => (
             <SidebarItem key={f.id} active={isFolderActive(f.id)}
-              onClick={() => { onNavigate({ kind: "folders", subview: f.id }); onClose(); }}
+              onClick={() => go({ kind: "folders", subview: f.id })}
               icon={SETLIST_ICON}>
               {f.name}
             </SidebarItem>
@@ -2124,13 +2130,13 @@ function Sidebar({
             <NavCreateInput placeholder="Team name" value={createValue} onChange={setCreateValue} onSubmit={submitCreate} onCancel={cancelCreate} />
           )}
           {groups.length === 0 && creating !== "team" && (
-            <SidebarItem active={view.kind === "groups"} onClick={() => { onNavigate({ kind: "groups" }); onClose(); }} icon={TEAM_ICON}>
+            <SidebarItem active={view.kind === "groups"} onClick={() => go({ kind: "groups" })} icon={TEAM_ICON}>
               Worship Team
             </SidebarItem>
           )}
           {groups.map((g) => (
-            <SidebarItem key={g.id} active={view.kind === "groups"}
-              onClick={() => { onNavigate({ kind: "groups" }); onClose(); }} icon={TEAM_ICON}>
+            <SidebarItem key={g.id} active={isTeamActive(g.id)}
+              onClick={() => go({ kind: "groups", teamId: g.id })} icon={TEAM_ICON}>
               {g.name}
             </SidebarItem>
           ))}
@@ -2138,7 +2144,7 @@ function Sidebar({
       )}
 
       <div className="mt-auto pt-3">
-        <SidebarItem active={view.kind === "settings"} onClick={() => { onNavigate({ kind: "settings" }); onClose(); }}
+        <SidebarItem active={view.kind === "settings"} onClick={() => go({ kind: "settings" })}
           icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>}>
           Settings
         </SidebarItem>
