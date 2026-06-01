@@ -654,13 +654,17 @@ function isLikelySectionLabel(text: string): boolean {
   return SECTION_KEYWORD.test(trimmed);
 }
 
-// A whole line that is just a section label — "Verse", "Verse 1", "Chorus:",
-// "Pre-Chorus 2" (case-insensitive, optional number/colon, optional [ ]/( )
-// wrap). Returns a normalized label ("Verse 1", "Pre-Chorus") or null. Thin
-// export over the canonical detectSectionLabel so the paste parser and the
-// editor (typed labels) share one definition.
+// A whole line that is just a section label ENDING IN A COLON — "Verse:",
+// "Verse 1:", "Chorus:", "Pre-Chorus 2:" (case-insensitive, optional number).
+// The colon is required so a lyric line that merely contains a section word
+// (e.g. "Bridge over the river", or a one-word line "Chorus") is not converted.
+// Used by the plain-text import parser and the editor's typed-label handling.
+// (The richer Paste-Song parser uses detectSectionLabel, which is more lenient
+// because a full chord chart gives more context.)
 export function parseBareSectionLabel(line: string): string | null {
-  return detectSectionLabel(line);
+  const m = line.trim().match(SECTION_LABEL_LINE_COLON);
+  if (!m) return null;
+  return normalizeSectionLabel(m[1], m[2]);
 }
 
 export function parseSongText(text: string): Song {
@@ -931,6 +935,11 @@ export function makeSampleSongs(): Song[] {
 
 const SECTION_LABEL_LINE =
   /^(intro|outro|verse|chorus|bridge|tag|refrain|interlude|ending|pre[\s-]?chorus)\s*(\d+)?\s*:?\s*$/i;
+// Bare (unwrapped) labels must END in a colon — "Verse:", "Chorus 2:" — so a
+// lyric line that merely contains a section word ("Bridge over the river", or a
+// one-word line "Chorus") is NOT mistaken for a section header.
+const SECTION_LABEL_LINE_COLON =
+  /^(intro|outro|verse|chorus|bridge|tag|refrain|interlude|ending|pre[\s-]?chorus)\s*(\d+)?\s*:\s*$/i;
 
 function normalizeSectionLabel(rawBase: string, num?: string): string {
   const t = rawBase.toLowerCase().replace(/[\s-]/g, "");
