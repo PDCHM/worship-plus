@@ -1621,6 +1621,7 @@ export default function Home() {
         onOpenSettings={() => navigateTo({ kind: "settings" })}
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen(o => !o)}
+        view={view}
       />
 
       <div className="flex-1 min-h-0">
@@ -1935,20 +1936,38 @@ function LoadingScreen() {
 }
 
 function TopNav({
-  onHome, profile, onSignOut, onOpenSettings, sidebarOpen, onToggleSidebar,
+  onHome, profile, onSignOut, onOpenSettings, sidebarOpen, onToggleSidebar, view,
 }: {
   onHome: () => void;
   profile: Profile | null; onSignOut: () => void; onOpenSettings: () => void;
   sidebarOpen: boolean; onToggleSidebar: () => void;
+  view: View;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
+  // Dismiss on Escape + any press (mouse/touch/pen) outside the panel & trigger.
+  // pointerdown is used instead of click because iOS Safari does not dispatch
+  // click events on non-interactive elements (e.g. the backdrop div).
   useEffect(() => {
     if (!menuOpen) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMenuOpen(false); };
+    const onPointerDown = (e: PointerEvent) => {
+      const t = e.target as Node | null;
+      if (panelRef.current?.contains(t) || triggerRef.current?.contains(t)) return;
+      setMenuOpen(false);
+    };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onPointerDown);
+    };
   }, [menuOpen]);
+
+  // Close on route/view change.
+  useEffect(() => { setMenuOpen(false); }, [view]);
 
   const displayName = profile?.full_name || profile?.email?.split("@")[0] || "Account";
   const initial = (profile?.full_name?.[0] ?? profile?.email?.[0] ?? "?").toUpperCase();
@@ -1966,7 +1985,7 @@ function TopNav({
           </button>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <button type="button" onClick={() => setMenuOpen(true)}
+          <button type="button" ref={triggerRef} onClick={() => setMenuOpen((o) => !o)}
             aria-haspopup="menu" aria-expanded={menuOpen} aria-label="User menu"
             className="w-9 h-9 rounded-full overflow-hidden bg-gradient-to-br from-indigo-400 to-violet-500 text-white text-sm font-semibold flex items-center justify-center shadow-sm hover:ring-2 hover:ring-indigo-300 dark:hover:ring-indigo-700 transition-all">
             {profile?.avatar_url ? (
@@ -1978,8 +1997,8 @@ function TopNav({
       </div>
 
       {menuOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-start sm:justify-end print:hidden" onClick={() => setMenuOpen(false)}>
-          <div className="w-full sm:max-w-xs sm:mr-4 sm:mt-16 bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden pb-[env(safe-area-inset-bottom)]" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-start sm:justify-end print:hidden">
+          <div ref={panelRef} className="w-full sm:max-w-xs sm:mr-4 sm:mt-16 bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden pb-[env(safe-area-inset-bottom)]">
             <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 dark:border-slate-800">
               <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-indigo-400 to-violet-500 text-white text-sm font-semibold flex items-center justify-center shrink-0">
                 {profile?.avatar_url ? (
