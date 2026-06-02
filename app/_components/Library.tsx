@@ -671,6 +671,9 @@ export default function Library({
                 ))
               )}
             </div>
+            <p className="px-5 py-3 text-[11px] text-slate-400 dark:text-slate-500 text-center border-t border-slate-100 dark:border-slate-800">
+              Team setlists — open the setlist to add songs
+            </p>
           </div>
         </div>
       )}
@@ -683,7 +686,7 @@ export default function Library({
 // Long-press to enter select mode. Fires onLongPress after `ms` of a held
 // press that hasn't moved; suppresses the click that would otherwise follow.
 // A normal tap/click (no long-press) calls onClick.
-function useLongPress(onLongPress: () => void, onClick: () => void, ms = 450) {
+function useLongPress(onLongPress: () => void, onClick: () => void, ms = 300) {
   const timer = useRef<number | null>(null);
   const longPressed = useRef(false);
   const start = useRef({ x: 0, y: 0 });

@@ -1660,7 +1660,7 @@ export default function Home() {
               filter={view.filter}
               libraryView={libraryView}
               onLibraryViewChange={setLibraryView}
-              setlists={folders.filter((f) => f.type === "setlist").map((f) => ({ id: f.id, name: f.name }))}
+              setlists={folders.filter((f) => f.type === "setlist" && !f.groupId).map((f) => ({ id: f.id, name: f.name }))}
               onBulkDelete={bulkDeleteSongs}
               onBulkAddToSetlist={bulkAddSongsToSetlist}
             />
