@@ -443,7 +443,7 @@ export default function Home() {
         void (async () => {
           const { error } = await supabase
             .from("profiles")
-            .update({ plan, updated_at: new Date().toISOString() })
+            .update({ plan })
             .eq("id", user.id);
           if (error) {
             logErr("apply plan from success url", error);
