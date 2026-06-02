@@ -98,7 +98,8 @@ export default function LandingPage() {
       {/* ── Nav ── */}
       <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-slate-100">
         <div className="max-w-6xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
-          <Wordmark />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/WorplusLogo-ICON_LOGO_hori.png" alt="Worship+" className="h-9 sm:h-10 w-auto object-contain" />
           <div className="flex items-center gap-2 sm:gap-3">
             <Link href="/login" className="hidden sm:inline-flex h-9 px-4 items-center text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">
               Sign in

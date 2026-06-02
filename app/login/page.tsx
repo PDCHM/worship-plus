@@ -113,9 +113,9 @@ export default function LoginPage() {
         <div className="flex flex-col items-center mb-8">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/logo-icon.jpg"
+            src="/WorplusLogo-ICON.png"
             alt="Worship+"
-            className="w-[72px] h-[72px] sm:w-20 sm:h-20 rounded-2xl object-cover mb-4 shadow-lg shadow-indigo-500/20"
+            className="w-[72px] h-[72px] sm:w-20 sm:h-20 object-contain mb-4"
           />
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
