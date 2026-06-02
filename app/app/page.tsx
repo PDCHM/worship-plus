@@ -1063,6 +1063,42 @@ export default function Home() {
     showToast("Song deleted");
   };
 
+  // Bulk delete — one DB round trip (.in), local state pruned, backups cleared.
+  // Toast is shown by the caller (Library) so it can say "[N] songs deleted".
+  const bulkDeleteSongs = async (ids: string[]) => {
+    if (!ids.length) return;
+    const idSet = new Set(ids);
+    setSongs((prev) => prev.filter((s) => !idSet.has(s.id)));
+    setFolderSongs((prev) => prev.filter((fs) => !idSet.has(fs.songId)));
+    setDirtyIds((prev) => { const n = new Set(prev); ids.forEach((id) => n.delete(id)); return n; });
+    setView((prev) => (prev.kind === "editor" && idSet.has(prev.songId) ? { kind: "library", filter: "all" } : prev));
+    ids.forEach((id) => { try { localStorage.removeItem("wp-backup-" + id); } catch {} });
+    if (user) {
+      const { error } = await supabase.from("songs").delete().in("id", ids);
+      if (error) logErr("bulk delete songs", error);
+    }
+  };
+
+  // Bulk add to a setlist, in order, with explicit positions (the per-song
+  // addSongToFolder derives position from stale state, so it can't be looped).
+  // Songs already in the setlist are skipped. Toast shown by the caller.
+  const bulkAddSongsToSetlist = async (songIds: string[], folderId: string) => {
+    const inFolder = folderSongs.filter((fs) => fs.folderId === folderId);
+    const have = new Set(inFolder.map((fs) => fs.songId));
+    let position = inFolder.length ? Math.max(...inFolder.map((fs) => fs.position)) + 1 : 0;
+    const newRows: FolderSong[] = [];
+    for (const songId of songIds) {
+      if (have.has(songId)) continue;
+      const { data, error } = await supabase.rpc("add_song_to_folder", { p_folder_id: folderId, p_song_id: songId, p_position: position });
+      if (error) { logErr("bulk add to setlist", error); continue; }
+      const r = data as { id: string; folder_id: string; song_id: string; position: number };
+      newRows.push({ id: r.id, folderId: r.folder_id, songId: r.song_id, position: r.position });
+      have.add(songId);
+      position++;
+    }
+    if (newRows.length) setFolderSongs((prev) => [...prev, ...newRows]);
+  };
+
   const newSong = () => {
     // Beta soft limit: warn free users past 10 songs, but don't block.
     if (!isPaidPlan(profile?.plan) && songs.filter((s) => s.userId === user?.id).length >= 10) {
@@ -1624,6 +1660,9 @@ export default function Home() {
               filter={view.filter}
               libraryView={libraryView}
               onLibraryViewChange={setLibraryView}
+              setlists={folders.filter((f) => f.type === "setlist").map((f) => ({ id: f.id, name: f.name }))}
+              onBulkDelete={bulkDeleteSongs}
+              onBulkAddToSetlist={bulkAddSongsToSetlist}
             />
           )}
           {view.kind === "editor" && activeSong && hydratingId === view.songId && activeSong.sections.length === 0 && (
