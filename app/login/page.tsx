@@ -115,14 +115,13 @@ export default function LoginPage() {
           <img
             src="/logo-icon.jpg"
             alt="Worship+"
-            style={{ width: 80, height: 80, borderRadius: 16, objectFit: "cover" }}
-            className="mb-4 shadow-lg shadow-indigo-500/20"
+            className="w-[72px] h-[72px] sm:w-20 sm:h-20 rounded-2xl object-cover mb-4 shadow-lg shadow-indigo-500/20"
           />
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src="/logo-hori.jpg"
             alt="Worship+"
-            style={{ height: 40, objectFit: "contain" }}
+            className="w-full max-w-[180px] sm:max-w-[220px] h-auto object-contain mx-auto"
           />
         </div>
 

@@ -1960,8 +1960,9 @@ function TopNav({
           <button type="button" onClick={onToggleSidebar} className="md:hidden w-9 h-9 rounded-lg flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" aria-label="Toggle sidebar" aria-expanded={sidebarOpen}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
           </button>
-          <button type="button" onClick={onHome} className="flex items-center gap-2 min-w-0">
-            <div className="font-bold text-lg tracking-tight">Worship<span className="text-blue-500">+</span></div>
+          <button type="button" onClick={onHome} aria-label="Worship+ home" className="flex items-center shrink-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo-hori.jpg" alt="Worship+" className="h-6 sm:h-7 w-auto max-w-[140px] object-contain" />
           </button>
         </div>
         <div className="flex items-center gap-2 shrink-0">
