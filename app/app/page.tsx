@@ -440,10 +440,22 @@ export default function Home() {
       const planParam = params.get("plan");
       if (planParam && isPaidPlan(planParam)) {
         const plan = planParam as Plan;
+        const sessionId = params.get("session_id");
         void (async () => {
+          // Beta (no webhook): resolve the Stripe customer id from the checkout
+          // session and persist it alongside the plan, so the billing portal can
+          // find this user later. Non-fatal if it fails — the plan still applies.
+          let customerId: string | null = null;
+          if (sessionId) {
+            try {
+              const res = await fetch(`/api/stripe/session?session_id=${encodeURIComponent(sessionId)}`);
+              const data = await res.json().catch(() => ({}));
+              if (res.ok && typeof data?.customerId === "string") customerId = data.customerId;
+            } catch { /* ignore — plan write below still proceeds */ }
+          }
           const { error } = await supabase
             .from("profiles")
-            .update({ plan })
+            .update({ plan, ...(customerId ? { stripe_customer_id: customerId } : {}) })
             .eq("id", user.id);
           if (error) {
             logErr("apply plan from success url", error);
@@ -476,6 +488,7 @@ export default function Home() {
     const url = new URL(window.location.href);
     url.searchParams.delete("subscription");
     url.searchParams.delete("plan");
+    url.searchParams.delete("session_id");
     window.history.replaceState({}, "", url.toString());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
@@ -1775,7 +1788,13 @@ export default function Home() {
             />
           )}
           {view.kind === "settings" && (
-            <SettingsView settings={settings} onChange={setSettings} isDark={isDark} />
+            <SettingsView
+              settings={settings}
+              onChange={setSettings}
+              isDark={isDark}
+              plan={(profile?.plan as Plan) ?? "free"}
+              onUpgrade={() => setUpgradeModal({ reason: "Subscription" })}
+            />
           )}
           {view.kind === "folders" && (
             <FoldersView
@@ -2081,11 +2100,12 @@ function TopNav({
                 <span className="flex-1">Account</span>
                 <span className="text-xs text-slate-400 dark:text-slate-500 truncate max-w-[9rem]">{profile?.email ?? "—"}</span>
               </div>
-              <div className="min-h-[48px] px-3 rounded-lg flex items-center gap-3 text-sm text-slate-700 dark:text-slate-200">
+              <button type="button" onClick={() => { setMenuOpen(false); onOpenSettings(); }}
+                className="w-full min-h-[48px] px-3 rounded-lg flex items-center gap-3 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-                <span className="flex-1">Subscription</span>
+                <span className="flex-1 text-left">Subscription</span>
                 <span className="text-xs font-medium text-indigo-500 dark:text-indigo-400">{PLANS[(profile?.plan as Plan) ?? "free"].name}</span>
-              </div>
+              </button>
               <button type="button" onClick={() => { setMenuOpen(false); onSignOut(); }}
                 className="w-full min-h-[48px] px-3 rounded-lg flex items-center gap-3 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>

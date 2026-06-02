@@ -59,7 +59,9 @@ export async function POST(request: Request) {
       mode: "subscription",
       line_items: [{ price: priceId, quantity: 1 }],
       // plan is echoed back so the app can apply it on return (beta: no webhook).
-      success_url: `${origin}/app?subscription=success&plan=${encodeURIComponent(plan)}`,
+      // session_id lets the app resolve the Stripe customer id to save on the
+      // profile (so the billing portal can find them later).
+      success_url: `${origin}/app?subscription=success&plan=${encodeURIComponent(plan)}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/app?subscription=cancelled`,
       allow_promotion_codes: true,
       ...(userEmail ? { customer_email: userEmail } : {}),

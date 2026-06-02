@@ -4,11 +4,15 @@ import {
   DEFAULT_SETTINGS,
   type Settings,
 } from "@/lib/song";
+import { type Plan } from "@/lib/plans";
+import SubscriptionSection from "@/app/_components/SubscriptionSection";
 
 type Props = {
   settings: Settings;
   onChange: (settings: Settings) => void;
   isDark: boolean;
+  plan: Plan;
+  onUpgrade: () => void;
 };
 
 const FONT_OPTIONS: { value: Settings["fontFamily"]; label: string; css: string }[] = [
@@ -17,7 +21,7 @@ const FONT_OPTIONS: { value: Settings["fontFamily"]; label: string; css: string 
   { value: "serif",  label: "Serif",  css: "ui-serif, Georgia, serif" },
 ];
 
-export default function SettingsView({ settings, onChange }: Props) {
+export default function SettingsView({ settings, onChange, plan, onUpgrade }: Props) {
   const update = (patch: Partial<Settings>) =>
     onChange({ ...settings, ...patch });
 
@@ -31,6 +35,8 @@ export default function SettingsView({ settings, onChange }: Props) {
           Personalise the way Worship+ looks and prints
         </p>
       </div>
+
+      <SubscriptionSection plan={plan} onUpgrade={onUpgrade} />
 
       {/* ── Appearance ── */}
       <Section title="Appearance">
