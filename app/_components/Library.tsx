@@ -220,7 +220,7 @@ export default function Library({
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          {selectMode && (
+          {selectMode ? (
             <>
               <button
                 type="button"
@@ -237,7 +237,16 @@ export default function Library({
                 Cancel
               </button>
             </>
-          )}
+          ) : filtered.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setSelectMode(true)}
+              className="h-10 px-3 rounded-lg text-sm font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+              Select
+            </button>
+          ) : null}
           <div
             className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden"
             role="group"
