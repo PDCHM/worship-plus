@@ -3,8 +3,22 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { isPaidPlan } from "@/lib/plans";
 
 type LoadingState = null | "google" | "email";
+
+// Where to send the user after auth. If they arrived from a paid pricing CTA
+// (/login?plan=team), carry the plan so /app can auto-resume Stripe Checkout.
+function postAuthNext(): string {
+  const plan = new URLSearchParams(window.location.search).get("plan");
+  return plan && isPaidPlan(plan) ? `/app?plan=${encodeURIComponent(plan)}` : "/app";
+}
+
+// The OAuth/magic-link redirect target. Threads `next` through the callback so
+// the chosen plan survives the round-trip through Google / the email link.
+function authCallbackUrl(): string {
+  return `${window.location.origin}/auth/callback?next=${encodeURIComponent(postAuthNext())}`;
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -20,7 +34,9 @@ export default function LoginPage() {
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (cancelled) return;
       if (user) {
-        router.replace("/app");
+        // Already authed (e.g. a logged-in user hit a pricing CTA): honour the
+        // pending plan instead of dropping them on a bare /app.
+        router.replace(postAuthNext());
       } else {
         setCheckingAuth(false);
       }
@@ -77,7 +93,7 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
+        redirectTo: authCallbackUrl(),
       },
     });
     if (error) {
@@ -96,7 +112,7 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: authCallbackUrl(),
       },
     });
     setLoading(null);

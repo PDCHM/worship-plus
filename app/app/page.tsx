@@ -466,6 +466,51 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  // Resume a paid-plan checkout that began on the landing page before login.
+  // The plan is carried through auth as /app?plan=<paid>; on arrival we start
+  // Stripe Checkout immediately instead of stranding the user on /app.
+  const resumedCheckoutRef = useRef(false);
+  useEffect(() => {
+    if (!user || resumedCheckoutRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    // The Stripe return (?subscription=...) is handled by the effect above.
+    if (params.get("subscription")) return;
+    const planParam = params.get("plan");
+    if (!planParam || !isPaidPlan(planParam)) return;
+    const plan = planParam as Plan;
+    resumedCheckoutRef.current = true;
+
+    // Strip the param so a refresh / back-navigation won't re-trigger checkout.
+    const url = new URL(window.location.href);
+    url.searchParams.delete("plan");
+    window.history.replaceState({}, "", url.toString());
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/stripe/checkout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ plan, userId: user.id, userEmail: user.email ?? profile?.email ?? undefined }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || typeof data?.url !== "string") {
+          showToast(typeof data?.error === "string" ? data.error : "Could not start checkout. Try again.");
+          return;
+        }
+        // Full-page navigation to Stripe-hosted checkout (anchor click avoids
+        // directly assigning window.location).
+        const a = document.createElement("a");
+        a.href = data.url;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } catch {
+        showToast("Could not start checkout. Check your connection.");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
   // Load user, profile, songs, folders from Supabase.
   useEffect(() => {
     if (typeof window !== "undefined") {

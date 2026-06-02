@@ -246,7 +246,7 @@ export default function LandingPage() {
               blurb="For the dedicated worship musician."
               features={["Unlimited songs", "AI chord generation", "AI song search", "Setlist bundles & PDF export"]}
               cta="Start 14-day trial"
-              ctaHref="/login"
+              ctaHref="/login?plan=personal"
               trial
             />
             <PriceCard
@@ -256,7 +256,7 @@ export default function LandingPage() {
               blurb="For a worship team that plays together."
               features={["Everything in Personal", "Up to 30 team members", "Shared songs & setlists", "Rehearsal scheduling"]}
               cta="Start 14-day trial"
-              ctaHref="/login"
+              ctaHref="/login?plan=team"
               featured
               trial
             />
@@ -267,7 +267,7 @@ export default function LandingPage() {
               blurb="For multiple teams across a church."
               features={["Everything in Team", "Unlimited teams", "Multiple worship rosters", "Priority support"]}
               cta="Start 14-day trial"
-              ctaHref="/login"
+              ctaHref="/login?plan=church"
               trial
             />
           </div>
