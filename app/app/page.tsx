@@ -1962,7 +1962,7 @@ function TopNav({
           </button>
           <button type="button" onClick={onHome} aria-label="Worship+ home" className="flex items-center shrink-0">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo-hori.jpg" alt="Worship+" className="h-6 sm:h-7 w-auto max-w-[140px] object-contain" />
+            <img src="/logo-hori.png" alt="Worship+" className="h-6 sm:h-7 w-auto max-w-[140px] object-contain" />
           </button>
         </div>
         <div className="flex items-center gap-2 shrink-0">
