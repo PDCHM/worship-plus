@@ -110,16 +110,20 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center px-6 py-12 bg-gradient-to-b from-slate-50 via-white to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 text-slate-900 dark:text-slate-100">
       <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <div className="inline-flex w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 items-center justify-center text-white font-bold text-lg shadow-lg shadow-indigo-500/30 mb-4">
-            W<span className="text-blue-200">+</span>
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight mb-1">
-            Worship<span className="text-blue-500">+</span>
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Your praise and worship companion
-          </p>
+        <div className="flex flex-col items-center mb-8">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo-icon.jpg"
+            alt="Worship+"
+            style={{ width: 80, height: 80, borderRadius: 16, objectFit: "cover" }}
+            className="mb-4 shadow-lg shadow-indigo-500/20"
+          />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo-hori.jpg"
+            alt="Worship+"
+            style={{ height: 40, objectFit: "contain" }}
+          />
         </div>
 
         {sent ? (
