@@ -450,7 +450,21 @@ export default function Home() {
             showToast("Payment succeeded, but updating your plan failed: " + error.message);
             return;
           }
-          setProfile((prev) => (prev ? { ...prev, plan } : prev));
+          // Re-read after the write so local state is authoritative: the initial
+          // profile load may have read the pre-checkout "free" and could resolve
+          // after this handler, clobbering an optimistic update. Building plan in
+          // unconditionally (not `prev ? … : prev`) also covers the case where the
+          // profile hasn't loaded yet.
+          let { data: fresh, error: readErr } = await supabase
+            .from("profiles").select(PROFILE_COLS).eq("id", user.id).maybeSingle();
+          if (readErr && /plan|stripe_customer_id|trial_ends_at|plan_expires_at|column|42703/i.test(readErr.message || "")) {
+            ({ data: fresh } = await supabase.from("profiles").select(PROFILE_COLS_BASE).eq("id", user.id).maybeSingle());
+          }
+          const freshRow = fresh as Profile | null;
+          setProfile((prev) => {
+            const base = freshRow ?? prev;
+            return base ? { ...base, plan: (freshRow?.plan as Plan | undefined) ?? plan } : prev;
+          });
           showToast(`Welcome to Worship+ ${PLANS[plan].name}! Your 14-day trial has started.`);
         })();
       } else {
@@ -2070,7 +2084,7 @@ function TopNav({
               <div className="min-h-[48px] px-3 rounded-lg flex items-center gap-3 text-sm text-slate-700 dark:text-slate-200">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
                 <span className="flex-1">Subscription</span>
-                <span className="text-xs font-medium text-indigo-500 dark:text-indigo-400">Free</span>
+                <span className="text-xs font-medium text-indigo-500 dark:text-indigo-400">{PLANS[(profile?.plan as Plan) ?? "free"].name}</span>
               </div>
               <button type="button" onClick={() => { setMenuOpen(false); onSignOut(); }}
                 className="w-full min-h-[48px] px-3 rounded-lg flex items-center gap-3 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors">
