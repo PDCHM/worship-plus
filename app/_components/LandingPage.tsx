@@ -287,7 +287,8 @@ export default function LandingPage() {
 
       <footer className="border-t border-slate-100 py-10">
         <div className="max-w-6xl mx-auto px-5 sm:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <Wordmark />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/WorplusLogo-ICON_LOGO_hori.png" alt="Worship+" className="h-9 sm:h-10 w-auto object-contain" />
           <p className="text-sm text-slate-400">Copyright © 2026 Worship+</p>
         </div>
       </footer>
