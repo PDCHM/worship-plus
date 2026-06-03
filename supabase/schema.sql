@@ -67,11 +67,17 @@ create table if not exists public.chords (
   -- and persists it on the next save. position_px is kept in sync for the
   -- print/export/serialize paths, which still render off character positions.
   word_index  integer,
+  -- Character offset of the chord within its word (Stage A of position-anchored
+  -- chords). 0 = at the word's first char; >0 lets multiple chords sit on one
+  -- word / land in the trailing gap. Existing rows default to 0 (= word start),
+  -- so behaviour is unchanged until the editor/renderer start using it.
+  "offset"    integer not null default 0,
   created_at  timestamptz not null default now()
 );
 -- Backfill the column on existing installs (create table above is a no-op when
 -- the table already exists).
 alter table public.chords add column if not exists word_index integer;
+alter table public.chords add column if not exists "offset" integer not null default 0;
 
 create table if not exists public.folders (
   id          uuid primary key default gen_random_uuid(),
@@ -958,7 +964,7 @@ begin
                 jsonb_build_object(
                   'id', ln.id, 'lyric', ln.lyric, 'position', ln.position,
                   'chords', coalesce((
-                    select jsonb_agg(jsonb_build_object('id', ch.id, 'chord_name', ch.chord_name, 'position_px', ch.position_px, 'word_index', ch.word_index) order by ch.position_px)
+                    select jsonb_agg(jsonb_build_object('id', ch.id, 'chord_name', ch.chord_name, 'position_px', ch.position_px, 'word_index', ch.word_index, 'offset', ch."offset") order by ch.word_index, ch."offset")
                     from public.chords ch where ch.line_id = ln.id
                   ), '[]'::jsonb)
                 ) order by ln.position
@@ -981,7 +987,8 @@ grant execute on function public.get_song_content(uuid) to authenticated;
 -- it MUST gate on can_write_song() — otherwise any authenticated user could
 -- overwrite any song's content by passing its id (RLS is bypassed in DEFINER).
 -- p_sections shape: [{id,label,type,position,lines:[{id,section_id,lyric,
--- position,chords:[{id,line_id,chord_name,position_px,word_index}]}]}]
+-- position,chords:[{id,line_id,chord_name,position_px,word_index,offset}]}]}]
+-- offset is optional in the payload; missing → 0 (backward-compatible).
 -- ============================================================
 create or replace function public.save_song_content(p_song_id uuid, p_sections jsonb)
 returns void language plpgsql security definer set search_path = public
@@ -1001,8 +1008,8 @@ begin
   select (l->>'id')::uuid, (l->>'section_id')::uuid, l->>'lyric', (l->>'position')::int
   from jsonb_array_elements(p_sections) s, jsonb_array_elements(s->'lines') l;
 
-  insert into public.chords (id, line_id, chord_name, position_px, word_index)
-  select (c->>'id')::uuid, (c->>'line_id')::uuid, c->>'chord_name', (c->>'position_px')::numeric, (c->>'word_index')::int
+  insert into public.chords (id, line_id, chord_name, position_px, word_index, "offset")
+  select (c->>'id')::uuid, (c->>'line_id')::uuid, c->>'chord_name', (c->>'position_px')::numeric, (c->>'word_index')::int, coalesce((c->>'offset')::int, 0)
   from jsonb_array_elements(p_sections) s, jsonb_array_elements(s->'lines') l, jsonb_array_elements(l->'chords') c;
 end;
 $$;

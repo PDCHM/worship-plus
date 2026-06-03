@@ -129,6 +129,7 @@ type SongRow = {
         chord_name: string;
         position_px: number;
         word_index?: number | null;
+        offset?: number | null;
       }> | null;
     }> | null;
   }> | null;
@@ -160,6 +161,7 @@ function sectionRowsToSections(rows: SectionRow[]): Song["sections"] {
               pos: c.position_px,
               chord: c.chord_name,
               wordIndex: c.word_index ?? null,
+              offset: c.offset ?? 0,
             })),
         })),
     }));
@@ -258,12 +260,14 @@ async function writeSongToDb(supabase: SupabaseClient, song: Song, userId: strin
         // past the actual words (chord misalignment).
         const wordIndex = chord.wordIndex ?? findNearestWordIndex(chord.pos, line.lyric);
         if (lineHasWords && wordIndex >= wordCount) return [];
+        const offset = chord.offset ?? 0;
         return [{
           id: chord.id,
           line_id: line.id,
           chord_name: chord.chord,
-          position_px: lineHasWords ? wordStartOffset(line.lyric, wordIndex) : chord.pos,
+          position_px: lineHasWords ? wordStartOffset(line.lyric, wordIndex) + offset : chord.pos,
           word_index: wordIndex,
+          offset,
         }];
       });
       return { id: line.id, section_id: section.id, lyric: line.lyric, position: lIdx, chords };
@@ -303,7 +307,7 @@ async function writeSongToDb(supabase: SupabaseClient, song: Song, userId: strin
 async function writeSongContentLegacy(
   supabase: SupabaseClient,
   songId: string,
-  payload: Array<{ id: string; label: string; type: string; position: number; lines: Array<{ id: string; section_id: string; lyric: string; position: number; chords: Array<{ id: string; line_id: string; chord_name: string; position_px: number; word_index: number }> }> }>,
+  payload: Array<{ id: string; label: string; type: string; position: number; lines: Array<{ id: string; section_id: string; lyric: string; position: number; chords: Array<{ id: string; line_id: string; chord_name: string; position_px: number; word_index: number; offset: number }> }> }>,
 ): Promise<SaveResult> {
   const { error: delError } = await supabase.from("sections").delete().eq("song_id", songId);
   if (delError) { logErr("legacy save: delete sections", delError); return { ok: false, message: delError.message }; }

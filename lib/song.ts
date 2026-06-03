@@ -90,7 +90,9 @@ const SECTION_KEYWORD =
 // which still render off character positions. `wordIndex` may be null on
 // chords saved before the word-block model — callers derive it from `pos` via
 // effectiveWordIndex() until the next save persists it.
-export type Chord = { id: string; pos: number; chord: string; wordIndex?: number | null };
+// `offset` = character offset of the chord within its word (Stage A: stored but
+// not yet used by the editor/renderer). Missing is treated as 0 (= word start).
+export type Chord = { id: string; pos: number; chord: string; wordIndex?: number | null; offset?: number };
 export type Line = { id: string; lyric: string; chords: Chord[] };
 export type Section = { id: string; label: string; lines: Line[] };
 export type Song = {
