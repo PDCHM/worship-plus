@@ -1203,11 +1203,18 @@ export default function SongEditor({
       const startY = e.clientY;
       chordDraggedRef.current = false;
       let moved = false;
+      const pointerId = e.pointerId;
       const onMove = (ev: PointerEvent) => {
         if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) > 4) {
           moved = true;
           chordDraggedRef.current = true;
           setDraggingId(chordId);
+          // Capture the pointer on a STABLE element (the sections container) so
+          // the gesture survives the dragged chord's DOM node remounting when it
+          // re-anchors to a different word. Without this, touch loses its
+          // implicit pointer capture on remount and fires pointercancel,
+          // killing the drag after the first cross-word move (mouse is immune).
+          try { sectionsRef.current?.setPointerCapture(pointerId); } catch {}
         }
         if (!moved) return;
         const units = Array.from(
@@ -1244,10 +1251,13 @@ export default function SongEditor({
       const onUp = () => {
         document.removeEventListener("pointermove", onMove);
         document.removeEventListener("pointerup", onUp);
+        document.removeEventListener("pointercancel", onUp);
+        try { sectionsRef.current?.releasePointerCapture(pointerId); } catch {}
         setDraggingId(null);
       };
       document.addEventListener("pointermove", onMove);
       document.addEventListener("pointerup", onUp);
+      document.addEventListener("pointercancel", onUp);
     };
 
   const deleteChord = (chordId: string) => {
