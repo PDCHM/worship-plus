@@ -83,13 +83,14 @@ function extractRtf(raw: string): string {
     .trim();
 }
 
-// SongBook Pro (.sbp) — XML-based. Strip tags to recover the lyric/chord text.
-function extractSbp(raw: string): string {
-  if (!raw.includes("<")) return raw.trim();
-  return decodeXml(raw.replace(/<[^>]+>/g, "\n"))
-    .replace(/[ \t]+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+// SongBook Pro (.sbp) — a ZIP archive containing dataFile.txt (a version line
+// then a JSON object) + dataFile.hash (ignored). Unzip and return the raw
+// dataFile.txt as UTF-8; the client's parseSbp parses the JSON + mixed content.
+async function extractSbp(buf: ArrayBuffer): Promise<string> {
+  const zip = await JSZip.loadAsync(buf);
+  const data = zip.file("dataFile.txt");
+  if (!data) throw new Error("Not a valid .sbp (missing dataFile.txt)");
+  return data.async("string");
 }
 
 export async function POST(request: Request) {
@@ -112,7 +113,7 @@ export async function POST(request: Request) {
     if (ext === "docx") text = await extractDocx(await file.arrayBuffer());
     else if (ext === "pptx") text = await extractPptx(await file.arrayBuffer());
     else if (ext === "pdf") text = await extractPdf(await file.arrayBuffer());
-    else if (ext === "sbp") text = extractSbp(await file.text());
+    else if (ext === "sbp") text = await extractSbp(await file.arrayBuffer());
     else if (ext === "rtf") text = extractRtf(await file.text());
     else if (ext === "txt" || ext === "worship") text = await file.text();
     else return NextResponse.json({ error: `Unsupported file type: .${ext}` }, { status: 415 });

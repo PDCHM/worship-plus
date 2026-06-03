@@ -823,6 +823,112 @@ export function parseSongText(text: string): Song {
   };
 }
 
+// ─── SongBook Pro (.sbp) ─────────────────────────────────────────────────────
+// An .sbp is a ZIP; the extract-text route unzips it and hands us the raw
+// dataFile.txt — a version line ("1.0") then a JSON object
+// { songs: [{ content, name, author, key: 0–11, Capo, ... }], sets, folders }.
+// Each song's `content` mixes {c: Label} directives, inline ChordPro lines, and
+// chord-above-lyric pairs. Metadata comes from the JSON; the content is parsed
+// line-by-line (reusing parseChordProLine / chordPositionsFromLine).
+
+// SongBook Pro encodes key as an int 0–11 = C..B (chromatic, sharps).
+const SBP_KEY_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+// A leading "flow"/structure line like "V, C, V, C, Tag x 2" — comma-separated
+// section abbreviations. Conservative: every comma token must be a section-ish
+// abbreviation, so real lyric lines are never mistaken for it.
+function looksLikeSbpFlowLine(t: string): boolean {
+  if (!t.includes(",")) return false;
+  const tokens = t.split(",").map((s) => s.trim().toLowerCase().replace(/\s*x\s*\d+$/, "").trim()).filter(Boolean);
+  if (!tokens.length) return false;
+  const ABBR = /^(v|c|b|t|tag|intro|outro|pre|pre-?chorus|prechorus|verse|chorus|bridge|interlude|ending|refrain|instrumental)\s*\d*$/;
+  return tokens.every((tok) => ABBR.test(tok));
+}
+
+function parseSbpContent(content: string, title: string): Section[] {
+  // Normalize chord symbols so they validate (♯→#, ♭→b).
+  const rawLines = content.replace(/♯/g, "#").replace(/♭/g, "b").replace(/\r/g, "").split("\n");
+  const sections: Section[] = [];
+  let current: Section | null = null;
+  const ensure = () => {
+    if (!current) { current = { id: uid(), label: "Verse 1", lines: [] }; sections.push(current); }
+    return current;
+  };
+  let titleSkipped = false;
+  for (let i = 0; i < rawLines.length; i++) {
+    const l = rawLines[i];
+    const t = l.trim();
+    // {c: Label} → new section.
+    const dir = t.match(/^\{c:\s*(.*)\}$/i);
+    if (dir) {
+      current = { id: uid(), label: dir[1].trim() || "Section", lines: [] };
+      sections.push(current);
+      continue;
+    }
+    if (t === "") continue;
+    // Top-of-song noise (before any section): the title line and the flow line.
+    if (current === null) {
+      if (!titleSkipped && title.trim() && t === title.trim()) { titleSkipped = true; continue; }
+      if (looksLikeSbpFlowLine(t)) continue;
+    }
+    // Inline ChordPro line ("[G]Great is the [C/G]Lord").
+    if (/\[[^\]]+\]/.test(l)) { ensure().lines.push(parseChordProLine(l)); continue; }
+    // Chord-only line followed by a lyric line → chord-above pair.
+    if (isChordLine(l) && i + 1 < rawLines.length && rawLines[i + 1].trim()) {
+      const next = rawLines[i + 1];
+      ensure().lines.push({ id: uid(), lyric: next, chords: chordPositionsFromLine(l, next.length) });
+      i++;
+      continue;
+    }
+    // Plain lyric line.
+    ensure().lines.push({ id: uid(), lyric: l, chords: [] });
+  }
+  if (!sections.length) sections.push({ id: uid(), label: "Verse 1", lines: [] });
+  return sections;
+}
+
+// Parse the unzipped dataFile.txt of an .sbp into a Song (first song in songs[]).
+export function parseSbp(dataFileText: string): Song {
+  const clean = dataFileText.replace(/^﻿/, "");
+  // Skip the leading version line by slicing from the first "{" to the last "}".
+  const start = clean.indexOf("{");
+  const end = clean.lastIndexOf("}");
+  let parsed: unknown = null;
+  if (start !== -1 && end > start) {
+    try { parsed = JSON.parse(clean.slice(start, end + 1)); } catch { parsed = null; }
+  }
+  const songs = parsed && typeof parsed === "object" ? (parsed as { songs?: unknown }).songs : null;
+  const first =
+    Array.isArray(songs) && songs.length && songs[0] && typeof songs[0] === "object"
+      ? (songs[0] as Record<string, unknown>)
+      : null;
+  // Unexpected shape → fall back to the generic parser so the user at least gets
+  // the lyrics rather than an error.
+  if (!first) return parseSongText(dataFileText);
+
+  const title = typeof first.name === "string" && first.name.trim() ? first.name.trim() : "Imported Song";
+  const artist = typeof first.author === "string" ? first.author.trim() : "";
+  const keyInt = Number(first.key);
+  const key = Number.isInteger(keyInt) && keyInt >= 0 && keyInt <= 11 ? SBP_KEY_NAMES[keyInt] : "C";
+  const capoNum = Number(first.Capo);
+  const capo = Number.isInteger(capoNum) && capoNum > 0 ? capoNum : null;
+  const content = typeof first.content === "string" ? first.content : "";
+
+  const now = Date.now();
+  return {
+    id: songUid(),
+    title,
+    artist,
+    key,
+    capo,
+    bpm: null,
+    sections: parseSbpContent(content, title),
+    favorite: false,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 export function makeNewSong(): Song {
   const now = Date.now();
   return {

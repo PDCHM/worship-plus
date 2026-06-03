@@ -32,6 +32,7 @@ import {
   wordStartOffset,
   mergeSectionStyles,
   parseSongText,
+  parseSbp,
   uid,
   type Chord,
   type SectionStyles,
@@ -1468,7 +1469,9 @@ export default function Home() {
       return;
     }
     try {
-      const parsed = parseSongText(text);
+      // .sbp arrives as its unzipped dataFile.txt (version line + JSON); parse
+      // it structurally. Everything else is chord-chart text.
+      const parsed = ext === "sbp" ? parseSbp(text) : parseSongText(text);
       hydratedIdsRef.current.add(parsed.id);
       setSongs((prev) => [parsed, ...prev]);
       navigateTo({ kind: "editor", songId: parsed.id });
