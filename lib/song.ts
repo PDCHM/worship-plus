@@ -570,6 +570,34 @@ export function wordStartOffset(lyric: string, wordIndex: number): number {
   return tokens[i].start;
 }
 
+// Render a line's chords as a monospace chord-over-lyric row. Each chord's
+// character column is wordStartOffset(lyric, wordIndex) + (offset ?? 0) — so
+// multiple chords on one word sit at their own sub-word columns — falling back
+// to `pos` for chord-only lines and pre-word-block rows (wordIndex null).
+// Chords are ordered by column and never overwrite each other (≥1 space gap).
+// `pxPerChar` scales char columns to px-derived positions; pass 1 (default)
+// when `pos`/columns are already character-based.
+// Backward-compatible: for offset-0 word-block data, wordStartOffset+offset
+// equals the saved `pos`, so output is identical to the previous per-file impl.
+export function buildChordLine(chords: Chord[], lyric: string, pxPerChar = 1): string {
+  if (!chords.length) return "";
+  const hasWords = tokenizeWords(lyric).length > 0;
+  const placed = chords
+    .map((c) => ({
+      chord: c.chord,
+      col: hasWords && c.wordIndex != null
+        ? wordStartOffset(lyric, c.wordIndex) + (c.offset ?? 0)
+        : c.pos,
+    }))
+    .sort((a, b) => a.col - b.col);
+  let result = "";
+  for (const p of placed) {
+    const target = Math.max(result.length + 1, Math.round(p.col / pxPerChar));
+    result = result.padEnd(target) + p.chord;
+  }
+  return result;
+}
+
 export function cloneLine(line: Line): Line {
   return {
     id: uid(),

@@ -23,6 +23,7 @@ import {
   DEFAULT_SECTION_COLORS_DARK,
   DEFAULT_SECTION_COLORS_LIGHT,
   DEFAULT_SECTION_STYLES,
+  buildChordLine,
   cloneSection,
   findNearestWordIndex,
   getSectionColorKey,
@@ -71,19 +72,6 @@ function downloadBlob(blob: Blob, filename: string) {
   a.href = url; a.download = filename;
   document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
-}
-
-// Render a chord row as a monospace chord-over-lyric line (mirrors the song
-// Word/text export): each chord padded to its pixel position / chars-per-px.
-function buildChordLine(chords: Chord[], pxPerChar: number): string {
-  if (!chords.length) return "";
-  const sorted = [...chords].sort((a, b) => a.pos - b.pos);
-  let result = "";
-  for (const c of sorted) {
-    const target = Math.max(result.length + 1, Math.round(c.pos / pxPerChar));
-    result = result.padEnd(target) + c.chord;
-  }
-  return result;
 }
 
 type LibraryView = "grid" | "list";
@@ -1109,7 +1097,7 @@ export default function Home() {
           if (line.chords.length > 0) {
             children.push(new Paragraph({
               children: [new TextRun({
-                text: buildChordLine(line.chords, pxPerChar),
+                text: buildChordLine(line.chords, line.lyric, pxPerChar),
                 font: "Courier New", bold: true, size: 18, color: "1D4ED8",
               })],
             }));

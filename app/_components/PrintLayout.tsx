@@ -2,24 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { getEffectiveStyle, getSectionColorKey, getSectionStyleKey, type Chord, type SectionStyles, type Song, type Settings } from "@/lib/song";
+import { buildChordLine, getEffectiveStyle, getSectionColorKey, getSectionStyleKey, type SectionStyles, type Song, type Settings } from "@/lib/song";
 
 const FONT_CSS: Record<string, string> = {
   system: "ui-sans-serif, system-ui, -apple-system, sans-serif",
   mono:   "ui-monospace, Menlo, Consolas, 'Courier New', monospace",
   serif:  "ui-serif, Georgia, Cambria, 'Times New Roman', serif",
 };
-
-function buildChordLine(chords: Chord[]): string {
-  if (!chords.length) return "";
-  const sorted = [...chords].sort((a, b) => a.pos - b.pos);
-  let result = "";
-  for (const c of sorted) {
-    const target = Math.max(result.length + 1, Math.round(c.pos));
-    result = result.padEnd(target) + c.chord;
-  }
-  return result;
-}
 
 const MONO_FAMILY = "ui-monospace, Menlo, Consolas, 'Courier New', monospace";
 
@@ -143,7 +132,7 @@ export function SongSheet({ song, settings, sectionStyles }: Props) {
                         overflow: "hidden",
                         width: "100%",
                       }}>
-                        {buildChordLine(line.chords)}
+                        {buildChordLine(line.chords, line.lyric)}
                       </pre>
                     )}
                     {/* Lyric line — forced monospace so chord columns align */}

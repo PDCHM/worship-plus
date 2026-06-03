@@ -2006,7 +2006,12 @@ export default function SongEditor({
                         key: `w${i}`,
                         dragIndex: i,
                         text: t.text,
-                        chords: chordsByWord.get(i) ?? [],
+                        // Order chords on the same word by sub-word offset (then
+                        // pos) so multiple chords render left-to-right. Single /
+                        // offset-0 chords are unaffected.
+                        chords: (chordsByWord.get(i) ?? [])
+                          .slice()
+                          .sort((a, b) => (a.offset ?? 0) - (b.offset ?? 0) || a.pos - b.pos),
                         tappable: true,
                       }));
                     } else {
