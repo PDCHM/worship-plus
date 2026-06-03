@@ -84,11 +84,53 @@ async function extractPptx(buf: ArrayBuffer): Promise<string> {
   return slides.filter((s) => s.trim()).join("\n\n");
 }
 
+// Extract PDF text PRESERVING line structure. unpdf's high-level extractText
+// flattens everything into one paragraph (chords, lyrics, sections merged), so
+// instead we read per-glyph text items and reconstruct lines from their
+// positions: group items by y (each visual row = one line) and map x to
+// character columns using the page's left margin + an estimated char width, so
+// a chord row's chords land roughly above the words beneath them.
 async function extractPdf(buf: ArrayBuffer): Promise<string> {
-  const { extractText, getDocumentProxy } = await import("unpdf");
+  const { getDocumentProxy } = await import("unpdf");
   const pdf = await getDocumentProxy(new Uint8Array(buf));
-  const { text } = await extractText(pdf, { mergePages: true });
-  return (Array.isArray(text) ? text.join("\n\n") : text).trim();
+  type Tok = { x: number; y: number; str: string; w: number };
+  const pages: string[] = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+    const items: Tok[] = (content.items as Array<{ str?: string; transform?: number[]; width?: number }>)
+      .filter((it) => typeof it.str === "string" && it.str.trim() !== "" && Array.isArray(it.transform))
+      .map((it) => ({ x: it.transform![4], y: it.transform![5], str: it.str as string, w: it.width ?? 0 }));
+    if (!items.length) continue;
+
+    const originX = Math.min(...items.map((i) => i.x));
+    const samples = items.filter((i) => i.w > 0 && i.str.length > 0);
+    const charWidth = samples.length
+      ? samples.reduce((s, i) => s + i.w / i.str.length, 0) / samples.length
+      : 6;
+
+    // Group into lines by y-position (top-to-bottom = descending y).
+    const sorted = [...items].sort((a, b) => b.y - a.y || a.x - b.x);
+    const lines: { y: number; parts: Tok[] }[] = [];
+    for (const it of sorted) {
+      const last = lines[lines.length - 1];
+      if (last && Math.abs(it.y - last.y) <= 3) last.parts.push(it);
+      else lines.push({ y: it.y, parts: [it] });
+    }
+
+    const lineStrs = lines.map(({ parts }) => {
+      parts.sort((a, b) => a.x - b.x);
+      let out = "";
+      for (const it of parts) {
+        const col = Math.max(0, Math.round((it.x - originX) / charWidth));
+        if (col > out.length) out = out.padEnd(col);
+        out += it.str;
+      }
+      return out.replace(/\s+$/, "");
+    });
+    pages.push(lineStrs.join("\n"));
+  }
+  return pages.join("\n\n").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 // RTF — strip control words/groups to recover plain text.

@@ -735,6 +735,7 @@ export function parseBareSectionLabel(line: string): string | null {
 export function parseSongText(text: string): Song {
   const rawLines = text.replace(/\r/g, "").split("\n");
   let title = "Imported Song";
+  let titleTaken = false;
   let artist = "";
   let key = "C";
   let capo: number | null = null;
@@ -795,6 +796,16 @@ export function parseSongText(text: string): Song {
     const bareLabel = detectSectionLabel(l);
     if (bareLabel) {
       startNew(bareLabel);
+      continue;
+    }
+
+    // Title: the first leading non-empty line that isn't a directive, section
+    // marker, or chord row is the song title (when none came from {title:}).
+    // Only at the very top — before any section/content — so it never eats a
+    // lyric mid-song. Falls back to "Imported Song" if no such line exists.
+    if (!titleTaken && title === "Imported Song" && sections.length === 0 && l.trim() !== "" && !isChordLine(l)) {
+      title = l.trim();
+      titleTaken = true;
       continue;
     }
 
