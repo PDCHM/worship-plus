@@ -979,6 +979,18 @@ function ItemCard({
   const [renaming, setRenaming] = useState(false);
   const canMove = !!onMoveToTeam && item.type === "setlist";
   const [nameVal, setNameVal] = useState(item.name);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Close this card's menu on outside-click / Esc. Clicking another card's ⋯
+  // counts as outside, so only one menu is ever open (no stacking).
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => { if (rootRef.current && !rootRef.current.contains(e.target as Node)) { setMenuOpen(false); setMoveOpen(false); } };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setMenuOpen(false); setMoveOpen(false); } };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [menuOpen]);
 
   const commit = () => {
     if (nameVal.trim() && nameVal.trim() !== item.name) onRename(nameVal.trim());
@@ -986,7 +998,7 @@ function ItemCard({
   };
 
   return (
-    <div className="relative group rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
+    <div ref={rootRef} className="relative group rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
       <div className="cursor-pointer" onClick={!renaming ? onClick : undefined}>
         <div className={`w-8 h-8 rounded-lg mb-3 flex items-center justify-center ${
           item.type === "setlist"
@@ -1095,6 +1107,18 @@ function ItemRow({
   const [renaming, setRenaming] = useState(false);
   const [nameVal, setNameVal] = useState(item.name);
   const canMove = !!onMoveToTeam && item.type === "setlist";
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  // Close this row's menu on outside-click / Esc. Clicking another row's ⋯
+  // counts as outside, so only one menu is ever open (no stacking).
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => { if (rootRef.current && !rootRef.current.contains(e.target as Node)) { setMenuOpen(false); setMoveOpen(false); } };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setMenuOpen(false); setMoveOpen(false); } };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [menuOpen]);
 
   const commit = () => {
     if (nameVal.trim() && nameVal.trim() !== item.name) onRename(nameVal.trim());
@@ -1102,7 +1126,7 @@ function ItemRow({
   };
 
   return (
-    <div className={"relative flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors " + (isLast ? "" : "border-b border-slate-100 dark:border-slate-800")}>
+    <div ref={rootRef} className={"relative flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors " + (isLast ? "" : "border-b border-slate-100 dark:border-slate-800")}>
       <div className={"w-8 h-8 rounded-lg flex items-center justify-center shrink-0 " + (item.type === "setlist" ? "bg-violet-50 dark:bg-violet-950/60 text-violet-500 dark:text-violet-400" : "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-500 dark:text-indigo-400")}>
         {item.type === "setlist" ? <ListIconSm /> : <FolderIconSm />}
       </div>
