@@ -1551,16 +1551,20 @@ export default function SongEditor({
   };
 
   const colGap = `${colGapPx}px`;
+  // Multi-column flow (not a per-row grid) so sections pack continuously down
+  // each column — a short INTRO doesn't leave a gap; the next section flows up
+  // right under it. Reading order is preserved: fill column 1 top-to-bottom,
+  // then 2, then 3.
   const sectionsContainerStyle: React.CSSProperties = columnView
     ? {
-        display: "grid",
-        gridTemplateColumns: `repeat(${numCols}, minmax(0, 1fr))`,
-        gap: colGap,
-        alignItems: "start",
+        columnCount: numCols,
+        columnGap: colGap,
       }
     : {};
   // Word-block lines wrap within the column on their own, so chords can never
   // be clipped regardless of column width — no overflow clipping needed.
+  // break-inside: avoid keeps a section whole within one column; marginBottom
+  // gives vertical separation between stacked sections.
   const sectionInColumnStyle: React.CSSProperties = columnView
     ? {
         minWidth: 0,
@@ -1568,6 +1572,9 @@ export default function SongEditor({
         paddingRight: "0.4rem",
         wordBreak: "normal",
         overflowWrap: "break-word",
+        breakInside: "avoid",
+        pageBreakInside: "avoid",
+        marginBottom: "1.5rem",
       }
     : {};
 

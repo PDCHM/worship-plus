@@ -74,12 +74,11 @@ export function SongSheet({ song, settings, sectionStyles }: Props) {
         </div>
       </div>
 
-      {/* ── Sections ── */}
+      {/* ── Sections — multi-column flow so sections pack continuously down each
+          column (no per-row gaps); each section avoids breaking across columns. ── */}
       <div style={cols > 1 ? {
-        display: "grid",
-        gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-        gap: cols === 3 ? "1.5rem" : "2rem",
-        alignItems: "start",
+        columnCount: cols,
+        columnGap: cols === 3 ? "1.5rem" : "2rem",
       } : {}}>
         {song.sections.map((section) => {
           const colorKey = getSectionColorKey(section.label);
