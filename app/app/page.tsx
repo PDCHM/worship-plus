@@ -1593,10 +1593,25 @@ export default function Home() {
     if (error) logErr("rename folder", error);
   };
 
-  const deleteFolder = (id: string): void => {
+  const deleteFolder = async (id: string): Promise<void> => {
+    // Snapshot for rollback if the DB delete fails.
+    const prevFolders = folders;
+    const prevFolderSongs = folderSongs;
     setFolders((prev) => prev.filter((f) => f.id !== id));
     setFolderSongs((prev) => prev.filter((fs) => fs.folderId !== id));
-    void supabase.from("folders").delete().eq("id", id);
+    // Must await: the Supabase query builder is a lazy thenable — it only
+    // sends the request when awaited/.then()'d. Fire-and-forget (`void …`)
+    // never executed the DELETE, so it silently didn't persist and the setlist
+    // reappeared on refresh. Child rows (folder_songs, setlist_events) are
+    // removed by ON DELETE CASCADE. (RLS folders_owner_all already allows this.)
+    const { error } = await supabase.from("folders").delete().eq("id", id);
+    if (error) {
+      logErr("delete folder", error);
+      showToast("Couldn't delete setlist: " + error.message);
+      // Restore so the UI reflects what's actually in the DB.
+      setFolders(prevFolders);
+      setFolderSongs(prevFolderSongs);
+    }
   };
 
   const addSongToFolder=async(folderId:string,songId:string):Promise<void>=>{
