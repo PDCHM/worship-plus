@@ -620,7 +620,7 @@ export default function SongEditor({
   const bubbles = useSongBubbles(song.id, currentUserId, bubbleAuthors, showToast);
   const [editingChord, setEditingChord] = useState<string | null>(null);
   // The word a not-yet-created chord is being typed onto (tap a word → input).
-  const [addingChord, setAddingChord] = useState<{ lineId: string; wordIndex: number } | null>(null);
+  const [addingChord, setAddingChord] = useState<{ lineId: string; wordIndex: number; offset: number } | null>(null);
   const [editingLine, setEditingLine] = useState<string | null>(null);
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -1136,16 +1136,37 @@ export default function SongEditor({
     update((s) => ({ ...s, capo: value }));
   };
 
-  // Attach a chord to a specific word, keeping the legacy char position in sync
-  // so print/export/serialize (which still read `pos`) stay correct in-memory.
-  const setChordWord = (lineId: string, chordId: string, wordIndex: number) => {
+  // Canonical chord order on a line: by word, then sub-word offset, then pos.
+  const sortChords = (chords: Chord[]): Chord[] =>
+    [...chords].sort(
+      (a, b) =>
+        (a.wordIndex ?? 0) - (b.wordIndex ?? 0) ||
+        (a.offset ?? 0) - (b.offset ?? 0) ||
+        a.pos - b.pos,
+    );
+
+  // Character offset of a pointer within a word element. Uses the word's own
+  // measured width / char count (works for any lyric font, not just monospace).
+  // Clamped to [0, wordLen]; offset === wordLen lands in the trailing gap.
+  const offsetWithinWord = (clientX: number, el: HTMLElement, wordLen: number): number => {
+    const r = el.getBoundingClientRect();
+    if (!r.width || wordLen <= 0) return 0;
+    return Math.max(0, Math.min(wordLen, Math.round((clientX - r.left) / (r.width / wordLen))));
+  };
+
+  // Attach a chord to a specific word + sub-word offset, keeping the legacy char
+  // position in sync so print/export/serialize (which still read `pos`) stay
+  // correct in-memory. Re-sorts the line by (wordIndex, offset).
+  const setChordWord = (lineId: string, chordId: string, wordIndex: number, offset = 0) => {
     update((s) =>
       mapLine(s, lineId, (line) => ({
         ...line,
-        chords: line.chords.map((c) =>
-          c.id !== chordId
-            ? c
-            : { ...c, wordIndex, pos: wordStartOffset(line.lyric, wordIndex) },
+        chords: sortChords(
+          line.chords.map((c) =>
+            c.id !== chordId
+              ? c
+              : { ...c, wordIndex, offset, pos: wordStartOffset(line.lyric, wordIndex) + offset },
+          ),
         ),
       })),
     );
@@ -1193,6 +1214,7 @@ export default function SongEditor({
           document.querySelectorAll<HTMLElement>(`[data-wu-line="${lineId}"]`),
         );
         let bestIdx: number | null = null;
+        let bestEl: HTMLElement | null = null;
         let bestDist = Infinity;
         for (const el of units) {
           const r = el.getBoundingClientRect();
@@ -1203,12 +1225,20 @@ export default function SongEditor({
           if (d < bestDist) {
             bestDist = d;
             const wi = Number(el.getAttribute("data-wu-index"));
-            bestIdx = Number.isNaN(wi) ? bestIdx : wi;
+            if (!Number.isNaN(wi)) { bestIdx = wi; bestEl = el; }
           }
         }
         if (bestIdx != null) {
-          if (chordOnly) reorderChordToSlot(lineId, chordId, bestIdx);
-          else setChordWord(lineId, chordId, bestIdx);
+          if (chordOnly) {
+            reorderChordToSlot(lineId, chordId, bestIdx);
+          } else {
+            // Sub-word offset from where in the target word the pointer dropped.
+            const wordEl = bestEl?.querySelector<HTMLElement>("[data-word-text]");
+            const offset = wordEl
+              ? offsetWithinWord(ev.clientX, wordEl, (wordEl.textContent ?? "").length)
+              : 0;
+            setChordWord(lineId, chordId, bestIdx, offset);
+          }
         }
       };
       const onUp = () => {
@@ -1264,15 +1294,22 @@ export default function SongEditor({
     }
     update((s) =>
       mapLine(s, lineId, (line) => {
-        const newCount = tokenizeWords(value).length;
+        const newTokens = tokenizeWords(value);
+        const newCount = newTokens.length;
         return {
           ...line,
           lyric: value,
-          chords: line.chords.map((c) => {
-            const oldWi = c.wordIndex ?? findNearestWordIndex(c.pos, line.lyric);
-            const wi = newCount > 0 ? Math.max(0, Math.min(newCount - 1, oldWi)) : 0;
-            return { ...c, wordIndex: wi, pos: wordStartOffset(value, wi) };
-          }),
+          chords: sortChords(
+            line.chords.map((c) => {
+              const oldWi = c.wordIndex ?? findNearestWordIndex(c.pos, line.lyric);
+              const wi = newCount > 0 ? Math.max(0, Math.min(newCount - 1, oldWi)) : 0;
+              // Clamp the sub-word offset to the (possibly shorter) word length so
+              // it stays valid; offset === wordLen sits at the trailing edge.
+              const wordLen = newTokens[wi]?.text.length ?? 0;
+              const offset = Math.max(0, Math.min(wordLen, c.offset ?? 0));
+              return { ...c, wordIndex: wi, offset, pos: wordStartOffset(value, wi) + offset };
+            }),
+          ),
         };
       }),
     );
@@ -1321,7 +1358,7 @@ export default function SongEditor({
   };
 
   // Create a chord on a word from the tap-a-word input. Empty input is a no-op.
-  const commitAddChord = (lineId: string, wordIndex: number, value: string) => {
+  const commitAddChord = (lineId: string, wordIndex: number, offset: number, value: string) => {
     setAddingChord(null);
     const trimmed = value.trim();
     if (!trimmed) return;
@@ -1329,26 +1366,28 @@ export default function SongEditor({
     update((s) =>
       mapLine(s, lineId, (line) => {
         // On chord-only lines a new chord is appended as its own slot; pos and
-        // wordIndex are a left-to-right ordinal. On lyric lines it anchors to
-        // the tapped word.
+        // wordIndex are a left-to-right ordinal (offset unused). On lyric lines
+        // it anchors to the tapped word at the tapped sub-word offset.
         const hasWords = tokenizeWords(line.lyric).length > 0;
         const wi = hasWords ? wordIndex : line.chords.length;
-        const pos = hasWords ? wordStartOffset(line.lyric, wordIndex) : line.chords.length;
+        const off = hasWords ? offset : 0;
+        const pos = hasWords ? wordStartOffset(line.lyric, wordIndex) + off : line.chords.length;
         return {
           ...line,
-          chords: [...line.chords, { id: newId, chord: trimmed, wordIndex: wi, pos }],
+          chords: sortChords([...line.chords, { id: newId, chord: trimmed, wordIndex: wi, offset: off, pos }]),
         };
       }),
     );
   };
 
   // Tap a word to start adding a chord above it (no chord exists yet until the
-  // input is committed with a non-empty value).
-  const startAddChord = (lineId: string, wordIndex: number) => {
+  // input is committed with a non-empty value). `offset` is the sub-word
+  // character position derived from where in the word the user tapped.
+  const startAddChord = (lineId: string, wordIndex: number, offset = 0) => {
     if (readOnly) return;
     setEditingChord(null);
     setEditingLine(null);
-    setAddingChord({ lineId, wordIndex });
+    setAddingChord({ lineId, wordIndex, offset });
   };
 
   const addLineToSection = (sectionId: string) => {
@@ -2143,17 +2182,18 @@ export default function SongEditor({
                                         {addingHere && (
                                           <ChordInput
                                             fontSize={chordFontSize}
-                                            onCommit={(v) => commitAddChord(line.id, u.dragIndex, v)}
+                                            onCommit={(v) => commitAddChord(line.id, u.dragIndex, addingChord?.offset ?? 0, v)}
                                             onCancel={() => setAddingChord(null)}
                                           />
                                         )}
                                       </span>
                                     )}
                                     <span
+                                      data-word-text="1"
                                       onClick={
                                         readOnly || !showChords || !u.tappable
                                           ? undefined
-                                          : () => startAddChord(line.id, u.dragIndex)
+                                          : (e) => startAddChord(line.id, u.dragIndex, offsetWithinWord(e.clientX, e.currentTarget as HTMLElement, u.text.length))
                                       }
                                       title={
                                         readOnly || !showChords || !u.tappable
@@ -2189,7 +2229,7 @@ export default function SongEditor({
                                     addingChord.wordIndex === addSlotIndex ? (
                                       <ChordInput
                                         fontSize={chordFontSize}
-                                        onCommit={(v) => commitAddChord(line.id, addSlotIndex, v)}
+                                        onCommit={(v) => commitAddChord(line.id, addSlotIndex, 0, v)}
                                         onCancel={() => setAddingChord(null)}
                                       />
                                     ) : (
