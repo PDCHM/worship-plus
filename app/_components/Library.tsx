@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Song } from "@/lib/song";
 import AddSongSheet from "@/app/_components/AddSongSheet";
+import ConfirmDialog from "@/app/_components/ConfirmDialog";
 
 type LibraryFilter = "all" | "favorites" | "recent";
 type LibraryView = "grid" | "list";
@@ -463,54 +464,13 @@ export default function Library({
       )}
 
       {confirmDelete && (
-        <div
-          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4"
-          onMouseDown={() => setConfirmDelete(null)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="confirm-delete-title"
-            onMouseDown={(e) => e.stopPropagation()}
-            className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden"
-          >
-            <div className="p-5">
-              <h3
-                id="confirm-delete-title"
-                className="text-lg font-bold tracking-tight mb-2"
-              >
-                Delete song?
-              </h3>
-              <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                Delete{" "}
-                <span className="font-semibold text-slate-900 dark:text-slate-100">
-                  &ldquo;{confirmDelete.title}&rdquo;
-                </span>
-                ? This cannot be undone.
-              </p>
-            </div>
-            <div className="px-5 pb-5 pt-1 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setConfirmDelete(null)}
-                className="h-10 px-4 rounded-lg text-sm font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                autoFocus
-                onClick={() => {
-                  onDelete(confirmDelete.songId);
-                  setConfirmDelete(null);
-                }}
-                className="h-10 px-4 rounded-lg text-sm font-medium bg-rose-600 hover:bg-rose-700 text-white transition-colors shadow-sm shadow-rose-600/30"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="Delete song?"
+          message={<>Delete <span className="font-semibold text-slate-700 dark:text-slate-200">&ldquo;{confirmDelete.title}&rdquo;</span>? This can&rsquo;t be undone.</>}
+          confirmLabel="Delete"
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={() => { onDelete(confirmDelete.songId); setConfirmDelete(null); }}
+        />
       )}
 
       {saveAsTarget && (
@@ -593,45 +553,14 @@ export default function Library({
 
       {/* ── Bulk delete confirm ── */}
       {bulkConfirm && (
-        <div
-          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4"
-          onMouseDown={() => !bulkBusy && setBulkConfirm(false)}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            onMouseDown={(e) => e.stopPropagation()}
-            className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden"
-          >
-            <div className="p-5">
-              <h3 className="text-lg font-bold tracking-tight mb-2">
-                Delete {selected.size} {selected.size === 1 ? "song" : "songs"}?
-              </h3>
-              <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                This cannot be undone.
-              </p>
-            </div>
-            <div className="px-5 pb-5 pt-1 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                disabled={bulkBusy}
-                onClick={() => setBulkConfirm(false)}
-                className="h-10 px-4 rounded-lg text-sm font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={bulkBusy}
-                onClick={doBulkDelete}
-                className="h-10 px-4 rounded-lg text-sm font-medium bg-rose-600 hover:bg-rose-700 text-white transition-colors shadow-sm shadow-rose-600/30 disabled:opacity-60 flex items-center gap-2"
-              >
-                {bulkBusy && <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>}
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title={`Delete ${selected.size} ${selected.size === 1 ? "song" : "songs"}?`}
+          message="This can't be undone."
+          confirmLabel="Delete"
+          busy={bulkBusy}
+          onCancel={() => { if (!bulkBusy) setBulkConfirm(false); }}
+          onConfirm={() => { if (!bulkBusy) void doBulkDelete(); }}
+        />
       )}
 
       {/* ── Add to setlist sheet ── */}

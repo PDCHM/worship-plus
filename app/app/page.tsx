@@ -363,7 +363,7 @@ export default function Home() {
     return { kind: "library", filter: "all" };
   });
   const [loaded, setLoaded] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; action?: { label: string; onClick: () => void } } | null>(null);
   const [isDark, setIsDark] = useState(false);
   const [pasteOpen, setPasteOpen] = useState(false);
   // Paste modal opened from "AI Chords": after the lyrics-only song is created,
@@ -824,9 +824,55 @@ export default function Home() {
     document.documentElement.classList.toggle("dark", settings.darkMode);
   }, [settings.darkMode]);
 
+  const toastTimer = useRef<number | null>(null);
+  const undoTimer = useRef<number | null>(null);
+  const undoCommit = useRef<null | (() => void | Promise<void>)>(null);
+
+  const clearToastTimer = () => {
+    if (toastTimer.current !== null) { window.clearTimeout(toastTimer.current); toastTimer.current = null; }
+  };
+  // If an Undo is still pending when something else happens, commit it now so we
+  // never silently drop the deferred delete.
+  const flushPendingUndo = () => {
+    if (undoTimer.current !== null) { window.clearTimeout(undoTimer.current); undoTimer.current = null; }
+    const commit = undoCommit.current;
+    undoCommit.current = null;
+    if (commit) void commit();
+  };
+
   const showToast = (msg: string) => {
-    setToast(msg);
-    window.setTimeout(() => setToast(null), 2400);
+    flushPendingUndo();
+    clearToastTimer();
+    setToast({ message: msg });
+    toastTimer.current = window.setTimeout(() => setToast(null), 2400);
+  };
+
+  // Optimistic-remove + Undo toast for lighter destructive actions. `restore`
+  // puts local state back; `commit` performs the actual DB write. The commit is
+  // deferred until the toast expires, so Undo just cancels it — no re-insert.
+  const showUndoToast = (message: string, restore: () => void, commit: () => void | Promise<void>) => {
+    flushPendingUndo();
+    clearToastTimer();
+    undoCommit.current = commit;
+    setToast({
+      message,
+      action: {
+        label: "Undo",
+        onClick: () => {
+          if (undoTimer.current !== null) { window.clearTimeout(undoTimer.current); undoTimer.current = null; }
+          undoCommit.current = null;
+          restore();
+          setToast(null);
+        },
+      },
+    });
+    undoTimer.current = window.setTimeout(() => {
+      undoTimer.current = null;
+      const c = undoCommit.current;
+      undoCommit.current = null;
+      if (c) void c();
+      setToast(null);
+    }, 5000);
   };
 
   const upsertSong = (updated: Song) => {
@@ -1521,16 +1567,18 @@ export default function Home() {
     }]);
   };
 
-  const deleteSetlistEvent = async (id: string): Promise<void> => {
+  const deleteSetlistEvent = (id: string): void => {
     const prev = setlistEvents;
+    const ev = setlistEvents.find((e) => e.id === id);
     setSetlistEvents((p) => p.filter((e) => e.id !== id));
-    // Must await — the builder only fires the request when awaited/.then()'d.
-    const { error } = await supabase.from("setlist_events").delete().eq("id", id);
-    if (error) {
-      logErr("delete setlist event", error);
-      showToast("Couldn't delete event: " + error.message);
-      setSetlistEvents(prev);
-    }
+    showUndoToast(
+      ev ? `Removed "${ev.label}"` : "Event removed",
+      () => setSetlistEvents(prev),
+      async () => {
+        const { error } = await supabase.from("setlist_events").delete().eq("id", id);
+        if (error) { logErr("delete setlist event", error); showToast("Couldn't remove event: " + error.message); setSetlistEvents(prev); }
+      },
+    );
   };
 
   const createGroup=async(name:string):Promise<Group|null>=>{
@@ -1635,15 +1683,18 @@ export default function Home() {
     setFolderSongs(prev=>[...prev,{id:r.id,folderId:r.folder_id,songId:r.song_id,position:r.position}]);
   };
 
-  const removeSongFromFolder = async (folderId: string, songId: string): Promise<void> => {
+  const removeSongFromFolder = (folderId: string, songId: string): void => {
     const prev = folderSongs;
+    const title = songs.find((s) => s.id === songId)?.title;
     setFolderSongs((p) => p.filter((fs) => !(fs.folderId === folderId && fs.songId === songId)));
-    const { error } = await supabase.from("folder_songs").delete().eq("folder_id", folderId).eq("song_id", songId);
-    if (error) {
-      logErr("remove song from folder", error);
-      showToast("Couldn't remove song: " + error.message);
-      setFolderSongs(prev);
-    }
+    showUndoToast(
+      title ? `Removed "${title}"` : "Song removed",
+      () => setFolderSongs(prev),
+      async () => {
+        const { error } = await supabase.from("folder_songs").delete().eq("folder_id", folderId).eq("song_id", songId);
+        if (error) { logErr("remove song from folder", error); showToast("Couldn't remove song: " + error.message); setFolderSongs(prev); }
+      },
+    );
   };
 
   const commitSetlistOrder = async (folderId: string, orderedSongIds: string[]): Promise<void> => {
@@ -2002,8 +2053,17 @@ export default function Home() {
       )}
 
       {toast && (
-        <div className="fixed bottom-24 md:bottom-6 left-1/2 -translate-x-1/2 px-4 py-2.5 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-medium shadow-2xl shadow-slate-900/30 z-50 print:hidden">
-          {toast}
+        <div className="fixed bottom-24 md:bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2.5 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-medium shadow-2xl shadow-slate-900/30 z-50 print:hidden max-w-[90vw]">
+          <span className="truncate">{toast.message}</span>
+          {toast.action && (
+            <button
+              type="button"
+              onClick={toast.action.onClick}
+              className="shrink-0 -mr-1 px-2 py-1 rounded-lg text-indigo-300 dark:text-indigo-600 font-semibold hover:text-indigo-200 dark:hover:text-indigo-700 hover:bg-white/10 dark:hover:bg-slate-900/10 transition-colors"
+            >
+              {toast.action.label}
+            </button>
+          )}
         </div>
       )}
     </div>

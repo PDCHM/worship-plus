@@ -2,6 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Song } from "@/lib/song";
+import ConfirmDialog from "@/app/_components/ConfirmDialog";
+
+type DeleteConfirm = { title: string; message: string; onConfirm: () => void } | null;
 
 /* ─── Exported Types ──────────────────────────────────────────────────────── */
 
@@ -137,6 +140,18 @@ function Overview({
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [showNewSetlist, setShowNewSetlist] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [confirmDel, setConfirmDel] = useState<DeleteConfirm>(null);
+
+  const askDeleteFolder = (f: Folder) => setConfirmDel({
+    title: "Delete folder?",
+    message: `Delete folder "${f.name}"? This can't be undone.`,
+    onConfirm: () => { onDelete(f.id); showToast("Folder deleted"); },
+  });
+  const askDeleteSetlist = (f: Folder) => setConfirmDel({
+    title: "Delete setlist?",
+    message: `Delete setlist "${f.name}"? This can't be undone.`,
+    onConfirm: () => { onDelete(f.id); showToast("Setlist deleted"); },
+  });
 
   const folderList = folders
     .filter((f) => f.type === "folder")
@@ -214,7 +229,7 @@ function Overview({
                   count={countSongs(f.id)}
                   onClick={() => onNavigate(f.id)}
                   onRename={(name) => onRename(f.id, name).then(() => showToast("Renamed"))}
-                  onDelete={() => { onDelete(f.id); showToast("Folder deleted"); }}
+                  onDelete={() => askDeleteFolder(f)}
                 />
               ))}
             </div>
@@ -228,7 +243,7 @@ function Overview({
                   isLast={idx === folderList.length - 1}
                   onClick={() => onNavigate(f.id)}
                   onRename={(name) => onRename(f.id, name).then(() => showToast("Renamed"))}
-                  onDelete={() => { onDelete(f.id); showToast("Folder deleted"); }}
+                  onDelete={() => askDeleteFolder(f)}
                 />
               ))}
             </div>
@@ -294,7 +309,7 @@ function Overview({
                   updated={isUpdated(f.id)}
                   onClick={() => onNavigate(f.id)}
                   onRename={(name) => onRename(f.id, name).then(() => showToast("Renamed"))}
-                  onDelete={() => { onDelete(f.id); showToast("Setlist deleted"); }}
+                  onDelete={() => askDeleteSetlist(f)}
                 />
               ))}
             </div>
@@ -309,13 +324,22 @@ function Overview({
                   isLast={idx === setlistList.length - 1}
                   onClick={() => onNavigate(f.id)}
                   onRename={(name) => onRename(f.id, name).then(() => showToast("Renamed"))}
-                  onDelete={() => { onDelete(f.id); showToast("Setlist deleted"); }}
+                  onDelete={() => askDeleteSetlist(f)}
                 />
               ))}
             </div>
           )
         )}
       </section>
+      {confirmDel && (
+        <ConfirmDialog
+          title={confirmDel.title}
+          message={confirmDel.message}
+          confirmLabel="Delete"
+          onCancel={() => setConfirmDel(null)}
+          onConfirm={() => { confirmDel.onConfirm(); setConfirmDel(null); }}
+        />
+      )}
     </div>
   );
 }
@@ -327,6 +351,7 @@ function FolderDetail({
   onAddSong, onRemoveSong, onOpenSong, showToast,
 }: { folder: Folder; currentSongs: Song[] } & FoldersViewProps) {
   const [addOpen, setAddOpen] = useState(false);
+  const [confirmDel, setConfirmDel] = useState<DeleteConfirm>(null);
   const alreadyIn = new Set(currentSongs.map((s) => s.id));
 
   return (
@@ -335,7 +360,11 @@ function FolderDetail({
         folder={folder}
         onBack={() => onNavigate("all")}
         onRename={(name) => onRename(folder.id, name)}
-        onDelete={() => { onDelete(folder.id); onNavigate("all"); showToast("Folder deleted"); }}
+        onDelete={() => setConfirmDel({
+          title: "Delete folder?",
+          message: `Delete folder "${folder.name}"? This can't be undone.`,
+          onConfirm: () => { onDelete(folder.id); onNavigate("all"); showToast("Folder deleted"); },
+        })}
       />
       <div className="flex items-center justify-between mt-6 mb-4">
         <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -367,7 +396,7 @@ function FolderDetail({
               key={song.id}
               song={song}
               onClick={() => onOpenSong(song.id)}
-              onRemove={() => { onRemoveSong(folder.id, song.id); showToast("Removed"); }}
+              onRemove={() => onRemoveSong(folder.id, song.id)}
             />
           ))}
         </div>
@@ -379,6 +408,15 @@ function FolderDetail({
           folderId={folder.id}
           onAdd={onAddSong}
           onClose={() => setAddOpen(false)}
+        />
+      )}
+      {confirmDel && (
+        <ConfirmDialog
+          title={confirmDel.title}
+          message={confirmDel.message}
+          confirmLabel="Delete"
+          onCancel={() => setConfirmDel(null)}
+          onConfirm={() => { confirmDel.onConfirm(); setConfirmDel(null); }}
         />
       )}
     </div>
@@ -394,6 +432,7 @@ function SetlistDetail({
 }: { folder: Folder; currentSongs: Song[] } & FoldersViewProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [eventModal, setEventModal] = useState<{ type: "rehearsal" | "event" } | null>(null);
+  const [confirmDel, setConfirmDel] = useState<DeleteConfirm>(null);
 
   const events = setlistEvents
     .filter((e) => e.folderId === folder.id)
@@ -547,7 +586,11 @@ function SetlistDetail({
         folder={folder}
         onBack={() => onNavigate("all")}
         onRename={(name) => onRename(folder.id, name)}
-        onDelete={() => { onDelete(folder.id); onNavigate("all"); showToast("Setlist deleted"); }}
+        onDelete={() => setConfirmDel({
+          title: "Delete setlist?",
+          message: `Delete setlist "${folder.name}"? This can't be undone.`,
+          onConfirm: () => { onDelete(folder.id); onNavigate("all"); showToast("Setlist deleted"); },
+        })}
         onShare={() => { void navigator.clipboard.writeText(setlistShareUrl(folder.id)); showToast("Setlist link copied"); }}
         onExport={() => onExportSetlist(folder.id)}
       />
@@ -575,7 +618,7 @@ function SetlistDetail({
                 setlistName={folder.name}
                 songs={currentSongs}
                 folderId={folder.id}
-                onDelete={() => { onDeleteEvent(ev.id); showToast("Event removed"); }}
+                onDelete={() => onDeleteEvent(ev.id)}
               />
             ))}
           </div>
@@ -654,7 +697,7 @@ function SetlistDetail({
                 </div>
                 <button
                   type="button"
-                  onClick={() => { onRemoveSong(folder.id, song.id); showToast("Removed"); }}
+                  onClick={() => onRemoveSong(folder.id, song.id)}
                   className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -680,6 +723,15 @@ function SetlistDetail({
           defaultDate={folder.date ?? ""}
           onSave={async (label, eventDate, eventType) => { await onAddEvent(folder.id, { label, eventDate, eventType }); showToast("Event added"); }}
           onClose={() => setEventModal(null)}
+        />
+      )}
+      {confirmDel && (
+        <ConfirmDialog
+          title={confirmDel.title}
+          message={confirmDel.message}
+          confirmLabel="Delete"
+          onCancel={() => setConfirmDel(null)}
+          onConfirm={() => { confirmDel.onConfirm(); setConfirmDel(null); }}
         />
       )}
     </div>
