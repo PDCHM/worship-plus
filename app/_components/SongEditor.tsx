@@ -1152,11 +1152,12 @@ export default function SongEditor({
 
   // Character offset of a pointer within a word element. Uses the word's own
   // measured width / char count (works for any lyric font, not just monospace).
-  // Clamped to [0, wordLen]; offset === wordLen lands in the trailing gap.
+  // Clamped to >= 0 only — offset may exceed wordLen so a chord can spread into
+  // the trailing space past the word's end (the renderer mirrors this exactly).
   const offsetWithinWord = (clientX: number, el: HTMLElement, wordLen: number): number => {
     const r = el.getBoundingClientRect();
     if (!r.width || wordLen <= 0) return 0;
-    return Math.max(0, Math.min(wordLen, Math.round((clientX - r.left) / (r.width / wordLen))));
+    return Math.max(0, Math.round((clientX - r.left) / (r.width / wordLen)));
   };
 
   // Attach a chord to a specific word + sub-word offset, keeping the legacy char
@@ -2176,7 +2177,52 @@ export default function SongEditor({
                                     data-wu-index={u.dragIndex}
                                     className="inline-flex flex-col items-start"
                                   >
-                                    {showChords && (
+                                    {showChords && (hasWords ? (
+                                      // Word line: position each chord absolutely at
+                                      // left = (offset / wordLen) × 100% of the word's
+                                      // width, so chords spread across the word and
+                                      // past its end into the trailing space. This is
+                                      // the exact inverse of offsetWithinWord's
+                                      // (wordWidth / wordLen) char step, so a dragged
+                                      // chord lands and stays where it's dropped.
+                                      <span
+                                        className="relative block leading-none"
+                                        style={{ minHeight: chordSlotHeight, width: "100%" }}
+                                      >
+                                        {u.chords.map((ch) => (
+                                          <span
+                                            key={ch.id}
+                                            className="absolute bottom-0 whitespace-nowrap"
+                                            style={{ left: `${((ch.offset ?? 0) / Math.max(1, u.text.length)) * 100}%` }}
+                                          >
+                                            {editingChord === ch.id && !readOnly ? (
+                                              <ChordInput
+                                                defaultValue={ch.chord}
+                                                fontSize={chordFontSize}
+                                                onCommit={(v) => commitChord(line.id, ch.id, v)}
+                                                onCancel={() => setEditingChord(null)}
+                                              />
+                                            ) : (
+                                              renderChordSpan(ch)
+                                            )}
+                                          </span>
+                                        ))}
+                                        {addingHere && (
+                                          <span
+                                            className="absolute bottom-0 whitespace-nowrap"
+                                            style={{ left: `${((addingChord?.offset ?? 0) / Math.max(1, u.text.length)) * 100}%` }}
+                                          >
+                                            <ChordInput
+                                              fontSize={chordFontSize}
+                                              onCommit={(v) => commitAddChord(line.id, u.dragIndex, addingChord?.offset ?? 0, v)}
+                                              onCancel={() => setAddingChord(null)}
+                                            />
+                                          </span>
+                                        )}
+                                      </span>
+                                    ) : (
+                                      // Chord-only line: each chord is its own
+                                      // pseudo-word unit, laid out inline (unchanged).
                                       <span
                                         className="flex items-end gap-1 leading-none"
                                         style={{ minHeight: chordSlotHeight }}
@@ -2202,7 +2248,7 @@ export default function SongEditor({
                                           />
                                         )}
                                       </span>
-                                    )}
+                                    ))}
                                     <span
                                       data-word-text="1"
                                       onClick={
