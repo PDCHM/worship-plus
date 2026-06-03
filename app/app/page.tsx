@@ -1521,9 +1521,16 @@ export default function Home() {
     }]);
   };
 
-  const deleteSetlistEvent = (id: string): void => {
-    setSetlistEvents((prev) => prev.filter((e) => e.id !== id));
-    void supabase.from("setlist_events").delete().eq("id", id);
+  const deleteSetlistEvent = async (id: string): Promise<void> => {
+    const prev = setlistEvents;
+    setSetlistEvents((p) => p.filter((e) => e.id !== id));
+    // Must await — the builder only fires the request when awaited/.then()'d.
+    const { error } = await supabase.from("setlist_events").delete().eq("id", id);
+    if (error) {
+      logErr("delete setlist event", error);
+      showToast("Couldn't delete event: " + error.message);
+      setSetlistEvents(prev);
+    }
   };
 
   const createGroup=async(name:string):Promise<Group|null>=>{
@@ -1555,7 +1562,12 @@ export default function Home() {
     const r=data as{id:string;group_id:string;song_id:string};
     setGroupSongs(prev=>[...prev,{id:r.id,groupId:r.group_id,songId:r.song_id}]);
   };
-  const unshareGroupSong=(groupId:string,songId:string):void=>{setGroupSongs(p=>p.filter(gs=>!(gs.groupId===groupId&&gs.songId===songId)));void supabase.from("group_songs").delete().eq("group_id",groupId).eq("song_id",songId);};
+  const unshareGroupSong=async(groupId:string,songId:string):Promise<void>=>{
+    const prev=groupSongs;
+    setGroupSongs(p=>p.filter(gs=>!(gs.groupId===groupId&&gs.songId===songId)));
+    const{error}=await supabase.from("group_songs").delete().eq("group_id",groupId).eq("song_id",songId);
+    if(error){logErr("unshare group song",error);showToast("Couldn't unshare song: "+error.message);setGroupSongs(prev);}
+  };
   const deleteGroup=async(groupId:string):Promise<boolean>=>{
     const snapshot={groups,groupMembers,groupSongs,folders};
     setGroups(p=>p.filter(g=>g.id!==groupId));
@@ -1623,9 +1635,15 @@ export default function Home() {
     setFolderSongs(prev=>[...prev,{id:r.id,folderId:r.folder_id,songId:r.song_id,position:r.position}]);
   };
 
-  const removeSongFromFolder = (folderId: string, songId: string): void => {
-    setFolderSongs((prev) => prev.filter((fs) => !(fs.folderId === folderId && fs.songId === songId)));
-    void supabase.from("folder_songs").delete().eq("folder_id", folderId).eq("song_id", songId);
+  const removeSongFromFolder = async (folderId: string, songId: string): Promise<void> => {
+    const prev = folderSongs;
+    setFolderSongs((p) => p.filter((fs) => !(fs.folderId === folderId && fs.songId === songId)));
+    const { error } = await supabase.from("folder_songs").delete().eq("folder_id", folderId).eq("song_id", songId);
+    if (error) {
+      logErr("remove song from folder", error);
+      showToast("Couldn't remove song: " + error.message);
+      setFolderSongs(prev);
+    }
   };
 
   const commitSetlistOrder = async (folderId: string, orderedSongIds: string[]): Promise<void> => {
