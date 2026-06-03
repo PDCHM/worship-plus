@@ -668,7 +668,20 @@ function parseChordProLine(text: string): Line {
       i++;
     }
   }
-  return { id: uid(), lyric, chords };
+  // Anchor each inline chord to a word + sub-word offset so mid-word markers
+  // ([E]Ho[A]sanna) keep their real position and round-trip with export. Derive
+  // wordIndex from pos (as elsewhere); offset = pos − that word's start.
+  const hasWords = tokenizeWords(lyric).length > 0;
+  return {
+    id: uid(),
+    lyric,
+    chords: hasWords
+      ? chords.map((c) => {
+          const wi = findNearestWordIndex(c.pos, lyric);
+          return { ...c, wordIndex: wi, offset: Math.max(0, c.pos - wordStartOffset(lyric, wi)) };
+        })
+      : chords,
+  };
 }
 
 function isChordLine(text: string): boolean {

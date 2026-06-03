@@ -16,15 +16,16 @@ function buildChordLine(chords: Chord[], pxPerChar: number): string {
   return result;
 }
 
-// One ChordPro line: inline [Chord] markers spliced in just before the word
-// each chord is anchored to (word-block model → char offset of that word).
+// One ChordPro line: inline [Chord] markers spliced in at each chord's
+// character position = its word's start + sub-word offset, so mid-word chords
+// are preserved and round-trip with the importer.
 function chordProLine(line: Line): string {
   const hasWords = line.lyric.trim() !== "";
   const placed = line.chords
     .filter((c) => c.chord.trim() !== "")
     .map((c) => ({
       chord: c.chord.trim(),
-      pos: hasWords ? wordStartOffset(line.lyric, effectiveWordIndex(c, line.lyric)) : c.pos,
+      pos: hasWords ? wordStartOffset(line.lyric, effectiveWordIndex(c, line.lyric)) + (c.offset ?? 0) : c.pos,
     }))
     .sort((a, b) => b.pos - a.pos); // splice right-to-left so offsets stay valid
   let out = line.lyric;

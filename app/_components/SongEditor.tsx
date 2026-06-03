@@ -846,14 +846,19 @@ export default function SongEditor({
   // Convert one AI line's raw chord list into validated Chord objects anchored
   // to the line's words. Shared by full-song generation and per-section regen.
   const aiChordsForLine = (rawChords: unknown[], line: Line): Chord[] => {
-    const wordCount = tokenizeWords(line.lyric).length;
+    const tokens = tokenizeWords(line.lyric);
+    const wordCount = tokens.length;
     const made: Chord[] = [];
     for (const raw of rawChords) {
-      const c = raw as { wordIndex?: unknown; chord?: unknown };
+      const c = raw as { wordIndex?: unknown; offset?: unknown; chord?: unknown };
       const wi = Number(c?.wordIndex);
       const name = typeof c?.chord === "string" ? c.chord.trim() : "";
       if (!name || !Number.isInteger(wi) || wi < 0 || wi >= wordCount) continue;
-      made.push({ id: uid(), chord: name, wordIndex: wi, pos: wordStartOffset(line.lyric, wi) });
+      // Optional sub-word offset; default 0, clamped to the word's length.
+      const rawOff = Number(c?.offset);
+      const wordLen = tokens[wi]?.text.length ?? 0;
+      const offset = Number.isFinite(rawOff) ? Math.max(0, Math.min(wordLen, Math.round(rawOff))) : 0;
+      made.push({ id: uid(), chord: name, wordIndex: wi, offset, pos: wordStartOffset(line.lyric, wi) + offset });
     }
     return made;
   };
