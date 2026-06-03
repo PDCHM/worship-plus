@@ -54,21 +54,21 @@ export default function AddSongSheet({ onBuildNew, onPasteChart, onAiChords, onI
             <SheetBtn onClick={() => { onPasteChart(); onClose(); }}
               icon={ICON_PASTE}
               label="Paste text" desc="Paste a chord chart from your clipboard" />
-            <SheetBtn onClick={() => { onImportFile(); onClose(); }}
-              icon={ICON_FILE}
-              label="Import file" desc=".txt · ChordPro · OnSong · .docx · .pdf · .rtf · .worship" />
           </div>
         ) : (
           <div className="p-3 space-y-1">
-            <SheetBtn onClick={() => { onBuildNew(); onClose(); }}
-              icon={ICON_EDIT}
-              label="Build New" desc="Start from a blank editor" />
+            <SheetBtn onClick={() => { onImportFile(); onClose(); }}
+              icon={ICON_FILE}
+              label="Import Song" desc="Import a file — SongBook Pro, ChordPro, OnSong, docx, PDF" />
             <SheetBtn onClick={() => setPasteSubOpen(true)}
               icon={ICON_PASTE}
-              label="Paste Song" desc="Paste a full chord chart with lyrics and chords" chevron />
+              label="Paste Song" desc="Paste a full chord chart as text" chevron />
             <SheetBtn onClick={() => { onAiChords(); onClose(); }}
               icon={ICON_SPARKLE}
               label="AI Chords" desc="Paste lyrics — Claude generates the chords" />
+            <SheetBtn onClick={() => { onBuildNew(); onClose(); }}
+              icon={ICON_EDIT}
+              label="Build New" desc="Start from a blank editor" />
             <SheetBtn onClick={() => { onSearchOnline(); onClose(); }}
               icon={ICON_GLOBE}
               label="Search Online" desc="Find a song by lyrics — Claude identifies it" />
