@@ -63,9 +63,15 @@ function setlistSignature(folderSongs: FolderSong[], folderId: string): string {
     .join("|");
 }
 
-// Public shareable URL for a setlist.
+// Base URL for shareable links. Falls back to the Vercel domain until the
+// custom domain (worshipplus.life) is connected; set NEXT_PUBLIC_SITE_URL so the
+// links follow automatically once it is. Trailing slashes are trimmed.
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://worshipplus.vercel.app").replace(/\/+$/, "");
+
+// Public shareable URL for a setlist — deep-links to that specific setlist's
+// page (/setlist/{id}), not the homepage.
 function setlistShareUrl(folderId: string): string {
-  return `https://worshipplus.life/setlist/${folderId}`;
+  return `${SITE_URL}/setlist/${folderId}`;
 }
 
 // Build a Google Calendar "add event" URL (1-hour default duration).
@@ -74,7 +80,7 @@ function googleCalendarUrl(ev: SetlistEvent, setlistName: string, songs: Song[],
   const end = new Date(start.getTime() + 60 * 60 * 1000);
   const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
   const details = songs.length
-    ? songs.map((s, i) => `${i + 1}. ${s.title}${s.artist ? ` — ${s.artist}` : ""}${s.key ? ` (${s.key})` : ""}`).join("\n") + "\n\nWorship+ · https://worshipplus.life"
+    ? songs.map((s, i) => `${i + 1}. ${s.title}${s.artist ? ` — ${s.artist}` : ""}${s.key ? ` (${s.key})` : ""}`).join("\n") + `\n\nWorship+ · ${setlistShareUrl(folderId)}`
     : `Songs to be confirmed — check Worship+ for updates: ${setlistShareUrl(folderId)}`;
   const params = new URLSearchParams({
     action: "TEMPLATE",
