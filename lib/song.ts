@@ -752,8 +752,14 @@ export function parseSongText(text: string): Song {
     sections.push(current);
   };
 
+  // Inline-ChordPro detection must IGNORE bracketed section markers ([Intro],
+  // [Verse 1], [Chorus]) — only count a bracket whose content is a real chord
+  // ([G], [C/G]). Otherwise a chord-above chart that uses [Section] headers
+  // would be misread as inline ChordPro and its chord rows lost.
   const hasChordPro = rawLines.some(
-    (l) => /\[[^\]]+\]/.test(l) && !l.trim().startsWith("{"),
+    (l) =>
+      !l.trim().startsWith("{") &&
+      [...l.matchAll(/\[([^\]]+)\]/g)].some((mm) => isValidChord(mm[1])),
   );
 
   for (let i = 0; i < rawLines.length; i++) {
@@ -796,20 +802,19 @@ export function parseSongText(text: string): Song {
       if (l.trim() === "") continue;
       ensure().lines.push(parseChordProLine(l));
     } else {
-      if (isChordLine(l) && i + 1 < rawLines.length && rawLines[i + 1].trim()) {
-        const next = rawLines[i + 1];
-        const chords: Chord[] = [];
-        const re = /\S+/g;
-        let m: RegExpExecArray | null;
-        while ((m = re.exec(l)) !== null) {
-          chords.push({
-            id: uid(),
-            pos: Math.min(m.index, next.length),
-            chord: m[0],
-          });
+      if (isChordLine(l)) {
+        const next = rawLines[i + 1] ?? "";
+        // The next line is a lyric only if it's non-blank, not itself a chord
+        // row, and not a section header — otherwise this is a chord-only line
+        // (intro / instrumental break) and the next line is parsed on its own.
+        const nextBare = next.match(/^\s*\[([^\]]+)\]\s*$/);
+        const nextIsSection = !!((nextBare && isLikelySectionLabel(nextBare[1])) || detectSectionLabel(next));
+        if (next.trim() !== "" && !isChordLine(next) && !nextIsSection) {
+          ensure().lines.push({ id: uid(), lyric: next, chords: chordPositionsFromLine(l, next.length) });
+          i++;
+        } else {
+          ensure().lines.push({ id: uid(), lyric: "", chords: chordPositionsFromLine(l) });
         }
-        ensure().lines.push({ id: uid(), lyric: next, chords });
-        i++;
       } else if (l.trim()) {
         ensure().lines.push({ id: uid(), lyric: l, chords: [] });
       }

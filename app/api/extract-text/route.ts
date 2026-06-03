@@ -34,11 +34,35 @@ function ooxmlText(xml: string, paraTag: string, runTag: string): string {
     .trim();
 }
 
+// One Word paragraph → its visible text. Preserves alignment whitespace and
+// converts in-paragraph <w:br/>/<w:cr/> to newlines (so a chord row + its lyric
+// row that live in ONE paragraph become two lines) and <w:tab/> to tabs. We
+// strip tags rather than only pulling <w:t> runs, because the breaks/tabs sit
+// BETWEEN runs and must survive in reading order — Word body paragraphs carry
+// no other text nodes, so nothing stray leaks in.
+function docxParaText(paraXml: string): string {
+  return decodeXml(
+    paraXml
+      .replace(/<w:tab\b[^>]*>/g, "\t")
+      .replace(/<w:(?:br|cr)\b[^>]*>/g, "\n")
+      .replace(/<[^>]+>/g, ""),
+  );
+}
+
 async function extractDocx(buf: ArrayBuffer): Promise<string> {
   const zip = await JSZip.loadAsync(buf);
   const doc = zip.file("word/document.xml");
   if (!doc) throw new Error("Not a valid .docx (missing document.xml)");
-  return ooxmlText(await doc.async("string"), "w:p", "w:t");
+  const xml = await doc.async("string");
+  // One line per paragraph, with internal line breaks already split out. Keep
+  // leading/inner spaces (chord-column alignment); only trim trailing spaces.
+  return xml
+    .split(/<\/w:p>/)
+    .map(docxParaText)
+    .join("\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 async function extractPptx(buf: ArrayBuffer): Promise<string> {
