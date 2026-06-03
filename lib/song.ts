@@ -78,8 +78,20 @@ const CHORD_TOKEN = /^[A-G][#b]?[A-Za-z0-9+#]*(?:\/[A-G][#b]?)?$/;
 // and an optional slash bass. Rejects stray tokens like "h", "x2", or words.
 const VALID_CHORD =
   /^[A-G][#b]?(?:maj|min|m|M|dim|aug|sus|add|\+|\d{1,2}|[#b]\d{1,2})*(?:\/[A-G][#b]?)?$/;
+
+// Pipe / en-dash / em-dash sit BETWEEN chords in some exports (SongBook Pro:
+// "Am7 – D", "Dsus|C") — they are separators, not chords or lyrics. Split on
+// them and ignore the gaps.
+const CHORD_SEPARATORS = /[|–—]+/;
+
+// Normalize chord-name symbols to ASCII so the validator/transpose path works:
+// unicode sharp ♯→#, flat ♭→b, degree °→dim.
+export function normalizeChordName(name: string): string {
+  return name.trim().replace(/♯/g, "#").replace(/♭/g, "b").replace(/°/g, "dim");
+}
+
 export function isValidChord(name: string): boolean {
-  return VALID_CHORD.test(name.trim());
+  return VALID_CHORD.test(normalizeChordName(name));
 }
 const SECTION_KEYWORD =
   /^(intro|verse|chorus|bridge|tag|outro|interlude|refrain|ending|pre-?chorus)$/i;
@@ -658,7 +670,7 @@ function parseChordProLine(text: string): Line {
       }
       // Only treat bracket content as a chord if it's a real chord; otherwise
       // drop the bracket entirely (stray markers like [x2], [h], directives).
-      const inner = text.slice(i + 1, end).trim();
+      const inner = normalizeChordName(text.slice(i + 1, end));
       if (isValidChord(inner)) {
         chords.push({ id: uid(), pos: lyric.length, chord: inner });
       }
@@ -685,9 +697,19 @@ function parseChordProLine(text: string): Line {
 }
 
 function isChordLine(text: string): boolean {
-  const tokens = text.trim().split(/\s+/).filter(Boolean);
+  // Split on whitespace AND chord separators (|, –, —), so "Am7 – D" and
+  // "Dsus|C" decompose into candidate chords rather than failing as one token.
+  const tokens = text
+    .trim()
+    .split(/\s+/)
+    .flatMap((w) => w.split(CHORD_SEPARATORS))
+    .filter(Boolean);
   if (tokens.length === 0) return false;
-  return tokens.every((t) => CHORD_TOKEN.test(t));
+  let valid = 0;
+  for (const t of tokens) if (isValidChord(t)) valid++;
+  // A chord line is MOSTLY valid chords (≥ ~2/3), with at least one real chord —
+  // tolerant of a stray annotation, strict enough to never claim a lyric line.
+  return valid > 0 && valid * 3 >= tokens.length * 2;
 }
 
 function isLikelySectionLabel(text: string): boolean {
@@ -1147,14 +1169,22 @@ function chordPositionsFromLine(chordLine: string, maxLen?: number): Chord[] {
   const re = /\S+/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(chordLine)) !== null) {
-    // Extract strictly: only real chords (detection via isPastedChordLine is
-    // looser, but a stray non-chord token here is dropped, not stored).
-    if (!isValidChord(m[0])) continue;
-    // Drop chords whose column sits past the end of the lyric — they have no
-    // word beneath them and would otherwise clamp onto the last word.
-    if (maxLen != null && m.index > maxLen) continue;
-    const pos = maxLen == null ? m.index : Math.min(m.index, maxLen);
-    result.push({ id: uid(), pos, chord: m[0] });
+    // A whitespace token may bundle multiple chords joined by a separator
+    // ("Dsus|C", "Am7–D"); split it into separator-free runs and keep each
+    // run's column within the token so positions stay accurate.
+    const partRe = /[^|–—]+/g;
+    let p: RegExpExecArray | null;
+    while ((p = partRe.exec(m[0])) !== null) {
+      const name = normalizeChordName(p[0]);
+      // Extract strictly: only real chords; stray tokens/separators are dropped.
+      if (!isValidChord(name)) continue;
+      const col = m.index + p.index;
+      // Drop chords whose column sits past the end of the lyric — they have no
+      // word beneath them and would otherwise clamp onto the last word.
+      if (maxLen != null && col > maxLen) continue;
+      const pos = maxLen == null ? col : Math.min(col, maxLen);
+      result.push({ id: uid(), pos, chord: name });
+    }
   }
   return result;
 }
