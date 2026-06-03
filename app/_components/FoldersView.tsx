@@ -15,6 +15,7 @@ export type Folder = {
   createdAt: number;
   date?: string;
   groupId?: string | null;
+  ownerId?: string;
 };
 
 export type FolderSong = {
@@ -40,6 +41,8 @@ export type FoldersViewProps = {
   folderSongs: FolderSong[];
   songs: Song[];
   teams: TeamOption[];
+  currentUserId: string;
+  onMoveToTeam: (setlistId: string, groupId: string | null) => void;
   onNavigate: (to: "all" | string) => void;
   onCreate: (name: string, type: "folder" | "setlist", groupId: string | null) => Promise<Folder | null>;
   onRename: (id: string, name: string) => Promise<void>;
@@ -132,7 +135,7 @@ export default function FoldersView(props: FoldersViewProps) {
 /* ─── Overview ────────────────────────────────────────────────────────────── */
 
 function Overview({
-  folders, folderSongs, teams, onNavigate, onCreate, onRename, onDelete, showToast,
+  folders, folderSongs, teams, onNavigate, onCreate, onRename, onDelete, showToast, currentUserId, onMoveToTeam,
 }: FoldersViewProps) {
   const [newFolderName, setNewFolderName] = useState("");
   const [newSetlistName, setNewSetlistName] = useState("");
@@ -310,6 +313,8 @@ function Overview({
                   onClick={() => onNavigate(f.id)}
                   onRename={(name) => onRename(f.id, name).then(() => showToast("Renamed"))}
                   onDelete={() => askDeleteSetlist(f)}
+                  teams={teams}
+                  onMoveToTeam={f.ownerId === currentUserId ? (gid) => onMoveToTeam(f.id, gid) : undefined}
                 />
               ))}
             </div>
@@ -325,6 +330,8 @@ function Overview({
                   onClick={() => onNavigate(f.id)}
                   onRename={(name) => onRename(f.id, name).then(() => showToast("Renamed"))}
                   onDelete={() => askDeleteSetlist(f)}
+                  teams={teams}
+                  onMoveToTeam={f.ownerId === currentUserId ? (gid) => onMoveToTeam(f.id, gid) : undefined}
                 />
               ))}
             </div>
@@ -428,8 +435,9 @@ function FolderDetail({
 function SetlistDetail({
   folder, currentSongs, songs, folderSongs, onNavigate, onRename, onDelete,
   onAddSong, onRemoveSong, onCommitOrder, onOpenSong, onUpdateDate, onExportSetlist,
-  setlistEvents, onAddEvent, onDeleteEvent, showToast,
+  setlistEvents, onAddEvent, onDeleteEvent, showToast, teams, currentUserId, onMoveToTeam,
 }: { folder: Folder; currentSongs: Song[] } & FoldersViewProps) {
+  const isOwner = folder.ownerId === currentUserId;
   const [addOpen, setAddOpen] = useState(false);
   const [eventModal, setEventModal] = useState<{ type: "rehearsal" | "event" } | null>(null);
   const [confirmDel, setConfirmDel] = useState<DeleteConfirm>(null);
@@ -594,6 +602,11 @@ function SetlistDetail({
         onShare={() => { void navigator.clipboard.writeText(setlistShareUrl(folder.id)); showToast("Setlist link copied"); }}
         onExport={() => onExportSetlist(folder.id)}
       />
+      <div className="mt-3">
+        {isOwner
+          ? <TeamSelectChip currentGroupId={folder.groupId ?? null} teams={teams} onMoveToTeam={(gid) => onMoveToTeam(folder.id, gid)} />
+          : <TeamStaticPill currentGroupId={folder.groupId ?? null} teams={teams} />}
+      </div>
       <div className="flex items-center gap-2 mt-3 mb-1">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400 shrink-0"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
         <input
@@ -950,7 +963,7 @@ function AddSongsModal({
 /* ─── ItemCard ────────────────────────────────────────────────────────────── */
 
 function ItemCard({
-  item, count, updated, onClick, onRename, onDelete,
+  item, count, updated, onClick, onRename, onDelete, teams, onMoveToTeam,
 }: {
   item: Folder;
   count: number;
@@ -958,9 +971,13 @@ function ItemCard({
   onClick: () => void;
   onRename: (name: string) => void;
   onDelete: () => void;
+  teams?: TeamOption[];
+  onMoveToTeam?: (groupId: string | null) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  const canMove = !!onMoveToTeam && item.type === "setlist";
   const [nameVal, setNameVal] = useState(item.name);
 
   const commit = () => {
@@ -1009,7 +1026,7 @@ function ItemCard({
       </div>
       <button
         type="button"
-        onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o); }}
+        onClick={(e) => { e.stopPropagation(); setMoveOpen(false); setMenuOpen((o) => !o); }}
         className="absolute top-2 right-2 w-6 h-6 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 opacity-0 group-hover:opacity-100 transition-opacity"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -1017,21 +1034,41 @@ function ItemCard({
         </svg>
       </button>
       {menuOpen && (
-        <div className="absolute top-8 right-2 z-20 w-32 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl text-sm">
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); setMenuOpen(false); setRenaming(true); setNameVal(item.name); }}
-            className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
-          >
-            Rename
-          </button>
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete(); }}
-            className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-rose-600"
-          >
-            Delete
-          </button>
+        <div className="absolute top-8 right-2 z-20 w-44 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl text-sm">
+          {moveOpen && canMove ? (
+            <TeamOptionList
+              currentGroupId={item.groupId ?? null}
+              teams={teams ?? []}
+              onPick={(gid) => { setMoveOpen(false); setMenuOpen(false); onMoveToTeam!(gid); }}
+            />
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setMenuOpen(false); setRenaming(true); setNameVal(item.name); }}
+                className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
+              >
+                Rename
+              </button>
+              {canMove && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={(e) => { e.stopPropagation(); setMoveOpen(true); }}
+                  className="w-full flex items-center justify-between px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
+                >
+                  Move to team <span aria-hidden>›</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete(); }}
+                className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-rose-600"
+              >
+                Delete
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -1041,7 +1078,7 @@ function ItemCard({
 /* ─── ItemRow ─────────────────────────────────────────────────────────────── */
 
 function ItemRow({
-  item, count, updated, isLast, onClick, onRename, onDelete,
+  item, count, updated, isLast, onClick, onRename, onDelete, teams, onMoveToTeam,
 }: {
   item: Folder;
   count: number;
@@ -1050,10 +1087,14 @@ function ItemRow({
   onClick: () => void;
   onRename: (name: string) => void;
   onDelete: () => void;
+  teams?: TeamOption[];
+  onMoveToTeam?: (groupId: string | null) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [moveOpen, setMoveOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [nameVal, setNameVal] = useState(item.name);
+  const canMove = !!onMoveToTeam && item.type === "setlist";
 
   const commit = () => {
     if (nameVal.trim() && nameVal.trim() !== item.name) onRename(nameVal.trim());
@@ -1100,7 +1141,7 @@ function ItemRow({
       </div>
       <button
         type="button"
-        onClick={(e) => { e.stopPropagation(); setMenuOpen((o) => !o); }}
+        onClick={(e) => { e.stopPropagation(); setMoveOpen(false); setMenuOpen((o) => !o); }}
         className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
@@ -1108,21 +1149,41 @@ function ItemRow({
         </svg>
       </button>
       {menuOpen && (
-        <div className="absolute top-10 right-2 z-20 w-32 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl text-sm">
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); setMenuOpen(false); setRenaming(true); setNameVal(item.name); }}
-            className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
-          >
-            Rename
-          </button>
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete(); }}
-            className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-rose-600"
-          >
-            Delete
-          </button>
+        <div className="absolute top-10 right-2 z-20 w-44 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl text-sm">
+          {moveOpen && canMove ? (
+            <TeamOptionList
+              currentGroupId={item.groupId ?? null}
+              teams={teams ?? []}
+              onPick={(gid) => { setMoveOpen(false); setMenuOpen(false); onMoveToTeam!(gid); }}
+            />
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setMenuOpen(false); setRenaming(true); setNameVal(item.name); }}
+                className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
+              >
+                Rename
+              </button>
+              {canMove && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={(e) => { e.stopPropagation(); setMoveOpen(true); }}
+                  className="w-full flex items-center justify-between px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
+                >
+                  Move to team <span aria-hidden>›</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete(); }}
+                className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-rose-600"
+              >
+                Delete
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -1130,6 +1191,114 @@ function ItemRow({
 }
 
 /* ─── DetailHeader ────────────────────────────────────────────────────────── */
+
+/* ─── Team selector (move setlist to team) ───────────────────────────────── */
+
+// Shared option list: "Personal" + each team, current selection checked.
+function TeamOptionList({ currentGroupId, teams, onPick }: {
+  currentGroupId: string | null;
+  teams: TeamOption[];
+  onPick: (groupId: string | null) => void;
+}) {
+  const opts: { id: string | null; name: string }[] = [{ id: null, name: "Personal" }, ...teams.map((t) => ({ id: t.id, name: t.name }))];
+  return (
+    <div role="menu" aria-label="Move setlist to team">
+      {opts.map((o) => {
+        const selected = (o.id ?? null) === (currentGroupId ?? null);
+        return (
+          <button
+            key={o.id ?? "__personal"}
+            type="button"
+            role="menuitemradio"
+            aria-checked={selected}
+            onClick={(e) => { e.stopPropagation(); onPick(o.id); }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-left text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors"
+          >
+            <span className="w-4 h-4 shrink-0 text-violet-600 dark:text-violet-400">
+              {selected && <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polyline points="20 6 9 17 4 12"/></svg>}
+            </span>
+            <span className="truncate">{o.name}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+const TeamPeopleIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+);
+
+// Purple pill chip showing the current assignment; tap opens the option menu.
+// Esc + click-outside close; arrow-key navigation across options.
+function TeamSelectChip({ currentGroupId, teams, onMoveToTeam }: {
+  currentGroupId: string | null;
+  teams: TeamOption[];
+  onMoveToTeam: (groupId: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const currentName = currentGroupId ? (teams.find((t) => t.id === currentGroupId)?.name ?? "Team") : "Personal";
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setOpen(false); return; }
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        const items = Array.from(ref.current?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]') ?? []);
+        if (!items.length) return;
+        const idx = items.indexOf(document.activeElement as HTMLButtonElement);
+        const next = e.key === "ArrowDown" ? (idx + 1) % items.length : (idx - 1 + items.length) % items.length;
+        items[next]?.focus();
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    const items = Array.from(ref.current?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]') ?? []);
+    (items.find((b) => b.getAttribute("aria-checked") === "true") ?? items[0])?.focus();
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [open]);
+
+  const pick = (groupId: string | null) => {
+    setOpen(false);
+    if ((groupId ?? null) !== (currentGroupId ?? null)) onMoveToTeam(groupId);
+  };
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`Move to team — currently ${currentName}`}
+        className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-xs font-semibold bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/60 transition-colors"
+      >
+        <TeamPeopleIcon />
+        <span className="max-w-[10rem] truncate">{currentName}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      {open && (
+        <div className="absolute left-0 top-9 z-30 w-48 py-1 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl">
+          <TeamOptionList currentGroupId={currentGroupId} teams={teams} onPick={pick} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Static (non-interactive) team pill — shown to non-owners.
+function TeamStaticPill({ currentGroupId, teams }: { currentGroupId: string | null; teams: TeamOption[] }) {
+  const name = currentGroupId ? (teams.find((t) => t.id === currentGroupId)?.name ?? "Team") : "Personal";
+  return (
+    <span className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-xs font-semibold bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-300">
+      <TeamPeopleIcon />
+      {name}
+    </span>
+  );
+}
 
 function DetailHeader({
   folder, onBack, onRename, onDelete, onShare, onExport,

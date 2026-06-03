@@ -696,7 +696,7 @@ export default function Home() {
         aborts.push(ownAbort, sharedAbort);
 
         void Promise.all([
-          supabase.from("folders").select("id, name, type, created_at, date, group_id").order("created_at"),
+          supabase.from("folders").select("id, name, type, created_at, date, group_id, user_id").order("created_at"),
           supabase.from("folder_songs").select("id, folder_id, song_id, position").order("position", { ascending: true }),
           supabase.from("setlist_events").select("id, folder_id, label, event_date, event_type").order("event_date", { ascending: true }),
         ]).then(([
@@ -713,13 +713,14 @@ export default function Home() {
             console.error("load folder_songs failed", folderSongsError.message, folderSongsError.details, folderSongsError.hint);
             showToast("Setlist songs error: " + folderSongsError.message);
           }
-          const loadedFolders = (folderRows ?? []).map((r: { id: string; name: string; type: string | null; created_at: string; date?: string | null; group_id?: string | null }) => ({
+          const loadedFolders = (folderRows ?? []).map((r: { id: string; name: string; type: string | null; created_at: string; date?: string | null; group_id?: string | null; user_id?: string | null }) => ({
             id: r.id,
             name: r.name,
             type: (r.type === "setlist" ? "setlist" : "folder") as "folder" | "setlist",
             createdAt: new Date(r.created_at).getTime(),
             date: r.date ?? undefined,
             groupId: r.group_id ?? null,
+            ownerId: r.user_id ?? undefined,
           }));
           setFolders(loadedFolders);
 
@@ -1537,6 +1538,7 @@ export default function Home() {
         createdAt: new Date(data.created_at).getTime(),
         date: data.date ?? undefined,
         groupId: data.group_id ?? null,
+        ownerId: data.user_id ?? user.id,
       };
       setFolders((prev) => [...prev, f]);
       return f;
@@ -1551,6 +1553,30 @@ export default function Home() {
     setFolders(prev => prev.map(f => f.id === id ? { ...f, date: date ?? undefined } : f));
     const { error } = await supabase.from("folders").update({ date }).eq("id", id);
     if (error) logErr("update folder date", error);
+  };
+
+  // Reassign a setlist's team (folders.group_id). null = back to Personal.
+  // Optimistic: the same `folders` state drives the personal Overview (!groupId)
+  // and the team view (groupId === team), so the row moves between views at once.
+  const assignSetlistToTeam = (setlistId: string, newGroupId: string | null): void => {
+    const prev = folders;
+    setFolders((p) => p.map((f) => f.id === setlistId ? { ...f, groupId: newGroupId } : f));
+    void (async () => {
+      const { error } = await supabase.from("folders").update({ group_id: newGroupId }).eq("id", setlistId);
+      if (error) {
+        logErr("move setlist to team", error);
+        showToast("Couldn't move setlist: " + error.message);
+        setFolders(prev);
+        return;
+      }
+      if (newGroupId) {
+        const teamName = groups.find((g) => g.id === newGroupId)?.name ?? "team";
+        const count = groupMembers.filter((m) => m.groupId === newGroupId).length;
+        showToast(`Moved to ${teamName} · ${count} ${count === 1 ? "member" : "members"} can now see it`);
+      } else {
+        showToast("Moved to Personal");
+      }
+    })();
   };
 
   const addSetlistEvent = async (folderId: string, ev: { label: string; eventDate: string; eventType: "rehearsal" | "event" }): Promise<void> => {
@@ -1887,6 +1913,8 @@ export default function Home() {
               folderSongs={folderSongs}
               songs={songs}
               teams={groups.filter(g => groupMembers.some(m => m.groupId === g.id && m.userId === user.id)).map(g => ({ id: g.id, name: g.name }))}
+              currentUserId={user.id}
+              onMoveToTeam={assignSetlistToTeam}
               onNavigate={(to) => navigateTo({ kind: "folders", subview: to })}
               onCreate={createFolder}
               onRename={renameFolder}
