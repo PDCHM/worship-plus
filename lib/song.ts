@@ -1179,9 +1179,9 @@ function chordPositionsFromLine(chordLine: string, maxLen?: number): Chord[] {
       // Extract strictly: only real chords; stray tokens/separators are dropped.
       if (!isValidChord(name)) continue;
       const col = m.index + p.index;
-      // Drop chords whose column sits past the end of the lyric — they have no
-      // word beneath them and would otherwise clamp onto the last word.
-      if (maxLen != null && col > maxLen) continue;
+      // Keep trailing chords whose column runs past the (shorter) lyric — common
+      // in SongBook Pro chord-above lines ("G Am7 – Dsus|C") — by clamping them
+      // onto the last column rather than dropping them.
       const pos = maxLen == null ? col : Math.min(col, maxLen);
       result.push({ id: uid(), pos, chord: name });
     }
