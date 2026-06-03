@@ -866,9 +866,11 @@ function parseSbpContent(content: string, title: string): Section[] {
       continue;
     }
     if (t === "") continue;
-    // Top-of-song noise (before any section): the title line and the flow line.
+    // Top-of-song noise (before any section): the title line (case-insensitive
+    // — SongBook Pro often Title-Cases it) and the flow/structure line. Skipping
+    // the title keeps `current` null so the flow line is also skipped.
     if (current === null) {
-      if (!titleSkipped && title.trim() && t === title.trim()) { titleSkipped = true; continue; }
+      if (!titleSkipped && title.trim() && t.toLowerCase() === title.trim().toLowerCase()) { titleSkipped = true; continue; }
       if (looksLikeSbpFlowLine(t)) continue;
     }
     // Inline ChordPro line ("[G]Great is the [C/G]Lord").
