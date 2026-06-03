@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState } from "react";
+import ConfirmDialog from "@/app/_components/ConfirmDialog";
 import PrintPreviewModal from "@/app/_components/PrintPreviewModal";
 import QuickActionsPanel from "@/app/_components/QuickActionsPanel";
 import { LineBubbles, useSongBubbles } from "@/app/_components/SongBubbles";
@@ -2472,19 +2473,13 @@ export default function SongEditor({
       )}
 
       {confirmDeleteOpen && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 print:hidden" onClick={() => setConfirmDeleteOpen(false)}>
-          <div className="w-full sm:max-w-sm bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
-            <div className="w-10 h-10 rounded-full bg-red-50 dark:bg-red-950/60 flex items-center justify-center mb-4">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-500"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
-            </div>
-            <h2 className="font-bold text-lg mb-1">Delete song?</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">&ldquo;{song.title.trim() || "Untitled Song"}&rdquo; will be permanently deleted. This can&rsquo;t be undone.</p>
-            <div className="flex flex-col gap-2">
-              <button type="button" onClick={() => { setConfirmDeleteOpen(false); onDelete(); }} className="w-full h-10 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition-colors">Delete song</button>
-              <button type="button" onClick={() => setConfirmDeleteOpen(false)} className="w-full h-10 text-slate-400 dark:text-slate-500 text-sm hover:text-slate-600 dark:hover:text-slate-300 transition-colors">Cancel</button>
-            </div>
-          </div>
-        </div>
+        <ConfirmDialog
+          title="Delete song?"
+          message={`Delete song "${song.title.trim() || "Untitled Song"}"? This can't be undone.`}
+          confirmLabel="Delete song"
+          onCancel={() => setConfirmDeleteOpen(false)}
+          onConfirm={() => { setConfirmDeleteOpen(false); onDelete(); }}
+        />
       )}
 
       {generateOpen && (

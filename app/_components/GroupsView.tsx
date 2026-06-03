@@ -2,6 +2,7 @@
 import { useState } from "react";
 import type { Song } from "@/lib/song";
 import type { Folder } from "@/app/_components/FoldersView";
+import ConfirmDialog from "@/app/_components/ConfirmDialog";
 
 export type Group = { id: string; name: string; inviteToken: string; createdAt: number; };
 export type GroupMember = {
@@ -203,6 +204,8 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
   const [addSongsOpen, setAddSongsOpen] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameVal, setNameVal] = useState(group.name);
+  const [confirmDeleteTeam, setConfirmDeleteTeam] = useState(false);
+  const [removeMemberTarget, setRemoveMemberTarget] = useState<{ id: string; name: string } | null>(null);
   const members = groupMembers.filter(m => m.groupId === group.id);
   // Members from the leader's other teams, de-duplicated by display name —
   // used to autocomplete the Add Member form.
@@ -228,7 +231,6 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
   };
   const isOwner = members.find(m => m.userId === userId)?.role === "owner";
   const handleDelete = async () => {
-    if (!window.confirm(`Delete ${group.name}? This cannot be undone.`)) return;
     const ok = await onDeleteGroup(group.id);
     if (ok) { showToast("Team deleted"); onBack(); }
   };
@@ -312,7 +314,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
                     </button>
                   )}
                   {m.userId !== userId && (
-                    <button type="button" onClick={async () => { if(window.confirm(`Remove ${m.displayName} from the team?`)) { const ok = await onRemoveMember(m.id); if (ok) showToast("Member removed"); } }}
+                    <button type="button" onClick={() => setRemoveMemberTarget({ id: m.id, name: m.displayName ?? "this member" })}
                       className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
@@ -354,7 +356,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
       <TeamSetlistList setlists={teamSetlists} onOpen={onOpenSetlist} />
       {isOwner && (
         <div className="mt-10 pt-6 border-t border-slate-200 dark:border-slate-800">
-          <button type="button" onClick={handleDelete}
+          <button type="button" onClick={() => setConfirmDeleteTeam(true)}
             className="h-9 px-4 rounded-xl text-sm font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors">
             Delete team
           </button>
@@ -362,6 +364,28 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
       )}
       {addOpen && <AddMemberModal groupId={group.id} suggestions={memberSuggestions} onAdd={onAddMember} onClose={() => setAddOpen(false)} showToast={showToast} />}
       {addSongsOpen && <AddSongsModal songs={songs.filter(s => s.userId === userId)} alreadyShared={sharedSongIds} groupId={group.id} onShare={onShareSong} onClose={() => setAddSongsOpen(false)} showToast={showToast} />}
+      {confirmDeleteTeam && (
+        <ConfirmDialog
+          title="Delete team?"
+          message={`Delete team "${group.name}"? This can't be undone.`}
+          confirmLabel="Delete team"
+          onCancel={() => setConfirmDeleteTeam(false)}
+          onConfirm={() => { setConfirmDeleteTeam(false); void handleDelete(); }}
+        />
+      )}
+      {removeMemberTarget && (
+        <ConfirmDialog
+          title="Remove member?"
+          message={`Remove ${removeMemberTarget.name} from this team?`}
+          confirmLabel="Remove"
+          onCancel={() => setRemoveMemberTarget(null)}
+          onConfirm={() => {
+            const id = removeMemberTarget.id;
+            setRemoveMemberTarget(null);
+            void (async () => { const ok = await onRemoveMember(id); if (ok) showToast("Member removed"); })();
+          }}
+        />
+      )}
     </div>
   );
 }
