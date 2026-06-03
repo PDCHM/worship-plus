@@ -1806,7 +1806,7 @@ export default function Home() {
               onSectionStylesSave={async (next) => {
                 if (!user) return;
                 setSectionStyles(next);
-                const { error } = await supabase.from("profiles").update({ section_styles: next, updated_at: new Date().toISOString() }).eq("id", user.id);
+                const { error } = await supabase.from("profiles").update({ section_styles: next }).eq("id", user.id);
                 if (error) { logErr("save section styles", error); showToast("Could not save styles: " + error.message); }
                 else showToast("Styles saved");
               }}
