@@ -1,4 +1,6 @@
 import Link from "next/link";
+import VideoShowcase from "@/app/_components/VideoShowcase";
+import WordAnchoredDemo from "@/app/_components/WordAnchoredDemo";
 
 /* ─── Brand mark ─────────────────────────────────────────────────────────── */
 
@@ -11,17 +13,6 @@ function Wordmark({ className = "" }: { className?: string }) {
       <span className="text-xl font-bold tracking-tight text-slate-900">
         Worship<span className="text-indigo-500">+</span>
       </span>
-    </span>
-  );
-}
-
-/* ─── Word-anchored chord demo (SOLUTION) ────────────────────────────────── */
-
-function ChordWord({ chord, word }: { chord?: string; word: string }) {
-  return (
-    <span className="inline-flex flex-col items-start leading-tight">
-      <span className="h-5 text-sm font-bold text-indigo-600 font-mono">{chord ?? " "}</span>
-      <span className="text-lg text-slate-800">{word}</span>
     </span>
   );
 }
@@ -162,24 +153,17 @@ export default function LandingPage() {
             Resize the screen, change the font, switch devices — the chord stays glued to its syllable.
           </p>
 
-          {/* Word-anchored demo */}
-          <div className="mt-10 inline-block rounded-2xl border border-slate-200 bg-white px-7 py-6 shadow-sm text-left">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-3">Verse 1</div>
-            <div className="flex flex-wrap items-end gap-x-2 gap-y-1">
-              <ChordWord chord="G" word="Amazing" />
-              <ChordWord word="grace," />
-              <ChordWord chord="C" word="how" />
-              <ChordWord word="sweet" />
-              <ChordWord chord="G" word="the" />
-              <ChordWord chord="D" word="sound" />
-            </div>
-          </div>
+          {/* Word-anchored demo — auto-resizes to prove chords stay glued */}
+          <WordAnchoredDemo />
 
           <p className="mt-10 text-base font-medium text-slate-700 max-w-xl mx-auto">
             Worship+ is the first worship app built on word-anchored chord architecture.
           </p>
         </div>
       </section>
+
+      {/* ── 3.5 SEE IT IN ACTION (real footage) ── */}
+      <VideoShowcase />
 
       {/* ── 4. FEATURES ── */}
       <section className="py-20 sm:py-24">
@@ -224,7 +208,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── 5. PRICING ── */}
-      <section className="py-20 sm:py-24 bg-slate-50 border-y border-slate-100">
+      <section id="pricing" className="py-20 sm:py-24 bg-slate-50 border-y border-slate-100">
         <div className="max-w-6xl mx-auto px-5 sm:px-8">
           <div className="text-center max-w-2xl mx-auto mb-14">
             <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">Simple, honest pricing</h2>
