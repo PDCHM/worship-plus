@@ -137,12 +137,12 @@ async function main() {
     `\nKey backfill — ${APPLY ? "APPLY (writing)" : "DRY RUN (no writes)"} — ${url}\n`,
   );
 
-  const [songs, sections, lines, chords] = await Promise.all([
-    fetchAll(supabase, "songs", "id, title, key"),
-    fetchAll(supabase, "sections", "id, song_id, position"),
-    fetchAll(supabase, "lines", "id, section_id, position"),
-    fetchAll(supabase, "chords", "line_id, chord_name, position_px"),
-  ]);
+  // Sequential (not Promise.all) — concurrent connections to the same host can
+  // get dropped in sandboxed/locked-down networks.
+  const songs = await fetchAll(supabase, "songs", "id, title, key");
+  const sections = await fetchAll(supabase, "sections", "id, song_id, position");
+  const lines = await fetchAll(supabase, "lines", "id, section_id, position");
+  const chords = await fetchAll(supabase, "chords", "line_id, chord_name, position_px");
 
   const sectionsBySong = groupBy(sections, "song_id");
   const linesBySection = groupBy(lines, "section_id");
