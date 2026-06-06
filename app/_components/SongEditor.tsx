@@ -584,6 +584,23 @@ function SectionStylesPanel({
   );
 }
 
+// Lay out the chords sitting above a single word so their labels never overlap.
+// Each chord wants its own sub-word column — an explicit `offset`, or (for
+// imported chords that have none) its character `pos` relative to the word.
+// Walking left→right, any chord that would start before the previous label ends
+// is pushed right past it, with a one-character breathing gap. Returns the
+// chosen column (in characters) per chord, in the given order. Used only for
+// multi-chord words; single-chord words keep their exact offset untouched.
+function chordColumnsForUnit(chords: Chord[], wordStart: number): number[] {
+  let prevEnd = -Infinity;
+  return chords.map((ch) => {
+    const want = ch.offset != null ? ch.offset : Math.max(0, ch.pos - wordStart);
+    const col = Math.max(want, prevEnd);
+    prevEnd = col + ch.chord.length + 1; // label width + 1-char gap
+    return col;
+  });
+}
+
 export default function SongEditor({
   song,
   onChange,
@@ -2177,6 +2194,17 @@ export default function SongEditor({
                                 const addingHere =
                                   addingChord?.lineId === line.id &&
                                   addingChord.wordIndex === u.dragIndex;
+                                // Multi-chord words: spread the labels so they
+                                // never overlap (single-chord words keep their
+                                // exact offset). Imported charts often collapse
+                                // several chords onto one word.
+                                const chordCols =
+                                  hasWords && u.chords.length > 1
+                                    ? chordColumnsForUnit(
+                                        u.chords,
+                                        tokens[u.dragIndex]?.start ?? 0,
+                                      )
+                                    : null;
                                 return (
                                   <div
                                     key={u.key}
@@ -2196,11 +2224,11 @@ export default function SongEditor({
                                         className="relative block leading-none"
                                         style={{ minHeight: chordSlotHeight, width: "100%" }}
                                       >
-                                        {u.chords.map((ch) => (
+                                        {u.chords.map((ch, idx) => (
                                           <span
                                             key={ch.id}
                                             className="absolute bottom-0 whitespace-nowrap"
-                                            style={{ left: `${((ch.offset ?? 0) / Math.max(1, u.text.length)) * 100}%` }}
+                                            style={{ left: `${(((chordCols ? chordCols[idx] : ch.offset ?? 0)) / Math.max(1, u.text.length)) * 100}%` }}
                                           >
                                             {editingChord === ch.id && !readOnly ? (
                                               <ChordInput

@@ -321,6 +321,47 @@ export function detectProgression(
   return { progression: top.join("–"), name: null };
 }
 
+// Infer a song's key from the chords actually used, spelled with the app's
+// canonical key names (KEYS). Scores each of the 12 major keys by how well the
+// chord roots fit its diatonic scale, weighting tonic emphasis (first/last/most
+// -used chord) and the presence of the V and IV so a key resolves to its true
+// tonic rather than its relative minor. Returns null when there are no chords.
+// Used by the .sbp importer, whose stored `key` int is unreliable.
+const MAJOR_SCALE_DEGREES = [0, 2, 4, 5, 7, 9, 11];
+export function detectKeyFromChords(chordNames: string[]): string | null {
+  const roots: number[] = [];
+  for (const name of chordNames) {
+    const r = chordRootIndex(name);
+    if (r >= 0) roots.push(r);
+  }
+  if (!roots.length) return null;
+  const freq = new Map<number, number>();
+  for (const r of roots) freq.set(r, (freq.get(r) ?? 0) + 1);
+  const first = roots[0];
+  const last = roots[roots.length - 1];
+  let best = 0;
+  let bestScore = -Infinity;
+  for (let tonic = 0; tonic < 12; tonic++) {
+    const scale = new Set(MAJOR_SCALE_DEGREES.map((d) => (tonic + d) % 12));
+    let score = 0;
+    // Diatonic fit dominates: a chord OUTSIDE the scale is a strong signal the
+    // key is wrong (e.g. a C chord rules out D major), so penalise it heavily.
+    // This keeps the true tonic ahead of its dominant, which otherwise wins on
+    // sheer frequency (worship songs lean hard on the V and often end on it).
+    for (const r of roots) score += scale.has(r) ? 1 : -3;
+    score += freq.get(tonic) ?? 0; // tonic tends to be among the most-played roots
+    if (first === tonic) score += 2; // songs tend to open on the tonic…
+    if (last === tonic) score += 2; // …and resolve to it
+    if (freq.has((tonic + 7) % 12)) score += 0.5; // a V reinforces the tonic
+    if (freq.has((tonic + 5) % 12)) score += 0.5; // …as does a IV
+    if (score > bestScore) {
+      bestScore = score;
+      best = tonic;
+    }
+  }
+  return KEYS[best];
+}
+
 export function transposeChord(
   chord: string,
   semitones: number,
@@ -949,10 +990,20 @@ export function parseSbp(dataFileText: string): Song {
   const title = typeof first.name === "string" && first.name.trim() ? first.name.trim() : "Imported Song";
   const artist = typeof first.author === "string" ? first.author.trim() : "";
   const keyInt = Number(first.key);
-  const key = Number.isInteger(keyInt) && keyInt >= 0 && keyInt <= 11 ? SBP_KEY_NAMES[keyInt] : "C";
+  const keyFromInt = Number.isInteger(keyInt) && keyInt >= 0 && keyInt <= 11 ? SBP_KEY_NAMES[keyInt] : "C";
   const capoNum = Number(first.Capo);
   const capo = Number.isInteger(capoNum) && capoNum > 0 ? capoNum : null;
   const content = typeof first.content === "string" ? first.content : "";
+
+  const sections = parseSbpContent(content, title);
+  // SongBook Pro's stored `key` int does not map to a standard pitch (a song
+  // plainly in G can arrive as A#), so trust the chords: detect the key from
+  // them and prefer that whenever the chords give an answer. Fall back to the
+  // int only for chordless charts.
+  const detectedKey = detectKeyFromChords(
+    sections.flatMap((s) => s.lines.flatMap((ln) => ln.chords.map((c) => c.chord))),
+  );
+  const key = detectedKey ?? keyFromInt;
 
   const now = Date.now();
   return {
@@ -962,7 +1013,7 @@ export function parseSbp(dataFileText: string): Song {
     key,
     capo,
     bpm: null,
-    sections: parseSbpContent(content, title),
+    sections,
     favorite: false,
     createdAt: now,
     updatedAt: now,
@@ -1184,6 +1235,7 @@ function chordPositionsFromLine(chordLine: string, maxLen?: number): Chord[] {
   const result: Chord[] = [];
   const re = /\S+/g;
   let m: RegExpExecArray | null;
+  let lastPos = -1;
   while ((m = re.exec(chordLine)) !== null) {
     // A whitespace token may bundle multiple chords joined by a separator
     // ("Dsus|C", "Am7–D"); split it into separator-free runs and keep each
@@ -1198,7 +1250,13 @@ function chordPositionsFromLine(chordLine: string, maxLen?: number): Chord[] {
       // Keep trailing chords whose column runs past the (shorter) lyric — common
       // in SongBook Pro chord-above lines ("G Am7 – Dsus|C") — by clamping them
       // onto the last column rather than dropping them.
-      const pos = maxLen == null ? col : Math.min(col, maxLen);
+      const clamped = maxLen == null ? col : Math.min(col, maxLen);
+      // Every chord gets a DISTINCT column: separator-joined or clamped chords
+      // would otherwise collapse onto the same offset (e.g. "Dsus|C" past the
+      // lyric end → both at maxLen), which renders them stacked on top of each
+      // other. Force strictly increasing positions so each stays addressable.
+      const pos = clamped > lastPos ? clamped : lastPos + 1;
+      lastPos = pos;
       result.push({ id: uid(), pos, chord: name });
     }
   }
