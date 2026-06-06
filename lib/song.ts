@@ -362,6 +362,20 @@ export function detectKeyFromChords(chordNames: string[]): string | null {
   return KEYS[best];
 }
 
+// Every chord name in a parsed song, in reading order — the input to
+// detectKeyFromChords for ALL import paths (.sbp, .docx, .pdf, .txt).
+function collectChordNames(sections: Section[]): string[] {
+  return sections.flatMap((s) =>
+    s.lines.flatMap((ln) => ln.chords.map((c) => c.chord)),
+  );
+}
+
+// The one key-detection entry point shared by every importer: infer the key
+// from the chart's chords, falling back to C only when there are no chords.
+export function detectKeyFromSections(sections: Section[]): string {
+  return detectKeyFromChords(collectChordNames(sections)) ?? "C";
+}
+
 export function transposeChord(
   chord: string,
   semitones: number,
@@ -779,6 +793,7 @@ export function parseSongText(text: string): Song {
   let titleTaken = false;
   let artist = "";
   let key = "C";
+  let keyFromDirective = false;
   let capo: number | null = null;
   const sections: Section[] = [];
   let current: Section | null = null;
@@ -812,7 +827,7 @@ export function parseSongText(text: string): Song {
       const val = v.trim();
       if (k === "title") title = val;
       else if (k === "artist") artist = val;
-      else if (k === "key") key = val;
+      else if (k === "key") { key = val; keyFromDirective = true; }
       else if (k === "capo") {
         const n = parseInt(val, 10);
         if (!isNaN(n) && n > 0) capo = n;
@@ -873,14 +888,11 @@ export function parseSongText(text: string): Song {
     }
   }
 
-  if (
-    key === "C" &&
-    sections.length &&
-    sections[0].lines.length &&
-    sections[0].lines[0].chords.length
-  ) {
-    const root = sections[0].lines[0].chords[0].chord.match(/^([A-G][#b]?)/);
-    if (root) key = FLAT_TO_SHARP[root[1]] ?? root[1];
+  // Key comes from the chords via the shared detector (same path as every other
+  // import). An explicit {key:} directive — when a ChordPro file provides one —
+  // still wins, since that's authoritative author intent (e.g. capo charts).
+  if (!keyFromDirective) {
+    key = detectKeyFromSections(sections);
   }
 
   if (!sections.length) {
@@ -909,9 +921,6 @@ export function parseSongText(text: string): Song {
 // Each song's `content` mixes {c: Label} directives, inline ChordPro lines, and
 // chord-above-lyric pairs. Metadata comes from the JSON; the content is parsed
 // line-by-line (reusing parseChordProLine / chordPositionsFromLine).
-
-// SongBook Pro encodes key as an int 0–11 = C..B (chromatic, sharps).
-const SBP_KEY_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 // A leading "flow"/structure line like "V, C, V, C, Tag x 2" — comma-separated
 // section abbreviations. Conservative: every comma token must be a section-ish
@@ -989,21 +998,15 @@ export function parseSbp(dataFileText: string): Song {
 
   const title = typeof first.name === "string" && first.name.trim() ? first.name.trim() : "Imported Song";
   const artist = typeof first.author === "string" ? first.author.trim() : "";
-  const keyInt = Number(first.key);
-  const keyFromInt = Number.isInteger(keyInt) && keyInt >= 0 && keyInt <= 11 ? SBP_KEY_NAMES[keyInt] : "C";
   const capoNum = Number(first.Capo);
   const capo = Number.isInteger(capoNum) && capoNum > 0 ? capoNum : null;
   const content = typeof first.content === "string" ? first.content : "";
 
   const sections = parseSbpContent(content, title);
   // SongBook Pro's stored `key` int does not map to a standard pitch (a song
-  // plainly in G can arrive as A#), so trust the chords: detect the key from
-  // them and prefer that whenever the chords give an answer. Fall back to the
-  // int only for chordless charts.
-  const detectedKey = detectKeyFromChords(
-    sections.flatMap((s) => s.lines.flatMap((ln) => ln.chords.map((c) => c.chord))),
-  );
-  const key = detectedKey ?? keyFromInt;
+  // plainly in G can arrive as A#), so it is ignored entirely: the key comes
+  // from the chords via the shared detector, like every other import.
+  const key = detectKeyFromSections(sections);
 
   const now = Date.now();
   return {
@@ -1349,20 +1352,7 @@ export function parsePastedChart(text: string): {
 
   if (!sections.length) startNew("Verse 1");
 
-  let key = "C";
-  outer: for (const s of sections) {
-    for (const line of s.lines) {
-      if (line.chords.length) {
-        const root = line.chords[0].chord.match(/^([A-G][#b]?)/);
-        if (root) {
-          key = root[1];
-          break outer;
-        }
-      }
-    }
-  }
-
-  return { sections, key };
+  return { sections, key: detectKeyFromSections(sections) };
 }
 
 export function pastedChartToSong(
