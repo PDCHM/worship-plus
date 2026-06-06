@@ -329,31 +329,58 @@ export function detectProgression(
 // Used by the .sbp importer, whose stored `key` int is unreliable.
 const MAJOR_SCALE_DEGREES = [0, 2, 4, 5, 7, 9, 11];
 
+// The pitch class of a chord's third, for quality matching. Minor/diminished →
+// minor third (root+3); major/dominant/augmented → major third (root+4);
+// suspended and power chords have no third (null — quality-neutral). The third
+// is what tells major from minor, so a major chord where the key wants a minor
+// one (and vice-versa) lands its third OUTSIDE the scale — the accidental that
+// distinguishes keys a fifth apart (D-major's F# rules out C; A-major's C# rules
+// out G).
+function chordThird(name: string, root: number): number | null {
+  const m = name.trim().match(/^[A-Ga-g][#b]?(.*)$/);
+  const quality = (m ? m[1] : "").split("/")[0]; // drop any slash bass
+  if (/^(sus|5)/i.test(quality)) return null; // suspended / power chord — no third
+  if (/^(m(?!aj)|min|dim|°|o(?![a-z]))/i.test(quality)) return (root + 3) % 12; // minor third
+  return (root + 4) % 12; // major third (maj, dominant 7, aug, 6, add…)
+}
+
+type ParsedChord = { root: number; third: number | null };
+
+function parseChords(chordNames: string[]): ParsedChord[] {
+  const out: ParsedChord[] = [];
+  for (const name of chordNames) {
+    const root = chordRootIndex(name);
+    if (root >= 0) out.push({ root, third: chordThird(name, root) });
+  }
+  return out;
+}
+
 // Score all 12 major keys for a chord set, best first. The single source of
 // scoring truth behind detectKeyFromChords and detectKeyWithConfidence. Returns
 // null when no chord names yield a recognisable root.
 function scoreMajorKeys(
   chordNames: string[],
 ): { tonic: number; score: number }[] | null {
-  const roots: number[] = [];
-  for (const name of chordNames) {
-    const r = chordRootIndex(name);
-    if (r >= 0) roots.push(r);
-  }
-  if (!roots.length) return null;
+  const chords = parseChords(chordNames);
+  if (!chords.length) return null;
   const freq = new Map<number, number>();
-  for (const r of roots) freq.set(r, (freq.get(r) ?? 0) + 1);
-  const first = roots[0];
-  const last = roots[roots.length - 1];
+  for (const c of chords) freq.set(c.root, (freq.get(c.root) ?? 0) + 1);
+  const first = chords[0].root;
+  const last = chords[chords.length - 1].root;
   const ranked: { tonic: number; score: number }[] = [];
   for (let tonic = 0; tonic < 12; tonic++) {
     const scale = new Set(MAJOR_SCALE_DEGREES.map((d) => (tonic + d) % 12));
     let score = 0;
-    // Diatonic fit dominates: a chord OUTSIDE the scale is a strong signal the
-    // key is wrong (e.g. a C chord rules out D major), so penalise it heavily.
-    // This keeps the true tonic ahead of its dominant, which otherwise wins on
-    // sheer frequency (worship songs lean hard on the V and often end on it).
-    for (const r of roots) score += scale.has(r) ? 1 : -3;
+    // Quality-aware diatonic fit: a chord earns +1 only when BOTH its root and
+    // its third sit in the key. A root outside the key, OR a right-root chord
+    // whose quality is wrong (its third is an accidental — e.g. a D-major chord
+    // in C, which needs Dm), is penalised heavily. The third test is what breaks
+    // the fifth-apart ties (C/G, G/D, D/A) that root-only scoring couldn't.
+    for (const c of chords) {
+      if (!scale.has(c.root)) score -= 3; // root outside the key
+      else if (c.third !== null && !scale.has(c.third)) score -= 3; // wrong quality
+      else score += 1; // root and quality both fit
+    }
     score += freq.get(tonic) ?? 0; // tonic tends to be among the most-played roots
     if (first === tonic) score += 2; // songs tend to open on the tonic…
     if (last === tonic) score += 2; // …and resolve to it
