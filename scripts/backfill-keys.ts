@@ -27,6 +27,14 @@ const DIAGNOSE = process.argv.includes("--diagnose");
 // In --diagnose mode, every non-flag CLI arg is a song title to dump.
 const DIAGNOSE_TITLES = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 
+// Titles to NEVER auto-update, even when detection is confident — songs whose
+// stored key is a deliberate manual choice the detector can't see. Beautiful
+// Saviour is charted in capo (G shapes) but sung in a different key, so its
+// chord-detected key (G) is intentionally not the stored key. Matched
+// case-insensitively. Re-detecting these is a manual decision.
+const SKIP_TITLES = new Set(["beautiful saviour"]);
+const isSkipped = (title: string) => SKIP_TITLES.has(title.trim().toLowerCase());
+
 // Soft-load a .env file: fill only vars NOT already in the environment, so
 // credentials passed inline (FOO=bar npx tsx …) always win over the file. Lets
 // the script run with a plain `npx tsx …` when .env.local holds real values.
@@ -128,6 +136,7 @@ type Result = {
 function statusOf(r: Result): string {
   if (r.detected === null) return "no chords";
   if (r.detected === r.current) return "—";
+  if (isSkipped(r.title)) return "skip (manual)";
   return r.confident ? "UPDATE" : "ambiguous (skip)";
 }
 
@@ -256,18 +265,27 @@ async function main() {
   for (const r of cells) console.log(fmt(r));
 
   // ---- summary ----
-  const updates = results.filter((r) => r.detected && r.detected !== r.current && r.confident);
-  const ambiguous = results.filter((r) => r.detected && r.detected !== r.current && !r.confident);
+  const changed = results.filter((r) => r.detected && r.detected !== r.current);
+  const manualSkipped = changed.filter((r) => r.confident && isSkipped(r.title));
+  const updates = changed.filter((r) => r.confident && !isSkipped(r.title));
+  const ambiguous = changed.filter((r) => !r.confident);
   const noChords = results.filter((r) => r.detected === null);
   const correct = results.filter((r) => r.detected !== null && r.detected === r.current);
   console.log(
-    `\n${results.length} songs · ${updates.length} to update · ${ambiguous.length} ambiguous (skip) · ${correct.length} already correct · ${noChords.length} no chords`,
+    `\n${results.length} songs · ${updates.length} to update · ${ambiguous.length} ambiguous (skip) · ${manualSkipped.length} skipped (manual) · ${correct.length} already correct · ${noChords.length} no chords`,
   );
 
   if (ambiguous.length) {
     console.log("\nAmbiguous (skipped — eyeball before trusting):");
     for (const r of ambiguous) {
       console.log(`  ${r.title} — current ${r.current}, detected ${r.detected} (margin ${r.margin}, ${r.chordCount} chords)`);
+    }
+  }
+
+  if (manualSkipped.length) {
+    console.log("\nSkipped (manual / capo — on the skip-list, left for you to decide):");
+    for (const r of manualSkipped) {
+      console.log(`  ${r.title} — current ${r.current}, detected ${r.detected} (margin ${r.margin})`);
     }
   }
 
