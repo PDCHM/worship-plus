@@ -584,13 +584,12 @@ function SectionStylesPanel({
   );
 }
 
-// Section types offered by the per-line "+ Section here" picker. A flat list of
-// labels (no auto-numbering — the user picks the type and can rename after).
-const NEW_SECTION_TYPES = [
-  "Verse",
-  "Chorus",
+// Section types offered by the per-line "Add section" picker (no auto-numbering
+// — the user picks the type and can rename after). The three common types show
+// prominently; the rest live under an expandable "Others".
+const COMMON_SECTION_TYPES = ["Verse", "Chorus", "Bridge"];
+const OTHER_SECTION_TYPES = [
   "Pre-Chorus",
-  "Bridge",
   "Tag",
   "Interlude",
   "Instrumental",
@@ -746,6 +745,8 @@ export default function SongEditor({
   const [activeLine, setActiveLine] = useState<string | null>(null);
   // The line whose "Add section" type-picker is open (null = none open).
   const [sectionPickerLine, setSectionPickerLine] = useState<string | null>(null);
+  // Whether the picker's "Others" group is expanded (reset each time it opens).
+  const [sectionOthersOpen, setSectionOthersOpen] = useState(false);
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -2571,24 +2572,49 @@ export default function SongEditor({
                                 label="Add section"
                                 active={sectionPickerLine === line.id}
                                 onMouseDown={(e) => e.stopPropagation()}
-                                onClick={() =>
-                                  setSectionPickerLine((cur) => (cur === line.id ? null : line.id))
-                                }
+                                onClick={() => {
+                                  setSectionOthersOpen(false);
+                                  setSectionPickerLine((cur) => (cur === line.id ? null : line.id));
+                                }}
                               >
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8v-2a2 2 0 0 1 2 -2h2" /><path d="M4 16v2a2 2 0 0 0 2 2h2" /><path d="M16 4h2a2 2 0 0 1 2 2v2" /><path d="M16 20h2a2 2 0 0 0 2 -2v-2" /></svg>
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" /><path d="M4 12h16" /></svg>
                               </LineToolButton>
                               {sectionPickerLine === line.id && (
                                 <div
                                   ref={sectionPickerRef}
                                   onMouseDown={(e) => e.stopPropagation()}
-                                  className="absolute z-40 top-full left-0 mt-1 w-48 p-1 grid grid-cols-2 gap-0.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/20"
+                                  className="absolute z-40 top-full left-0 mt-1 w-48 p-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/20"
                                 >
-                                  {NEW_SECTION_TYPES.map((t) => (
+                                  <div className="px-2 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                    Add section
+                                  </div>
+                                  {COMMON_SECTION_TYPES.map((t) => (
                                     <button
                                       key={t}
                                       type="button"
                                       onClick={() => startSectionAtLine(line.id, t)}
-                                      className="text-left px-2 py-1 rounded text-[12px] text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
+                                      className="w-full text-left px-2 py-1 rounded text-[12px] text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
+                                    >
+                                      {t}
+                                    </button>
+                                  ))}
+                                  <button
+                                    type="button"
+                                    onClick={() => setSectionOthersOpen((o) => !o)}
+                                    aria-expanded={sectionOthersOpen}
+                                    className="w-full flex items-center justify-between px-2 py-1 mt-0.5 rounded text-[12px] font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/60 transition-colors"
+                                  >
+                                    Others
+                                    <svg className={`shrink-0 transition-transform duration-200 ${sectionOthersOpen ? "rotate-180" : ""}`} width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <polyline points="6 9 12 15 18 9" />
+                                    </svg>
+                                  </button>
+                                  {sectionOthersOpen && OTHER_SECTION_TYPES.map((t) => (
+                                    <button
+                                      key={t}
+                                      type="button"
+                                      onClick={() => startSectionAtLine(line.id, t)}
+                                      className="w-full text-left pl-4 pr-2 py-1 rounded text-[12px] text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
                                     >
                                       {t}
                                     </button>
