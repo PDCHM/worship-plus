@@ -10,6 +10,9 @@
  *   Apply (service-role write to live data — only the CONFIDENT changes):
  *     npx tsx scripts/backfill-keys.ts --apply
  *
+ *   Diagnose (read-only — dump chords + scores for specific titles, no writes):
+ *     npx tsx scripts/backfill-keys.ts --diagnose "Hide Me In The Shelter" "Called for More"
+ *
  * Only confident detections are updated; ambiguous songs (chords fit two keys
  * about equally, e.g. a D-vs-G chart) are flagged and skipped rather than
  * guessed. Needs SUPABASE_SERVICE_ROLE_KEY and a project URL — from
@@ -17,9 +20,12 @@
  */
 import { readFileSync } from "node:fs";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { detectKeyWithConfidence } from "../lib/song";
+import { detectKeyWithConfidence, keyScores } from "../lib/song";
 
 const APPLY = process.argv.includes("--apply");
+const DIAGNOSE = process.argv.includes("--diagnose");
+// In --diagnose mode, every non-flag CLI arg is a song title to dump.
+const DIAGNOSE_TITLES = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 
 // Soft-load a .env file: fill only vars NOT already in the environment, so
 // credentials passed inline (FOO=bar npx tsx …) always win over the file. Lets
@@ -133,9 +139,12 @@ async function main() {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  console.log(
-    `\nKey backfill — ${APPLY ? "APPLY (writing)" : "DRY RUN (no writes)"} — ${url}\n`,
-  );
+  const mode = DIAGNOSE
+    ? "DIAGNOSE (read-only)"
+    : APPLY
+      ? "APPLY (writing)"
+      : "DRY RUN (no writes)";
+  console.log(`\nKey backfill — ${mode} — ${url}\n`);
 
   // Sequential (not Promise.all) — concurrent connections to the same host can
   // get dropped in sandboxed/locked-down networks.
@@ -148,12 +157,11 @@ async function main() {
   const linesBySection = groupBy(lines, "section_id");
   const chordsByLine = groupBy(chords, "line_id");
 
-  const results: Result[] = [];
-  for (const song of songs) {
-    // Chord names in reading order (section → line → column) — the same order
-    // the importer feeds the detector, so first/last-chord weighting matches.
+  // Chord names for one song in reading order (section → line → column) — the
+  // exact order the importer feeds the detector, so first/last weighting matches.
+  const chordSeq = (songId: string): string[] => {
     const names: string[] = [];
-    const secs = (sectionsBySong.get(String(song.id)) ?? []).slice().sort(byPosition);
+    const secs = (sectionsBySong.get(songId) ?? []).slice().sort(byPosition);
     for (const sec of secs) {
       const lns = (linesBySection.get(String(sec.id)) ?? []).slice().sort(byPosition);
       for (const ln of lns) {
@@ -165,6 +173,43 @@ async function main() {
         }
       }
     }
+    return names;
+  };
+
+  // ---- diagnostic mode: dump the raw evidence for specific titles, no writes ----
+  if (DIAGNOSE) {
+    if (!DIAGNOSE_TITLES.length) {
+      console.log('Pass one or more titles, e.g. --diagnose "Called for More"\n');
+      return;
+    }
+    const wanted = new Set(DIAGNOSE_TITLES.map((t) => t.trim().toLowerCase()));
+    const matched = songs.filter(
+      (s) => typeof s.title === "string" && wanted.has(s.title.trim().toLowerCase()),
+    );
+    if (!matched.length) {
+      console.log("No songs matched those titles.\n");
+      return;
+    }
+    for (const song of matched) {
+      const names = chordSeq(String(song.id));
+      const det = detectKeyWithConfidence(names);
+      const scores = keyScores(names);
+      const top = scores ? scores.slice(0, 3) : [];
+      console.log(`=== ${song.title}  (id ${String(song.id).slice(0, 8)}…) ===`);
+      console.log(`  stored key:    ${(typeof song.key === "string" && song.key) || "—"}`);
+      console.log(`  detected key:  ${det.key ?? "—"}  (confident: ${det.confident ? "yes" : "no"}, margin ${det.margin})`);
+      console.log(`  chord count:   ${names.length}`);
+      console.log(`  first / last:  ${names[0] ?? "(none)"} / ${names[names.length - 1] ?? "(none)"}`);
+      console.log(`  top scores:    ${top.map((s) => `${s.key}=${s.score}`).join("   ") || "(none)"}`);
+      console.log(`  chords:        ${names.join(" ") || "(none)"}`);
+      console.log("");
+    }
+    return;
+  }
+
+  const results: Result[] = [];
+  for (const song of songs) {
+    const names = chordSeq(String(song.id));
     const det = detectKeyWithConfidence(names);
     results.push({
       id: String(song.id),

@@ -402,6 +402,16 @@ export function detectKeyWithConfidence(chordNames: string[]): {
   };
 }
 
+// Read-only view of the exact scoring the detector uses (scoreMajorKeys), every
+// major key ranked best-first, for diagnostics only — it does NOT affect
+// detection. Returns null when no chord name yields a recognisable root.
+export function keyScores(
+  chordNames: string[],
+): { key: string; score: number }[] | null {
+  const ranked = scoreMajorKeys(chordNames);
+  return ranked ? ranked.map((r) => ({ key: KEYS[r.tonic], score: r.score })) : null;
+}
+
 // Every chord name in a parsed song, in reading order — the input to
 // detectKeyFromChords for ALL import paths (.sbp, .docx, .pdf, .txt).
 function collectChordNames(sections: Section[]): string[] {
