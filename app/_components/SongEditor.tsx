@@ -2539,12 +2539,10 @@ export default function SongEditor({
                             )}
                           </>
                         )}
-                        <LineBubbles sectionId={section.id} lineIndex={lIdx} api={bubbles} readOnly={readOnly} hideTrigger />
-                        </div>
                         {!readOnly && (
                           <div
                             className={
-                              "shrink-0 mt-0.5 items-center gap-0.5 print:hidden " +
+                              "-ml-1 mt-1 items-center gap-0.5 print:hidden " +
                               (activeLine === line.id || sectionPickerLine === line.id
                                 ? "flex"
                                 : "hidden sm:group-hover/line:flex")
@@ -2581,7 +2579,7 @@ export default function SongEditor({
                                 <div
                                   ref={sectionPickerRef}
                                   onMouseDown={(e) => e.stopPropagation()}
-                                  className="absolute z-40 top-full right-0 mt-1 w-48 p-1 grid grid-cols-2 gap-0.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/20"
+                                  className="absolute z-40 top-full left-0 mt-1 w-48 p-1 grid grid-cols-2 gap-0.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/20"
                                 >
                                   {NEW_SECTION_TYPES.map((t) => (
                                     <button
@@ -2602,8 +2600,20 @@ export default function SongEditor({
                             >
                               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 20l7 -7" /><path d="M13 20v-6a1 1 0 0 1 1 -1h6v-7a3 3 0 0 0 -3 -3h-10a3 3 0 0 0 -3 3v14a3 3 0 0 0 3 3h6z" /></svg>
                             </LineToolButton>
+                            <LineToolButton
+                              label="Close"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSectionPickerLine(null);
+                                setActiveLine(null);
+                              }}
+                            >
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6l-12 12" /><path d="M6 6l12 12" /></svg>
+                            </LineToolButton>
                           </div>
                         )}
+                        <LineBubbles sectionId={section.id} lineIndex={lIdx} api={bubbles} readOnly={readOnly} hideTrigger />
+                        </div>
                         {!readOnly && (
                           <button
                             type="button"
