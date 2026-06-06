@@ -1237,7 +1237,9 @@ export default function Home() {
 
   const newSong = () => {
     // Songs are ungated on every plan — no count limit.
-    const song = makeNewSong();
+    // Stamp ownership (userId) so it shows in All Songs immediately — the list
+    // filters on userId === user.id.
+    const song = { ...makeNewSong(), userId: user?.id };
     setSongs(prev => [song, ...prev]);
     setDirtyIds(prev => new Set(prev).add(song.id));
     lastSavedRef.current.set(song.id, song);
@@ -1367,6 +1369,10 @@ export default function Home() {
   const openSong = (id: string, opts?: { setlistId?: string }) => navigateTo({ kind: "editor", songId: id, setlistId: opts?.setlistId });
 
   const handleImportPasted = (song: Song, aiIntent = false) => {
+    // Stamp ownership so the song passes the All Songs filter (which keys on
+    // userId === user.id) and appears immediately — no refresh needed. Preserve
+    // any userId already set (e.g. the AI-chords path stamps it upstream).
+    if (user && !song.userId) song = { ...song, userId: user.id };
     setSongs((prev) => [song, ...prev]);
     hydratedIdsRef.current.add(song.id);
     // AI Chords flow: mark this song so the editor auto-opens Generate Chords.
@@ -1422,6 +1428,7 @@ export default function Home() {
           const imported: Song[] = data.songs.map((s: Song) => ({
             ...s,
             id: uid(),
+            userId: user?.id,
             sections: (s.sections ?? []).map(sec => cloneSection(sec)),
             favorite: false,
             createdAt: Date.now(),
@@ -1465,6 +1472,7 @@ export default function Home() {
           const imported: Song[] = data.songs.map((s: Song) => ({
             ...s,
             id: uid(),
+            userId: user?.id,
             sections: s.sections.map(sec => cloneSection(sec)),
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -1519,7 +1527,7 @@ export default function Home() {
     try {
       // .sbp arrives as its unzipped dataFile.txt (version line + JSON); parse
       // it structurally. Everything else is chord-chart text.
-      const parsed = ext === "sbp" ? parseSbp(text) : parseSongText(text);
+      const parsed = { ...(ext === "sbp" ? parseSbp(text) : parseSongText(text)), userId: user?.id };
       hydratedIdsRef.current.add(parsed.id);
       setSongs((prev) => [parsed, ...prev]);
       navigateTo({ kind: "editor", songId: parsed.id });
