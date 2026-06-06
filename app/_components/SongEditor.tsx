@@ -584,6 +584,21 @@ function SectionStylesPanel({
   );
 }
 
+// Section types offered by the per-line "+ Section here" picker. A flat list of
+// labels (no auto-numbering — the user picks the type and can rename after).
+const NEW_SECTION_TYPES = [
+  "Verse",
+  "Chorus",
+  "Pre-Chorus",
+  "Bridge",
+  "Tag",
+  "Interlude",
+  "Instrumental",
+  "Intro",
+  "Outro",
+  "Ending",
+];
+
 // Lay out the chords sitting above a single word so their labels never overlap.
 // Each chord wants its own sub-word column — an explicit `offset`, or (for
 // imported chords that have none) its character `pos` relative to the word.
@@ -639,6 +654,8 @@ export default function SongEditor({
   // The word a not-yet-created chord is being typed onto (tap a word → input).
   const [addingChord, setAddingChord] = useState<{ lineId: string; wordIndex: number; offset: number } | null>(null);
   const [editingLine, setEditingLine] = useState<string | null>(null);
+  // The line whose "+ Section here" type-picker is open (null = none open).
+  const [sectionPickerLine, setSectionPickerLine] = useState<string | null>(null);
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -748,6 +765,25 @@ export default function SongEditor({
       window.removeEventListener("blur", onBlur);
     };
   }, [contextMenu]);
+
+  const sectionPickerRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!sectionPickerLine) return;
+    const close = (e: Event) => {
+      const target = e.target as Node | null;
+      if (target && sectionPickerRef.current?.contains(target)) return;
+      setSectionPickerLine(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSectionPickerLine(null);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [sectionPickerLine]);
 
   useEffect(() => {
     if (!keyPickerOpen && !capoPickerOpen) return;
@@ -1440,6 +1476,55 @@ export default function SongEditor({
       ),
     }));
     setEditingLine(newLineId);
+  };
+
+  // Splice a fresh empty line into the section directly AFTER the given line
+  // (not appended at the end), then focus it for typing.
+  const insertLineBelow = (sectionId: string, lineId: string) => {
+    const newLineId = uid();
+    update((s) => ({
+      ...s,
+      sections: s.sections.map((sec) => {
+        if (sec.id !== sectionId) return sec;
+        const idx = sec.lines.findIndex((l) => l.id === lineId);
+        if (idx === -1) return sec;
+        const lines = [...sec.lines];
+        lines.splice(idx + 1, 0, { id: newLineId, lyric: "", chords: [] });
+        return { ...sec, lines };
+      }),
+    }));
+    setEditingLine(newLineId);
+  };
+
+  // Start a new section (of the chosen type) at a given line: split its section
+  // so lines before stay put and this line + everything below it become the new
+  // section, inserted right after the original. When the line is already the
+  // first of its section, the section is simply relabeled (fresh id) so no empty
+  // leftover section is created.
+  const startSectionAtLine = (lineId: string, label: string) => {
+    setSectionPickerLine(null);
+    update((s) => {
+      const secIdx = s.sections.findIndex((sec) =>
+        sec.lines.some((l) => l.id === lineId),
+      );
+      if (secIdx === -1) return s;
+      const sec = s.sections[secIdx];
+      const idx = sec.lines.findIndex((l) => l.id === lineId);
+      const before = sec.lines.slice(0, idx);
+      const after = sec.lines.slice(idx); // this line + everything below it
+      const next = [...s.sections];
+      if (before.length === 0) {
+        next.splice(secIdx, 1, { id: uid(), label, lines: after });
+      } else {
+        next.splice(
+          secIdx,
+          1,
+          { ...sec, lines: before },
+          { id: uid(), label, lines: after },
+        );
+      }
+      return { ...s, sections: next };
+    });
   };
 
   const commitSectionLabel = (sectionId: string, label: string) => {
@@ -2364,6 +2449,54 @@ export default function SongEditor({
                                   ? "Start typing your lyrics here…"
                                   : "✎ edit lyrics"}
                               </button>
+                            )}
+                            {!readOnly && (
+                              <div className="relative flex items-center gap-3 mt-0.5 print:hidden">
+                                <button
+                                  type="button"
+                                  onClick={() => insertLineBelow(section.id, line.id)}
+                                  title="Insert an empty line below this one"
+                                  className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-400 dark:text-slate-500 hover:text-indigo-500 transition-opacity opacity-60 sm:opacity-0 sm:group-hover/line:opacity-100 focus-visible:opacity-100"
+                                >
+                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                  Insert line below
+                                </button>
+                                <button
+                                  type="button"
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  onClick={() =>
+                                    setSectionPickerLine((cur) => (cur === line.id ? null : line.id))
+                                  }
+                                  title="Start a new section at this line"
+                                  className={
+                                    "inline-flex items-center gap-1 text-[10px] font-medium transition-opacity hover:text-indigo-500 focus-visible:opacity-100 " +
+                                    (sectionPickerLine === line.id
+                                      ? "text-indigo-500 opacity-100"
+                                      : "text-slate-400 dark:text-slate-500 opacity-60 sm:opacity-0 sm:group-hover/line:opacity-100")
+                                  }
+                                >
+                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 5h18M3 12h18M3 19h10"/></svg>
+                                  + Section here
+                                </button>
+                                {sectionPickerLine === line.id && (
+                                  <div
+                                    ref={sectionPickerRef}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    className="absolute z-40 top-full left-0 mt-1 w-48 p-1 grid grid-cols-2 gap-0.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/20"
+                                  >
+                                    {NEW_SECTION_TYPES.map((t) => (
+                                      <button
+                                        key={t}
+                                        type="button"
+                                        onClick={() => startSectionAtLine(line.id, t)}
+                                        className="text-left px-2 py-1 rounded text-[12px] text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
+                                      >
+                                        {t}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </>
                         )}
