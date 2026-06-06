@@ -664,7 +664,9 @@ function LineToolButton({
           setTip(false);
         }}
         className={
-          "w-7 h-7 rounded-md flex items-center justify-center transition-colors " +
+          // ~44px touch target on mobile (icon still renders small, centered);
+          // tightens to 28px on desktop where pointer precision is fine.
+          "w-11 h-11 sm:w-7 sm:h-7 rounded-md flex items-center justify-center transition-colors " +
           (active
             ? "text-indigo-500 bg-indigo-50 dark:bg-indigo-950/60"
             : "text-slate-400 dark:text-slate-500 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/60")
