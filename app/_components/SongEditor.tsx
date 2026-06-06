@@ -599,6 +599,91 @@ const NEW_SECTION_TYPES = [
   "Ending",
 ];
 
+// One icon button in the per-line toolbar. Shows its label as a tooltip on
+// desktop hover AND on touch long-press, so the icon is never ambiguous. A
+// long-press that surfaces the tooltip suppresses the tap action on release.
+function LineToolButton({
+  label,
+  onClick,
+  onMouseDown,
+  active = false,
+  children,
+}: {
+  label: string;
+  onClick: (e: React.MouseEvent) => void;
+  onMouseDown?: (e: React.MouseEvent) => void;
+  active?: boolean;
+  children: React.ReactNode;
+}) {
+  const [tip, setTip] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressed = useRef(false);
+  const clearTimer = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+  return (
+    <span className="relative inline-flex">
+      <button
+        type="button"
+        aria-label={label}
+        title={label}
+        onMouseDown={onMouseDown}
+        onClick={(e) => {
+          if (longPressed.current) {
+            longPressed.current = false;
+            return;
+          }
+          onClick(e);
+        }}
+        onMouseEnter={() => {
+          longPressed.current = false;
+          setTip(true);
+        }}
+        onMouseLeave={() => setTip(false)}
+        onTouchStart={() => {
+          longPressed.current = false;
+          clearTimer();
+          timerRef.current = setTimeout(() => {
+            longPressed.current = true;
+            setTip(true);
+          }, 450);
+        }}
+        onTouchEnd={() => {
+          clearTimer();
+          setTip(false);
+        }}
+        onTouchMove={() => {
+          clearTimer();
+          setTip(false);
+        }}
+        onTouchCancel={() => {
+          clearTimer();
+          setTip(false);
+        }}
+        className={
+          "w-7 h-7 rounded-md flex items-center justify-center transition-colors " +
+          (active
+            ? "text-indigo-500 bg-indigo-50 dark:bg-indigo-950/60"
+            : "text-slate-400 dark:text-slate-500 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/60")
+        }
+      >
+        {children}
+      </button>
+      {tip && (
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1 px-1.5 py-0.5 rounded bg-slate-900 dark:bg-slate-700 text-white text-[10px] font-medium leading-none whitespace-nowrap shadow-md z-50"
+        >
+          {label}
+        </span>
+      )}
+    </span>
+  );
+}
+
 // Lay out the chords sitting above a single word so their labels never overlap.
 // Each chord wants its own sub-word column — an explicit `offset`, or (for
 // imported chords that have none) its character `pos` relative to the word.
@@ -654,7 +739,10 @@ export default function SongEditor({
   // The word a not-yet-created chord is being typed onto (tap a word → input).
   const [addingChord, setAddingChord] = useState<{ lineId: string; wordIndex: number; offset: number } | null>(null);
   const [editingLine, setEditingLine] = useState<string | null>(null);
-  // The line whose "+ Section here" type-picker is open (null = none open).
+  // The line the user last tapped — reveals its icon toolbar on touch devices
+  // (desktop reveals on hover). Tapping a word to add a chord also activates it.
+  const [activeLine, setActiveLine] = useState<string | null>(null);
+  // The line whose "Add section" type-picker is open (null = none open).
   const [sectionPickerLine, setSectionPickerLine] = useState<string | null>(null);
   const [editingSection, setEditingSection] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -2246,7 +2334,11 @@ export default function SongEditor({
                     );
 
                     return (
-                      <div key={line.id} className="group/line flex items-start gap-1">
+                      <div
+                        key={line.id}
+                        className="group/line flex items-start gap-1"
+                        onClick={readOnly ? undefined : () => setActiveLine(line.id)}
+                      >
                         <div className="flex-1 min-w-0">
                         {editingLine === line.id && !readOnly ? (
                           <input
@@ -2429,7 +2521,7 @@ export default function SongEditor({
                                 </div>
                               )}
                             </div>
-                            {!readOnly && (
+                            {!readOnly && !line.lyric && (
                               <button
                                 type="button"
                                 onClick={() => {
@@ -2437,71 +2529,81 @@ export default function SongEditor({
                                   setAddingChord(null);
                                   setEditingLine(line.id);
                                 }}
-                                title="Tap to edit the lyrics on this line"
-                                className={
-                                  "block w-full text-left text-[11px] mt-0.5 border-t border-dashed border-transparent transition-colors hover:text-indigo-500 hover:border-indigo-300 dark:hover:border-indigo-700 print:hidden " +
-                                  (!line.lyric
-                                    ? "text-slate-400 dark:text-slate-500 opacity-100"
-                                    : "text-slate-300 dark:text-slate-600 opacity-50 sm:opacity-0 sm:group-hover/line:opacity-100")
-                                }
+                                className="text-left text-slate-400 dark:text-slate-500 hover:text-indigo-500 transition-colors print:hidden"
+                                style={{ fontSize: lyricFontSize, fontFamily: lyricFontFamily, lineHeight }}
                               >
-                                {!line.lyric && isFirstLine
+                                {isFirstLine
                                   ? "Start typing your lyrics here…"
-                                  : "✎ edit lyrics"}
+                                  : "Tap to add lyrics"}
                               </button>
-                            )}
-                            {!readOnly && (
-                              <div className="relative flex items-center gap-3 mt-0.5 print:hidden">
-                                <button
-                                  type="button"
-                                  onClick={() => insertLineBelow(section.id, line.id)}
-                                  title="Insert an empty line below this one"
-                                  className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-400 dark:text-slate-500 hover:text-indigo-500 transition-opacity opacity-60 sm:opacity-0 sm:group-hover/line:opacity-100 focus-visible:opacity-100"
-                                >
-                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                                  Insert line below
-                                </button>
-                                <button
-                                  type="button"
-                                  onMouseDown={(e) => e.stopPropagation()}
-                                  onClick={() =>
-                                    setSectionPickerLine((cur) => (cur === line.id ? null : line.id))
-                                  }
-                                  title="Start a new section at this line"
-                                  className={
-                                    "inline-flex items-center gap-1 text-[10px] font-medium transition-opacity hover:text-indigo-500 focus-visible:opacity-100 " +
-                                    (sectionPickerLine === line.id
-                                      ? "text-indigo-500 opacity-100"
-                                      : "text-slate-400 dark:text-slate-500 opacity-60 sm:opacity-0 sm:group-hover/line:opacity-100")
-                                  }
-                                >
-                                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 5h18M3 12h18M3 19h10"/></svg>
-                                  + Section here
-                                </button>
-                                {sectionPickerLine === line.id && (
-                                  <div
-                                    ref={sectionPickerRef}
-                                    onMouseDown={(e) => e.stopPropagation()}
-                                    className="absolute z-40 top-full left-0 mt-1 w-48 p-1 grid grid-cols-2 gap-0.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/20"
-                                  >
-                                    {NEW_SECTION_TYPES.map((t) => (
-                                      <button
-                                        key={t}
-                                        type="button"
-                                        onClick={() => startSectionAtLine(line.id, t)}
-                                        className="text-left px-2 py-1 rounded text-[12px] text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
-                                      >
-                                        {t}
-                                      </button>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
                             )}
                           </>
                         )}
-                        <LineBubbles sectionId={section.id} lineIndex={lIdx} api={bubbles} readOnly={readOnly} />
+                        <LineBubbles sectionId={section.id} lineIndex={lIdx} api={bubbles} readOnly={readOnly} hideTrigger />
                         </div>
+                        {!readOnly && (
+                          <div
+                            className={
+                              "shrink-0 mt-0.5 items-center gap-0.5 print:hidden " +
+                              (activeLine === line.id || sectionPickerLine === line.id
+                                ? "flex"
+                                : "hidden sm:group-hover/line:flex")
+                            }
+                          >
+                            <LineToolButton
+                              label="Edit lyrics"
+                              onClick={() => {
+                                setEditingChord(null);
+                                setAddingChord(null);
+                                setEditingLine(line.id);
+                              }}
+                            >
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4" /><path d="M13.5 6.5l4 4" /></svg>
+                            </LineToolButton>
+                            <LineToolButton
+                              label="Insert line"
+                              onClick={() => insertLineBelow(section.id, line.id)}
+                            >
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6h-16a1 1 0 0 0 -1 1v3a1 1 0 0 0 1 1h16a1 1 0 0 0 1 -1v-3a1 1 0 0 0 -1 -1z" /><path d="M12 15l0 4" /><path d="M14 17l-4 0" /></svg>
+                            </LineToolButton>
+                            <span className="relative inline-flex">
+                              <LineToolButton
+                                label="Add section"
+                                active={sectionPickerLine === line.id}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onClick={() =>
+                                  setSectionPickerLine((cur) => (cur === line.id ? null : line.id))
+                                }
+                              >
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 8v-2a2 2 0 0 1 2 -2h2" /><path d="M4 16v2a2 2 0 0 0 2 2h2" /><path d="M16 4h2a2 2 0 0 1 2 2v2" /><path d="M16 20h2a2 2 0 0 0 2 -2v-2" /></svg>
+                              </LineToolButton>
+                              {sectionPickerLine === line.id && (
+                                <div
+                                  ref={sectionPickerRef}
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  className="absolute z-40 top-full right-0 mt-1 w-48 p-1 grid grid-cols-2 gap-0.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/20"
+                                >
+                                  {NEW_SECTION_TYPES.map((t) => (
+                                    <button
+                                      key={t}
+                                      type="button"
+                                      onClick={() => startSectionAtLine(line.id, t)}
+                                      className="text-left px-2 py-1 rounded text-[12px] text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
+                                    >
+                                      {t}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </span>
+                            <LineToolButton
+                              label="Note"
+                              onClick={() => bubbles.startDraft(section.id, lIdx)}
+                            >
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 20l7 -7" /><path d="M13 20v-6a1 1 0 0 1 1 -1h6v-7a3 3 0 0 0 -3 -3h-10a3 3 0 0 0 -3 3v14a3 3 0 0 0 3 3h6z" /></svg>
+                            </LineToolButton>
+                          </div>
+                        )}
                         {!readOnly && (
                           <button
                             type="button"

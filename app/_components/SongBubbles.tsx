@@ -152,8 +152,8 @@ export function useSongBubbles(
 
 // Inline bubbles + add affordance rendered directly beneath a lyric line.
 export function LineBubbles({
-  sectionId, lineIndex, api, readOnly,
-}: { sectionId: string; lineIndex: number; api: SongBubblesApi; readOnly: boolean }) {
+  sectionId, lineIndex, api, readOnly, hideTrigger = false,
+}: { sectionId: string; lineIndex: number; api: SongBubblesApi; readOnly: boolean; hideTrigger?: boolean }) {
   const [replyText, setReplyText] = useState("");
   const roots = api.rootsForLine(sectionId, lineIndex);
   const draftHere = api.draft && api.draft.sectionId === sectionId && api.draft.lineIndex === lineIndex;
@@ -235,7 +235,7 @@ export function LineBubbles({
         </div>
       )}
 
-      {!readOnly && !draftHere && (
+      {!readOnly && !draftHere && !hideTrigger && (
         <button
           type="button"
           onClick={() => api.startDraft(sectionId, lineIndex)}
