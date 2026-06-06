@@ -328,7 +328,13 @@ export function detectProgression(
 // tonic rather than its relative minor. Returns null when there are no chords.
 // Used by the .sbp importer, whose stored `key` int is unreliable.
 const MAJOR_SCALE_DEGREES = [0, 2, 4, 5, 7, 9, 11];
-export function detectKeyFromChords(chordNames: string[]): string | null {
+
+// Score all 12 major keys for a chord set, best first. The single source of
+// scoring truth behind detectKeyFromChords and detectKeyWithConfidence. Returns
+// null when no chord names yield a recognisable root.
+function scoreMajorKeys(
+  chordNames: string[],
+): { tonic: number; score: number }[] | null {
   const roots: number[] = [];
   for (const name of chordNames) {
     const r = chordRootIndex(name);
@@ -339,8 +345,7 @@ export function detectKeyFromChords(chordNames: string[]): string | null {
   for (const r of roots) freq.set(r, (freq.get(r) ?? 0) + 1);
   const first = roots[0];
   const last = roots[roots.length - 1];
-  let best = 0;
-  let bestScore = -Infinity;
+  const ranked: { tonic: number; score: number }[] = [];
   for (let tonic = 0; tonic < 12; tonic++) {
     const scale = new Set(MAJOR_SCALE_DEGREES.map((d) => (tonic + d) % 12));
     let score = 0;
@@ -354,12 +359,47 @@ export function detectKeyFromChords(chordNames: string[]): string | null {
     if (last === tonic) score += 2; // …and resolve to it
     if (freq.has((tonic + 7) % 12)) score += 0.5; // a V reinforces the tonic
     if (freq.has((tonic + 5) % 12)) score += 0.5; // …as does a IV
-    if (score > bestScore) {
-      bestScore = score;
-      best = tonic;
-    }
+    ranked.push({ tonic, score });
   }
-  return KEYS[best];
+  // Stable sort keeps the lowest tonic index on ties — same winner the old
+  // `score > bestScore` scan produced, so detectKeyFromChords is unchanged.
+  ranked.sort((a, b) => b.score - a.score);
+  return ranked;
+}
+
+export function detectKeyFromChords(chordNames: string[]): string | null {
+  const ranked = scoreMajorKeys(chordNames);
+  return ranked ? KEYS[ranked[0].tonic] : null;
+}
+
+// Same detector, but also reports whether the winner is unambiguous. `confident`
+// is true only with enough chord evidence AND a clear margin over the runner-up
+// — a thin margin means the chords fit two keys about equally (e.g. a D-vs-G
+// song), which the key backfill flags rather than guesses.
+export function detectKeyWithConfidence(chordNames: string[]): {
+  key: string | null;
+  runnerUp: string | null;
+  margin: number;
+  chordCount: number;
+  confident: boolean;
+} {
+  const ranked = scoreMajorKeys(chordNames);
+  const chordCount = chordNames.reduce(
+    (n, name) => n + (chordRootIndex(name) >= 0 ? 1 : 0),
+    0,
+  );
+  if (!ranked) {
+    return { key: null, runnerUp: null, margin: 0, chordCount, confident: false };
+  }
+  const margin = ranked[0].score - ranked[1].score;
+  const confident = chordCount >= 4 && margin >= 3;
+  return {
+    key: KEYS[ranked[0].tonic],
+    runnerUp: KEYS[ranked[1].tonic],
+    margin,
+    chordCount,
+    confident,
+  };
 }
 
 // Every chord name in a parsed song, in reading order — the input to
