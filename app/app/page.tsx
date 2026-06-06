@@ -8,6 +8,7 @@ import AddSongSheet from "@/app/_components/AddSongSheet";
 import SongSearchSheet, { type SongSearchResult } from "@/app/_components/SongSearchSheet";
 import UpgradeModal from "@/app/_components/UpgradeModal";
 import { isPaidPlan, PLANS, type Plan } from "@/lib/plans";
+import { usePlan } from "@/lib/usePlan";
 import ExportModal from "@/app/_components/ExportModal";
 import Library from "@/app/_components/Library";
 import PasteSongModal from "@/app/_components/PasteSongModal";
@@ -366,6 +367,29 @@ export default function Home() {
   const [addSheetOpen, setAddSheetOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [upgradeModal, setUpgradeModal] = useState<{ reason?: string } | null>(null);
+  // Effective plan = own plan widened by any paid team the user has joined
+  // (invited musicians ride the owner's plan). Computed by the effective_plan()
+  // RPC; falls back to the user's own profile.plan if that RPC isn't deployed
+  // yet (migrations are applied manually — see AGENTS.md). All feature gating
+  // reads `gate`, never profiles.plan directly.
+  const [effectivePlan, setEffectivePlan] = useState<Plan>("free");
+  const gate = usePlan(effectivePlan);
+
+  // Resolve the effective plan once we know the user. The RPC accounts for team
+  // membership; if it's missing (not yet migrated) or errors, we degrade to the
+  // user's own plan so gating still works — musicians just won't ride the
+  // owner's plan until the migration is applied.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await supabase.rpc("effective_plan");
+      if (cancelled) return;
+      if (!error && typeof data === "string") setEffectivePlan(data as Plan);
+      else setEffectivePlan((profile?.plan as Plan) ?? "free");
+    })();
+    return () => { cancelled = true; };
+  }, [supabase, user, profile?.plan]);
   const [exportOpen, setExportOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [libraryView, setLibraryView] = useState<LibraryView>("grid");
@@ -1212,10 +1236,7 @@ export default function Home() {
   };
 
   const newSong = () => {
-    // Beta soft limit: warn free users past 10 songs, but don't block.
-    if (!isPaidPlan(profile?.plan) && songs.filter((s) => s.userId === user?.id).length >= 10) {
-      showToast("You have 10+ songs on the Free plan — upgrade for unlimited.");
-    }
+    // Songs are ungated on every plan — no count limit.
     const song = makeNewSong();
     setSongs(prev => [song, ...prev]);
     setDirtyIds(prev => new Set(prev).add(song.id));
@@ -1225,13 +1246,40 @@ export default function Home() {
     navigateTo({ kind: "editor", songId: song.id });
   };
 
-  // Team creation is a paid feature — free users get the upgrade prompt instead.
+  // Team creation requires Team+ — lower plans get the upgrade prompt instead.
   const gatedCreateTeam = async (name: string): Promise<Group | null> => {
-    if (!isPaidPlan(profile?.plan)) {
+    if (!gate.canUse("create_team")) {
       setUpgradeModal({ reason: "Creating a team" });
       return null;
     }
     return createGroup(name);
+  };
+
+  // AI song search requires Personal+. Gate at the entry point so Free users
+  // see the upgrade prompt before the search sheet opens.
+  const gatedSearchOnline = () => {
+    if (!gate.canUse("ai_search")) {
+      setUpgradeModal({ reason: "AI song search" });
+      return;
+    }
+    setSearchOpen(true);
+  };
+
+  // Adding team members is capped by the team's plan (15 on Team, unlimited on
+  // Church). Enforced here before the add_group_member RPC; the cap uses the
+  // caller's effective plan, which for a team owner/admin already reflects that
+  // team's tier.
+  const gatedAddMember = async (
+    groupId: string, displayName: string, role: string, instrument: string, instrumentDetail: string,
+  ): Promise<void> => {
+    if (gate.memberCap !== null) {
+      const count = groupMembers.filter((m) => m.groupId === groupId).length;
+      if (count >= gate.memberCap) {
+        setUpgradeModal({ reason: `Your team is at the ${gate.memberCap}-member limit` });
+        return;
+      }
+    }
+    return addGroupMember(groupId, displayName, role, instrument, instrumentDetail);
   };
 
   // "Save as copy" from a library card. Library songs are metadata-only until
@@ -1514,6 +1562,12 @@ export default function Home() {
   // ─── Folder / Setlist CRUD ────────────────────────────────────────────────
 
   const createFolder = async (name: string, type: "folder" | "setlist", groupId: string | null = null): Promise<Folder | null> => {
+    // Setlists are Personal+; plain folders are ungated. Single chokepoint for
+    // every setlist-creation path (sidebar, FoldersView, bundle import).
+    if (type === "setlist" && !gate.canUse("setlists")) {
+      setUpgradeModal({ reason: "Setlists" });
+      return null;
+    }
     showToast("Creating...");
     if (!user) return null;
     try {
@@ -1833,7 +1887,7 @@ export default function Home() {
               onPasteChart={() => { setPasteAiIntent(false); setPasteOpen(true); }}
               onAiChords={() => { setPasteAiIntent(true); setPasteOpen(true); }}
               onImportFile={() => fileInputRef.current?.click()}
-              onSearchOnline={() => setSearchOpen(true)}
+              onSearchOnline={gatedSearchOnline}
               showToast={showToast}
               filter={view.filter}
               libraryView={libraryView}
@@ -1865,7 +1919,7 @@ export default function Home() {
               onDelete={() => { void deleteSong(activeSong.id); }}
               autoGenerateChords={aiGenerateSongId === activeSong.id}
               onAutoGenerateConsumed={() => setAiGenerateSongId(null)}
-              canUseAiChords={isPaidPlan(profile?.plan)}
+              canUseAiChords={gate.canUse("ai_chords")}
               onRequireUpgrade={() => setUpgradeModal({ reason: "AI chord generation" })}
               currentUserId={user.id}
               setlistContext={setlistContext}
@@ -1923,6 +1977,8 @@ export default function Home() {
               setlistEvents={setlistEvents}
               onAddEvent={addSetlistEvent}
               onDeleteEvent={deleteSetlistEvent}
+              canUseCalendar={gate.canUse("google_calendar")}
+              onRequireUpgrade={() => setUpgradeModal({ reason: "Google Calendar sync" })}
               showToast={showToast}
             />
           )}
@@ -1932,7 +1988,7 @@ export default function Home() {
             </div>
           )}
           {view.kind === "groups" && groupsLoaded && (
-            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={songs} folders={folders} onCreateGroup={gatedCreateTeam} onUpdateGroup={updateGroupName} onAddMember={addGroupMember} onRemoveMember={removeGroupMember} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onDeleteGroup={deleteGroup} onOpenSong={openSong} onOpenSetlist={(id) => navigateTo({ kind: "folders", subview: id })} showToast={showToast} selectedTeamId={view.kind === "groups" ? (view.teamId ?? null) : null} onSelectTeam={(id) => navigateTo({ kind: "groups", teamId: id ?? undefined })}/>
+            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={songs} folders={folders} onCreateGroup={gatedCreateTeam} onUpdateGroup={updateGroupName} onAddMember={gatedAddMember} onRemoveMember={removeGroupMember} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onDeleteGroup={deleteGroup} onOpenSong={openSong} onOpenSetlist={(id) => navigateTo({ kind: "folders", subview: id })} showToast={showToast} selectedTeamId={view.kind === "groups" ? (view.teamId ?? null) : null} onSelectTeam={(id) => navigateTo({ kind: "groups", teamId: id ?? undefined })}/>
           )}
         </main>
       </div>
@@ -1973,7 +2029,7 @@ export default function Home() {
           onPasteChart={() => { setPasteAiIntent(false); setPasteOpen(true); }}
           onAiChords={() => { setPasteAiIntent(true); setPasteOpen(true); }}
           onImportFile={() => fileInputRef.current?.click()}
-          onSearchOnline={() => setSearchOpen(true)}
+          onSearchOnline={gatedSearchOnline}
           onClose={() => setAddSheetOpen(false)}
         />
       )}

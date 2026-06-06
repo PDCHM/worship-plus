@@ -56,6 +56,10 @@ export type FoldersViewProps = {
   setlistEvents: SetlistEvent[];
   onAddEvent: (folderId: string, ev: { label: string; eventDate: string; eventType: "rehearsal" | "event" }) => Promise<void>;
   onDeleteEvent: (id: string) => void;
+  // Google Calendar export is Team+. When false, the calendar button triggers
+  // onRequireUpgrade instead of opening the calendar link.
+  canUseCalendar: boolean;
+  onRequireUpgrade: () => void;
   showToast: (msg: string) => void;
 };
 
@@ -435,7 +439,7 @@ function FolderDetail({
 function SetlistDetail({
   folder, currentSongs, songs, folderSongs, onNavigate, onRename, onDelete,
   onAddSong, onRemoveSong, onCommitOrder, onOpenSong, onUpdateDate, onExportSetlist,
-  setlistEvents, onAddEvent, onDeleteEvent, showToast, teams, currentUserId, onMoveToTeam,
+  setlistEvents, onAddEvent, onDeleteEvent, canUseCalendar, onRequireUpgrade, showToast, teams, currentUserId, onMoveToTeam,
 }: { folder: Folder; currentSongs: Song[] } & FoldersViewProps) {
   const isOwner = folder.ownerId === currentUserId;
   const [addOpen, setAddOpen] = useState(false);
@@ -636,6 +640,8 @@ function SetlistDetail({
                 setlistName={folder.name}
                 songs={currentSongs}
                 folderId={folder.id}
+                canUseCalendar={canUseCalendar}
+                onRequireUpgrade={onRequireUpgrade}
                 onDelete={() => onDeleteEvent(ev.id)}
               />
             ))}
@@ -758,8 +764,9 @@ function SetlistDetail({
 
 /* ─── EventRow ────────────────────────────────────────────────────────────── */
 
-function EventRow({ ev, setlistName, songs, folderId, onDelete }: {
-  ev: SetlistEvent; setlistName: string; songs: Song[]; folderId: string; onDelete: () => void;
+function EventRow({ ev, setlistName, songs, folderId, canUseCalendar, onRequireUpgrade, onDelete }: {
+  ev: SetlistEvent; setlistName: string; songs: Song[]; folderId: string;
+  canUseCalendar: boolean; onRequireUpgrade: () => void; onDelete: () => void;
 }) {
   const isRehearsal = ev.eventType === "rehearsal";
   const when = new Date(ev.eventDate);
@@ -778,8 +785,10 @@ function EventRow({ ev, setlistName, songs, folderId, onDelete }: {
         {isRehearsal ? "Rehearsal" : "Event"}
       </span>
       <button type="button"
-        onClick={() => window.open(googleCalendarUrl(ev, setlistName, songs, folderId), "_blank", "noopener,noreferrer")}
-        title="Add to Google Calendar" aria-label="Add to Google Calendar"
+        onClick={() => canUseCalendar
+          ? window.open(googleCalendarUrl(ev, setlistName, songs, folderId), "_blank", "noopener,noreferrer")
+          : onRequireUpgrade()}
+        title={canUseCalendar ? "Add to Google Calendar" : "Google Calendar sync is a Team feature"} aria-label="Add to Google Calendar"
         className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
       </button>
