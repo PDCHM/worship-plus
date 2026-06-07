@@ -1,8 +1,10 @@
 import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
 
-// Service-role Supabase client for trusted server contexts (the Stripe webhook,
-// which has no user session and must update arbitrary users' profiles). Bypasses
-// RLS — NEVER import this from client code. Returns null if not configured.
+// Service-role Supabase client for trusted server contexts: the Stripe webhook
+// (no user session, must update arbitrary users' profiles), and the account
+// export / delete routes (gather every row a user owns, and delete the auth
+// user so the on-delete-cascade FKs wipe their data). Bypasses RLS — NEVER
+// import this from client code. Returns null if not configured.
 let cached: SupabaseClient | null = null;
 
 export function getAdminClient(): SupabaseClient | null {
