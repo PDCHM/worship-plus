@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import * as Sentry from "@sentry/nextjs";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import AddSongSheet from "@/app/_components/AddSongSheet";
@@ -178,6 +179,12 @@ function rowToSong(row: SongRow): Song {
 function logErr(label: string, err: { message?: string; details?: string; hint?: string } | null) {
   if (!err) return;
   console.error(label, err.message, err.details, err.hint);
+  // Also report to Sentry (no-op unless initialized). Tag with the label so
+  // related Supabase errors group sensibly.
+  Sentry.captureException(err instanceof Error ? err : new Error(err.message ?? label), {
+    tags: { source: "logErr" },
+    extra: { label, details: err.details, hint: err.hint },
+  });
 }
 
 type SaveResult = { ok: true } | { ok: false; message: string };

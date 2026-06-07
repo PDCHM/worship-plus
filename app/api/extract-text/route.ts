@@ -1,5 +1,6 @@
 import JSZip from "jszip";
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 
 // Extracts plain text from uploaded song files so the client can parse them
 // with the normal chord-chart parser. Binary/zip formats (docx, pptx, pdf) are
@@ -190,6 +191,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ text });
   } catch (error) {
     console.error("[extract-text] failed", ext, error);
+    Sentry.captureException(error);
     return NextResponse.json(
       { error: `Could not read the ${ext ? "." + ext : ""} file.` },
       { status: 422 },

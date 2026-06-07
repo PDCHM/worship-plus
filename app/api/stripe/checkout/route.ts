@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { getStripe } from "@/lib/stripe";
 import { isPaidPlan } from "@/lib/plans";
 
@@ -81,6 +82,7 @@ export async function POST(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not start checkout.";
     console.error("[stripe/checkout] error", message);
+    Sentry.captureException(error);
     return NextResponse.json(
       { error: "Could not start checkout. Try again.", ...(process.env.NODE_ENV !== "production" ? { detail: message } : {}) },
       { status: 500 },

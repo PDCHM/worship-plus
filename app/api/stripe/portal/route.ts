@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { getStripe } from "@/lib/stripe";
 import { createClient } from "@/lib/supabase/server";
 
@@ -47,6 +48,7 @@ export async function POST(request: Request) {
   } catch (e) {
     const message = e instanceof Error ? e.message : "Could not open billing portal.";
     console.error("[stripe/portal] error", message);
+    Sentry.captureException(e);
     return NextResponse.json(
       { error: "Could not open billing portal. Try again.", ...(process.env.NODE_ENV !== "production" ? { detail: message } : {}) },
       { status: 500 },

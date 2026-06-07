@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 
 // AI song search. The client posts a short lyric fragment (or a title); we ask
 // Claude to identify the worship song and return its title, artist, a sensible
@@ -108,6 +109,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result);
   } catch (error) {
+    Sentry.captureException(error);
     const devDetail = process.env.NODE_ENV !== "production";
     if (error instanceof Anthropic.APIError) {
       console.error("[search-song] Anthropic APIError", error.status, error.message);

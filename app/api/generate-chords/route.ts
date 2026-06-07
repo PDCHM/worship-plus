@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 
 // AI chord generation. Runs server-side so the Anthropic API key never reaches
 // the browser. The client posts the song's lyrics + key + style; we ask Claude
@@ -149,6 +150,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(parsed);
   } catch (error) {
+    Sentry.captureException(error);
     // Surface the raw error detail in the server logs (and in the response when
     // not in production) so failures are diagnosable instead of opaque.
     const devDetail = process.env.NODE_ENV !== "production";

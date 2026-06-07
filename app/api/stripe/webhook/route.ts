@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type Stripe from "stripe";
+import * as Sentry from "@sentry/nextjs";
 import { getStripe } from "@/lib/stripe";
 import { getAdminClient } from "@/lib/supabase/admin";
 import type { Plan } from "@/lib/plans";
@@ -57,6 +58,7 @@ export async function POST(request: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : "Invalid signature.";
     console.error("[stripe/webhook] signature verification failed:", message);
+    Sentry.captureException(err);
     return NextResponse.json({ error: "Invalid signature." }, { status: 400 });
   }
 
@@ -137,6 +139,7 @@ export async function POST(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("[stripe/webhook] handler error:", message);
+    Sentry.captureException(error);
     // 500 → Stripe retries later (e.g. once SUPABASE_SERVICE_ROLE_KEY is set).
     return NextResponse.json({ error: "Webhook handler failed." }, { status: 500 });
   }

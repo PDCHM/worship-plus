@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { getStripe } from "@/lib/stripe";
 
 // Beta (no webhook): resolves a completed Checkout Session to its Stripe
@@ -24,6 +25,7 @@ export async function GET(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not retrieve session.";
     console.error("[stripe/session] error", message);
+    Sentry.captureException(error);
     return NextResponse.json(
       { error: "Could not retrieve checkout session.", ...(process.env.NODE_ENV !== "production" ? { detail: message } : {}) },
       { status: 500 },

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { getResend } from "@/lib/resend";
@@ -81,6 +82,7 @@ export async function POST(request: Request) {
     } catch (e) {
       // Row is already saved — log and move on.
       console.error("[support] email send failed", e instanceof Error ? e.message : e);
+      Sentry.captureException(e);
     }
   }
 

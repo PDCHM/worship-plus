@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 
@@ -152,6 +153,7 @@ export async function GET() {
   } catch (e) {
     const message = e instanceof Error ? e.message : "Could not build your export.";
     console.error("[account/export] error", message);
+    Sentry.captureException(e);
     return NextResponse.json(
       { error: "Could not build your export. Try again.", ...(process.env.NODE_ENV !== "production" ? { detail: message } : {}) },
       { status: 500 },
