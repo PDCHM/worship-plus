@@ -9,6 +9,7 @@ import {
 import { type Plan } from "@/lib/plans";
 import { createClient } from "@/lib/supabase/client";
 import SubscriptionSection from "@/app/_components/SubscriptionSection";
+import SupportForm from "@/app/_components/SupportForm";
 
 type Props = {
   settings: Settings;
@@ -173,6 +174,17 @@ export default function SettingsView({ settings, onChange, plan, onUpgrade }: Pr
           </div>
         </Row>
       </Section>
+
+      {/* ── Help & Support ── */}
+      <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-5 md:p-6">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+          Help &amp; Support
+        </h2>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+          Found a bug, have feedback, or need a hand? Send us a note and we&rsquo;ll get back to you.
+        </p>
+        <SupportForm />
+      </div>
 
       <AccountSection />
 

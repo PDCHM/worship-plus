@@ -1,6 +1,7 @@
 import Link from "next/link";
 import VideoShowcase from "@/app/_components/VideoShowcase";
 import WordAnchoredDemo from "@/app/_components/WordAnchoredDemo";
+import SupportLink from "@/app/_components/SupportLink";
 
 /* ─── Brand mark ─────────────────────────────────────────────────────────── */
 
@@ -273,7 +274,10 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-5 sm:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/WorplusLogo-ICON_LOGO_hori.png" alt="Worship+" className="h-9 sm:h-10 w-auto object-contain" />
-          <p className="text-sm text-slate-400">Copyright © 2026 Worship+</p>
+          <div className="flex items-center gap-5">
+            <SupportLink />
+            <p className="text-sm text-slate-400">Copyright © 2026 Worship+</p>
+          </div>
         </div>
       </footer>
     </div>

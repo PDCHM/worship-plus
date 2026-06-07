@@ -1088,3 +1088,30 @@ create policy setlist_events_group_read on public.setlist_events
   using (exists (select 1 from public.folders f where f.id = setlist_events.folder_id and f.group_id is not null and public.is_group_member(f.group_id)));
 
 create index if not exists setlist_events_folder_id_idx on public.setlist_events(folder_id);
+
+-- ============================================================
+-- Support / contact messages — bug reports, feedback, and help
+-- requests submitted from Settings or the landing page. Anyone may
+-- INSERT (anon, for logged-out landing visitors, and authenticated);
+-- there is NO public SELECT policy, so messages are readable only with
+-- the service role (the Supabase dashboard). Email notifications can be
+-- layered on later. user_id is a nullable FK set null on account delete
+-- so deletions never fail and the message is retained.
+-- ============================================================
+create table if not exists public.support_messages (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid references auth.users(id) on delete set null,
+  email      text,
+  type       text not null default 'help' check (type in ('bug', 'feedback', 'help')),
+  message    text not null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.support_messages enable row level security;
+
+drop policy if exists support_messages_insert on public.support_messages;
+create policy support_messages_insert on public.support_messages
+  for insert to anon, authenticated
+  with check (true);
+
+create index if not exists support_messages_created_at_idx on public.support_messages(created_at desc);
