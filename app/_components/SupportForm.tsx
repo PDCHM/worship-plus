@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-// Shared support/contact form. Writes a row to `support_messages` (RLS allows
-// anon + authenticated inserts; no public read — messages are read in the
-// Supabase dashboard). Self-loads the signed-in user's id + email to prefill
-// the email field; works logged-out too (email blank, user_id null). Used
-// inline in Settings and inside a modal on the landing page.
+// Shared support/contact form. POSTs to /api/support, which inserts the
+// support_messages row server-side (service-role) and then sends a notification
+// email via Resend. Self-loads the signed-in user's email to prefill the field;
+// works logged-out too (email blank — the route resolves user_id from the
+// session). Used inline in Settings and inside a modal on the landing page.
 
 const TYPES = [
   { value: "bug", label: "Report a bug" },
@@ -19,7 +19,6 @@ type SupportType = (typeof TYPES)[number]["value"];
 
 export default function SupportForm({ onSubmitted }: { onSubmitted?: () => void }) {
   const [supabase] = useState(() => createClient());
-  const [userId, setUserId] = useState<string | null>(null);
   const [type, setType] = useState<SupportType>("bug");
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
@@ -31,7 +30,6 @@ export default function SupportForm({ onSubmitted }: { onSubmitted?: () => void 
     let active = true;
     void supabase.auth.getUser().then(({ data }) => {
       if (!active) return;
-      setUserId(data.user?.id ?? null);
       // Prefill only if the user hasn't already started typing an email.
       if (data.user?.email) setEmail((prev) => prev || data.user!.email!);
     });
@@ -49,14 +47,14 @@ export default function SupportForm({ onSubmitted }: { onSubmitted?: () => void 
     setSubmitting(true);
     setError(null);
     try {
-      const { error: insertError } = await supabase.from("support_messages").insert({
-        user_id: userId,
-        email: email.trim() || null,
-        type,
-        message: message.trim(),
+      const res = await fetch("/api/support", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, email: email.trim() || null, message: message.trim() }),
       });
-      if (insertError) {
-        setError("Could not send your message. Try again.");
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(typeof data?.error === "string" ? data.error : "Could not send your message. Try again.");
         setSubmitting(false);
         return;
       }
