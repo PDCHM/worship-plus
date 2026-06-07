@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { createClient } from "@/lib/supabase/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 
@@ -46,6 +47,7 @@ export async function POST() {
     .eq("role", "owner");
   if (ownedError) {
     console.error("[account/delete] owned-group lookup failed", ownedError.message);
+    Sentry.captureException(ownedError, { tags: { source: "account-delete" } });
     return NextResponse.json(
       { error: "Could not delete your account. Try again.", ...(process.env.NODE_ENV !== "production" ? { detail: ownedError.message } : {}) },
       { status: 500 },
@@ -63,6 +65,7 @@ export async function POST() {
     if (groupDeleteError) {
       // Abort before deleting the user — no half-delete.
       console.error("[account/delete] owned-group delete failed", groupDeleteError.message);
+      Sentry.captureException(groupDeleteError, { tags: { source: "account-delete" } });
       return NextResponse.json(
         { error: "Could not delete your account. Try again.", ...(process.env.NODE_ENV !== "production" ? { detail: groupDeleteError.message } : {}) },
         { status: 500 },
@@ -74,6 +77,7 @@ export async function POST() {
   const { error } = await admin.auth.admin.deleteUser(user.id);
   if (error) {
     console.error("[account/delete] error", error.message);
+    Sentry.captureException(error, { tags: { source: "account-delete" } });
     return NextResponse.json(
       { error: "Could not delete your account. Try again.", ...(process.env.NODE_ENV !== "production" ? { detail: error.message } : {}) },
       { status: 500 },

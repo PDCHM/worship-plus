@@ -54,6 +54,7 @@ export async function POST(request: Request) {
   });
   if (insertError) {
     console.error("[support] insert failed", insertError.message);
+    Sentry.captureException(insertError, { tags: { source: "support-insert" } });
     return NextResponse.json(
       { error: "Could not send your message. Try again.", ...(process.env.NODE_ENV !== "production" ? { detail: insertError.message } : {}) },
       { status: 500 },
