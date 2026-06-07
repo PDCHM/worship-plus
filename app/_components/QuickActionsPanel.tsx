@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { KEYS, type Song, type Settings } from "@/lib/song";
 
 type Props = {
@@ -29,6 +30,31 @@ export default function QuickActionsPanel({
   const nextKey = KEYS[(keyIndex + 1) % KEYS.length];
   const capo = song.capo ?? 0;
   const showChords = settings.showChords ?? true;
+
+  // Fullscreen toggle for stage use. Feature-detected in an effect (so SSR and
+  // first render agree — no hydration mismatch) and kept in sync with the
+  // browser's own fullscreenchange (Esc, gestures). Hidden where unsupported,
+  // e.g. iOS Safari on iPhone.
+  const [fsSupported, setFsSupported] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    setFsSupported(
+      typeof document !== "undefined" &&
+        !!document.fullscreenEnabled &&
+        typeof document.documentElement.requestFullscreen === "function",
+    );
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
+    onChange();
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen().catch(() => {});
+    } else {
+      void document.documentElement.requestFullscreen().catch(() => {});
+    }
+  };
 
   return (
     <div className="fixed right-16 bottom-20 md:bottom-8 z-40 w-64 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden print:hidden">
@@ -78,6 +104,16 @@ export default function QuickActionsPanel({
             <span className={"absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform " + (showChords ? "translate-x-4" : "translate-x-0")} />
           </button>
         </QARow>
+        {fsSupported && (
+          <QARow label="Fullscreen">
+            <button type="button" onClick={toggleFullscreen} aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              className={"h-7 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors " + (isFullscreen ? "bg-indigo-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-indigo-50 hover:text-indigo-600")}>
+              {isFullscreen
+                ? <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14h3a2 2 0 0 1 2 2v3M20 10h-3a2 2 0 0 1-2-2V5M15 5v3a2 2 0 0 0 2 2h3M9 19v-3a2 2 0 0 0-2-2H4"/></svg>Exit</>
+                : <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>Enter</>}
+            </button>
+          </QARow>
+        )}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Auto-scroll</span>

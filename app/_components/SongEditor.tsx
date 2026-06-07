@@ -883,6 +883,44 @@ export default function SongEditor({
     return () => document.removeEventListener("mousedown", close);
   }, [keyPickerOpen, capoPickerOpen]);
 
+  // Screen Wake Lock — keep a tablet awake while in read-only performance mode
+  // so it can't auto-lock mid-song. The browser drops the lock whenever the tab
+  // backgrounds, so we re-acquire on visibilitychange. Typed locally + feature-
+  // detected so it's a clean no-op on browsers without the Wake Lock API.
+  useEffect(() => {
+    if (!readOnly) return;
+    type WakeLockSentinelLike = { release: () => Promise<void> };
+    type WakeLockLike = { request: (type: "screen") => Promise<WakeLockSentinelLike> };
+    const wakeLock =
+      typeof navigator !== "undefined"
+        ? (navigator as unknown as { wakeLock?: WakeLockLike }).wakeLock
+        : undefined;
+    if (!wakeLock) return;
+
+    let sentinel: WakeLockSentinelLike | null = null;
+    let cancelled = false;
+    const acquire = async () => {
+      try {
+        const s = await wakeLock.request("screen");
+        if (cancelled) { void s.release().catch(() => {}); return; }
+        sentinel = s;
+      } catch {
+        // Permission denied / battery saver / no user gesture — ignore.
+      }
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible" && !cancelled) void acquire();
+    };
+    void acquire();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisibility);
+      void sentinel?.release().catch(() => {});
+      sentinel = null;
+    };
+  }, [readOnly]);
+
   useEffect(() => {
     if (!saveMenuOpen) return;
     // Close only on a click outside the split-button container, so clicking the
