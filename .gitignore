@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local DB introspection / drift scratch (read-only queries + apply blocks).
+# Canonical schema lives in supabase/. These are run manually in Supabase.
+/db-*.sql
