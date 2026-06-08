@@ -29,8 +29,8 @@
 
 | Object | Type | Detail | Impact |
 |---|---|---|---|
-| `folder_songs` unique `(folder_id, song_id)` | constraint/index | schema.sql declares `unique (folder_id, song_id)`; live has no backing unique index | **Moderate–High.** Duplicate (folder, song) rows can be inserted; any `ON CONFLICT (folder_id, song_id)` upsert would error. Verify `add_song_to_folder` and client insert paths. |
-| `group_songs` unique `(group_id, song_id)` | constraint/index | schema.sql declares `unique (group_id, song_id)`; live has no backing unique index | **Moderate–High.** Same risk for team song-sharing; check `add_song_to_group`. |
+| `folder_songs` unique `(folder_id, song_id)` | constraint/index | schema.sql declares `unique (folder_id, song_id)`; live has no backing unique index | **CONFIRMED active.** `add_song_to_folder` does a plain `insert` with **no `on conflict`** — with no constraint, re-adding a song to a folder inserts a duplicate row. |
+| `group_songs` unique `(group_id, song_id)` | constraint/index | schema.sql declares `unique (group_id, song_id)`; live has no backing unique index | **CONFIRMED active.** `add_song_to_group` likewise does a plain `insert` with **no `on conflict`** — duplicate team shares possible. |
 | `chords.created_at` | column | `timestamptz not null default now()` in schema; absent in live | **Low.** Only defined inside `create table` (a no-op on the pre-existing live table) — there is no `alter ... add column if not exists`, so it never landed. Nothing reads it. |
 | `lines.created_at` | column | same as above | **Low.** Same cause; no reader. |
 
@@ -111,7 +111,7 @@ The live DB carries **two generations** of the team/group feature:
 - **Current (schema.sql):** `groups.invite_token` + `accept_invite` / `lookup_invite` RPCs + `groups_after_insert_owner` trigger (auto-adds owner on insert).
 - **Earlier (live-only):** `create_worship_group` / `join_worship_group` / `add_group_member` RPCs + `groups.join_code` / `created_by` / `church` / `description` columns.
 
-The app still calls `create_worship_group` for group creation **and** the `groups_after_insert_owner` trigger fires on every `groups` insert. **Verify these don't both insert the owner row** (the partial unique `group_members(group_id, user_id)` would make a double-insert conflict). Function bodies were not available to this audit — this needs a look at `pg_get_functiondef('create_worship_group'...)` before any change.
+The app still calls `create_worship_group` for group creation **and** the `groups_after_insert_owner` trigger fires on every `groups` insert. The owner-double-insert question is now **resolved** by reading the live bodies — see "Verified findings" below.
 
 ---
 
@@ -125,3 +125,30 @@ The app still calls `create_worship_group` for group creation **and** the `group
 6. **Add the two `created_at` columns (Bucket A)** — trivial additive `alter ... add column if not exists` when convenient.
 
 > Resolution order suggestion: (2) and (3) first — they carry correctness/exposure risk — then (1) to make schema.sql authoritative again, then cleanup (4)/(5)/(6).
+
+---
+
+## Verified findings (from live function bodies — `db-funcdefs.sql`)
+
+Read the actual `pg_get_functiondef` output for every public function. Conclusions:
+
+### V1. Owner double-insert is SAFE (not a conflict error) — question resolved
+When the app calls `create_worship_group`:
+1. `insert into public.groups(name) …` runs, which
+2. fires the `AFTER INSERT` trigger `groups_after_insert_owner` → **`handle_new_group` inserts the owner** `group_members` row (no `on conflict`), then
+3. the RPC runs its **own** owner insert — but with **`on conflict do nothing`**.
+
+The RPC's insert collides with the partial unique `group_members(group_id, user_id) where user_id is not null` — exactly the flagged conflict — **but `on conflict do nothing` swallows it.** Net result: **exactly one owner row (the trigger's), no exception, no duplicate.** The trigger is the source of truth; the RPC's insert is a defensive no-op. ✅ Not a bug; **the `on conflict do nothing` is load-bearing and must be preserved** in any backfill.
+
+### V2. The 4-arg `create_worship_group` overload has a silent instrument-drop bug — DEAD, do not resurrect
+The 4-arg overload (`…, leader_instrument, leader_instrument_detail`) intends to store the leader's instrument. But the trigger inserts the owner row **first** (without instrument), so the RPC's instrument-carrying insert is **discarded by `on conflict do nothing`** → the leader's `instrument` / `instrument_detail` are **silently lost**. The app only calls the **1-arg** overload (`app/app/page.tsx:1705`, `{ group_name }`), so this is **not live**. Capture only the 1-arg form into schema.sql; do **not** resurrect the 4-arg form as-is.
+
+### V3. Duplicate-row risk on `group_songs` / `folder_songs` is CONFIRMED active
+- `add_song_to_group`: `insert into public.group_songs(group_id, song_id) …` — **no `on conflict`.**
+- `add_song_to_folder`: `insert into public.folder_songs(folder_id, song_id, position) …` — **no `on conflict`.**
+
+With the Bucket A unique constraints **absent in live**, there is no DB-level guard, so re-adding the same song to a group/folder inserts a **duplicate row**. Fix = add the unique constraints **+** add `on conflict do nothing` to both RPCs (belt-and-suspenders). **Run the dupe-check queries and clean any dupes before adding the constraints** (a unique constraint creation fails if duplicates already exist).
+
+### V4. Minor
+- `set_updated_at` has **no `SET search_path`** (the other functions pin it) — minor hardening gap, not a bug.
+- `join_worship_group` (×2), `join_team_slot`, `remove_group_member` are coherent but **app-unreferenced** (live join path is `accept_invite`) → confirmed legacy; defer to the cleanup phase.
