@@ -399,6 +399,35 @@ export default function Home() {
   }, [supabase, user, profile?.plan]);
   const [exportOpen, setExportOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Desktop/tablet persistent-nav collapse (distinct from the mobile `sidebarOpen`
+  // overlay). Auto-collapsed when a song is opened in read-only performance mode
+  // so the chart plays full-width; restored to the prior value on leaving.
+  const [navCollapsed, setNavCollapsed] = useState(false);
+  // The active editor's read-only (performance/view) state, reported up by SongEditor.
+  const [editorReadOnly, setEditorReadOnly] = useState(false);
+  // Auto-collapse the nav ONLY on entering performance mode, and restore the
+  // prior state on leaving — so we never fight a user who re-opens the nav while
+  // playing. wasInPerfRef tracks the edge; navBeforePerfRef remembers the state.
+  const wasInPerfRef = useRef(false);
+  const navBeforePerfRef = useRef(false);
+  const inPerformanceMode = view.kind === "editor" && editorReadOnly;
+  useEffect(() => {
+    if (inPerformanceMode && !wasInPerfRef.current) {
+      navBeforePerfRef.current = navCollapsed;
+      setNavCollapsed(true);
+      wasInPerfRef.current = true;
+    } else if (!inPerformanceMode && wasInPerfRef.current) {
+      setNavCollapsed(navBeforePerfRef.current);
+      wasInPerfRef.current = false;
+    }
+    // Only react to mode transitions; navCollapsed is read intentionally fresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inPerformanceMode]);
+  // Clear the reported read-only flag when no song is open, so a stale value
+  // can't momentarily trip performance mode when the next editor view mounts.
+  useEffect(() => {
+    if (view.kind !== "editor") setEditorReadOnly(false);
+  }, [view.kind]);
   const [libraryView, setLibraryView] = useState<LibraryView>("grid");
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set());
   const lastSavedRef = useRef<Map<string, Song>>(new Map());
@@ -1867,6 +1896,8 @@ export default function Home() {
         onOpenSettings={() => navigateTo({ kind: "settings" })}
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen(o => !o)}
+        navCollapsed={navCollapsed}
+        onToggleNav={() => setNavCollapsed(c => !c)}
         view={view}
       />
 
@@ -1879,13 +1910,14 @@ export default function Home() {
           groups={groups}
           songsCount={songs.filter((s) => s.userId === user.id).length}
           sidebarOpen={sidebarOpen}
+          desktopCollapsed={navCollapsed}
           onClose={() => setSidebarOpen(false)}
           onAddSong={() => setAddSheetOpen(true)}
           onCreateFolder={(name) => createFolder(name, "folder", null)}
           onCreateSetlist={(name) => createFolder(name, "setlist", null)}
           onCreateTeam={gatedCreateTeam}
         />
-        <main className="w-full overflow-x-hidden pb-20 md:pb-0 md:pl-[240px] transition-[padding] duration-200">
+        <main className={"w-full overflow-x-hidden pb-20 md:pb-0 transition-[padding] duration-200 " + (navCollapsed ? "md:pl-0" : "md:pl-[240px]")}>
           {view.kind === "library" && !songsLoaded && (
             <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 py-12 text-sm text-slate-400 dark:text-slate-500">
               Loading library…
@@ -1941,6 +1973,7 @@ export default function Home() {
               onBack={() => navigateTo(view.kind === "editor" && view.setlistId
                 ? { kind: "folders", subview: view.setlistId }
                 : { kind: "library", filter: "all" })}
+              onReadOnlyChange={setEditorReadOnly}
               bubbleAuthors={bubbleAuthors}
               sectionStyles={sectionStyles}
               onSectionStylesChange={setSectionStyles}
@@ -2201,11 +2234,12 @@ function LoadingScreen() {
 }
 
 function TopNav({
-  onHome, profile, onSignOut, onOpenSettings, sidebarOpen, onToggleSidebar, view,
+  onHome, profile, onSignOut, onOpenSettings, sidebarOpen, onToggleSidebar, navCollapsed, onToggleNav, view,
 }: {
   onHome: () => void;
   profile: Profile | null; onSignOut: () => void; onOpenSettings: () => void;
   sidebarOpen: boolean; onToggleSidebar: () => void;
+  navCollapsed: boolean; onToggleNav: () => void;
   view: View;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -2244,6 +2278,15 @@ function TopNav({
           <button type="button" onClick={onToggleSidebar} className="md:hidden w-9 h-9 rounded-lg flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" aria-label="Toggle sidebar" aria-expanded={sidebarOpen}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
           </button>
+          {/* Desktop nav toggle — only in the editor, so musicians can re-open the
+              nav after it auto-collapses for full-width playing (and collapse it
+              themselves in edit mode if they want). Hidden on mobile (the
+              hamburger above handles that). */}
+          {view.kind === "editor" && (
+            <button type="button" onClick={onToggleNav} className="hidden md:flex w-9 h-9 rounded-lg items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" aria-label={navCollapsed ? "Show navigation" : "Hide navigation"} aria-expanded={!navCollapsed}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            </button>
+          )}
           <button type="button" onClick={onHome} aria-label="Worship+ home" className="flex items-center shrink-0">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src="/logo-hori.png" alt="Worship+" className="h-9 sm:h-11 w-auto max-w-[200px] object-contain" />
@@ -2320,7 +2363,7 @@ const SETLIST_ICON = <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
 const FOLDER_ICON = <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>;
 
 function Sidebar({
-  view, onNavigate, folders, groups, songsCount, sidebarOpen, onClose,
+  view, onNavigate, folders, groups, songsCount, sidebarOpen, desktopCollapsed, onClose,
   onAddSong, onCreateFolder, onCreateSetlist, onCreateTeam,
 }: {
   view: View;
@@ -2329,6 +2372,7 @@ function Sidebar({
   groups: Group[];
   songsCount: number;
   sidebarOpen: boolean;
+  desktopCollapsed: boolean;
   onClose: () => void;
   onAddSong: () => void;
   onCreateFolder: (name: string) => void | Promise<unknown>;
@@ -2381,8 +2425,11 @@ function Sidebar({
 
   return (
     <aside className={
-      "fixed top-14 bottom-0 left-0 z-40 w-[240px] flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2 py-3 gap-0.5 overflow-y-auto transition-transform duration-200 ease-in-out print:hidden shadow-xl md:shadow-none md:translate-x-0 " +
-      (sidebarOpen ? "translate-x-0" : "-translate-x-full")
+      "fixed top-14 bottom-0 left-0 z-40 w-[240px] flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2 py-3 gap-0.5 overflow-y-auto transition-transform duration-200 ease-in-out print:hidden shadow-xl md:shadow-none " +
+      // Mobile uses the sidebarOpen overlay; desktop is persistent unless the
+      // shell collapses it (performance mode) — then it slides off-screen too.
+      (sidebarOpen ? "translate-x-0 " : "-translate-x-full ") +
+      (desktopCollapsed ? "md:-translate-x-full" : "md:translate-x-0")
     }>
       {/* ── Library ── */}
       <NavSection label="Library" count={songsCount} collapsed={!!collapsed.library}

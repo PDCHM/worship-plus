@@ -84,6 +84,10 @@ type Props = {
   showToast: (msg: string) => void;
   bubbleAuthors: Record<string, string>;
   onBack: () => void;
+  // Reports the editor's read-only (performance/view) state to the shell so it
+  // can auto-collapse the left nav for full-width playing. Fires on mount and
+  // whenever the edit/read toggle flips.
+  onReadOnlyChange?: (readOnly: boolean) => void;
 };
 
 // Small chord-name input used both when adding a chord to a word and when
@@ -727,6 +731,7 @@ export default function SongEditor({
   showToast,
   bubbleAuthors,
   onBack,
+  onReadOnlyChange,
 }: Props) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -882,6 +887,12 @@ export default function SongEditor({
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [keyPickerOpen, capoPickerOpen]);
+
+  // Report read-only (performance/view) state up to the app shell so it can
+  // auto-collapse the left nav for full-width playing.
+  useEffect(() => {
+    onReadOnlyChange?.(readOnly);
+  }, [readOnly, onReadOnlyChange]);
 
   // Screen Wake Lock — keep a tablet awake while in read-only performance mode
   // so it can't auto-lock mid-song. The browser drops the lock whenever the tab
@@ -1831,7 +1842,12 @@ export default function SongEditor({
   };
 
   return (
-    <div className="relative max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 md:py-8"
+    <div className={"relative w-full mx-auto px-4 sm:px-6 py-6 md:py-8 transition-[max-width] duration-200 " +
+        // Read-only performance/view mode goes full-bleed (fills the width freed
+        // by the auto-collapsed nav — important on tablet), capped at 1600px so
+        // lines don't stretch absurdly on very wide desktop monitors. Edit mode
+        // keeps the narrower, comfortable editing width.
+        (readOnly ? "max-w-[1600px]" : "max-w-5xl")}
       style={{ "--lyric-font-size": `${lyricCeiling}px` } as React.CSSProperties}
       onTouchStart={onSwipeStart}
       onTouchEnd={onSwipeEnd}
