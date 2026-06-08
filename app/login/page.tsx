@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { isPaidPlan } from "@/lib/plans";
 
@@ -242,7 +243,14 @@ export default function LoginPage() {
           </div>
         )}
 
-        <p className="text-center mt-6 text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
+        <p className="text-center mt-6 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+          By continuing, you agree to our{" "}
+          <Link href="/terms" className="text-indigo-600 dark:text-indigo-400 hover:underline">Terms</Link>{" "}
+          and{" "}
+          <Link href="/privacy" className="text-indigo-600 dark:text-indigo-400 hover:underline">Privacy Policy</Link>.
+        </p>
+
+        <p className="text-center mt-3 text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
           Magic-link emails sent via Supabase Auth.
           <br />
           We never share your information.

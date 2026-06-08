@@ -274,7 +274,9 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-5 sm:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/WorplusLogo-ICON_LOGO_hori.png" alt="Worship+" className="h-9 sm:h-10 w-auto object-contain" />
-          <div className="flex items-center gap-5">
+          <div className="flex items-center gap-5 flex-wrap justify-center">
+            <Link href="/privacy" className="text-sm text-slate-400 hover:text-slate-600 transition-colors">Privacy</Link>
+            <Link href="/terms" className="text-sm text-slate-400 hover:text-slate-600 transition-colors">Terms</Link>
             <SupportLink />
             <p className="text-sm text-slate-400">Copyright © 2026 Worship+</p>
           </div>
