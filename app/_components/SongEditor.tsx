@@ -1077,6 +1077,10 @@ export default function SongEditor({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        // Server-side AI gate: 401 = sign in, 403 = upgrade prompt (rare — the
+        // client already gates, so this only fires on a stale/forged session).
+        if (res.status === 401) { showToast("Please sign in to use AI features."); return; }
+        if (res.status === 403) { onRequireUpgrade(); return; }
         showToast(typeof data?.error === "string" ? data.error : "Regeneration failed.");
         return;
       }
@@ -1142,6 +1146,9 @@ export default function SongEditor({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        // Server-side AI gate: 401 = sign in, 403 = upgrade prompt.
+        if (res.status === 401) { showToast("Please sign in to use AI features."); return; }
+        if (res.status === 403) { onRequireUpgrade(); return; }
         showToast(typeof data?.error === "string" ? data.error : "Chord generation failed.");
         return;
       }

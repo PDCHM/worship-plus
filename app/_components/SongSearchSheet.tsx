@@ -16,10 +16,13 @@ type Props = {
   findInLibrary: (title: string) => string | null;
   onOpenExisting: (songId: string) => void;
   onCreateWithAi: (result: SongSearchResult) => void;
+  // Opens the existing upgrade prompt if the server rejects with 403 (the client
+  // already gates entry, so this only fires on a stale/forged session).
+  onRequireUpgrade: () => void;
   onClose: () => void;
 };
 
-export default function SongSearchSheet({ findInLibrary, onOpenExisting, onCreateWithAi, onClose }: Props) {
+export default function SongSearchSheet({ findInLibrary, onOpenExisting, onCreateWithAi, onRequireUpgrade, onClose }: Props) {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +42,8 @@ export default function SongSearchSheet({ findInLibrary, onOpenExisting, onCreat
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
+        if (res.status === 401) { setError("Please sign in to use AI search."); return; }
+        if (res.status === 403) { onClose(); onRequireUpgrade(); return; }
         setError(typeof data?.error === "string" ? data.error : "Search failed. Try again.");
         return;
       }

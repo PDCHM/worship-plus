@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
+import { enforceAiAccess } from "@/lib/aiGate";
 
 // AI song search. The client posts a short lyric fragment (or a title); we ask
 // Claude to identify the worship song and return its title, artist, a sensible
@@ -38,6 +39,10 @@ function extractJson(text: string): string {
 }
 
 export async function POST(request: Request) {
+  // Server-side auth + plan gate BEFORE any AI work (401 anon / 403 not entitled).
+  const denied = await enforceAiAccess("ai_search");
+  if (denied) return denied;
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return NextResponse.json(

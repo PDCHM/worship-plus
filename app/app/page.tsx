@@ -2095,6 +2095,7 @@ export default function Home() {
           findInLibrary={findSongInLibrary}
           onOpenExisting={(songId) => { setSearchOpen(false); navigateTo({ kind: "editor", songId }); }}
           onCreateWithAi={handleSearchCreate}
+          onRequireUpgrade={() => setUpgradeModal({ reason: "AI song search" })}
           onClose={() => setSearchOpen(false)}
         />
       )}
