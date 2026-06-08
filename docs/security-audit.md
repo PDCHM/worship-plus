@@ -44,22 +44,44 @@ One occurrence: `app/layout.tsx:52`, rendering `themeScript` — a **static, har
 
 ## Part B — RLS policy review
 
-**Status: PENDING live query.** A read-only query (`db-policies.sql`) was generated and copied to the clipboard; it returns each public table's `relrowsecurity` status and every policy's `cmd/roles/USING/WITH CHECK`. This section will be finalized once the live result is pasted back. Below is what is already known from the earlier drift audit (`docs/db-drift-report.md`) and what each item will confirm.
+**Status: COMPLETE** (analyzed from the live `pg_policies` / `relrowsecurity` dump). Headline: the `groups`/`profiles` read-wideners are confirmed, and the `group_members.gm_*` legacy policies are **far worse than "redundant"** — they have `USING (true)` predicates, giving any signed-in user full control of every team membership.
 
-### B1. `profiles_public_read` — 🔴 RISK (confirm exact role + predicate)
-A live-only SELECT policy on `profiles` (not in `schema.sql`, which intends **self-read only** via `profiles_self_read`). `profiles` holds `email`, `full_name`, `avatar_url`, **`stripe_customer_id`**, `plan`, `plan_expires_at`, `trial_ends_at`. If its `USING` is broad (e.g. `true`) and it is granted to `anon` and/or `authenticated`, it exposes **other users' email and Stripe customer id** to anyone signed in (or worse, anonymously).
-*Confirm via `db-policies.sql`:* exact `roles` (anon vs authenticated) and `qual`. *Suggested fix:* drop it, or scope it to the minimum columns/rows actually needed (note: column-level scoping requires a view/`GRANT`, not RLS — RLS is row-level).
+**Whole-table note:** every `true`-predicate exposure below is granted to the **`authenticated`** role (no `anon` SELECT exists anywhere — only `support_messages` allows an `anon` INSERT, by design). But since anyone can self-serve a free account (magic link / Google), "authenticated" ≈ "any attacker willing to sign up."
 
-### B2. `groups_authenticated_read` — 🟡 REVIEW→likely 🔴 RISK
-A live-only SELECT policy on `groups` (schema.sql intends member-only read via `groups_member_read`). `groups` holds **`invite_token`** (the secret slug behind `/join/[token]`) plus the legacy `join_code`. If this policy is `using (true)` to `authenticated`, **any signed-in user can read every group's `invite_token`/`join_code`** and self-join arbitrary teams — defeating the invite model.
-*Confirm via `db-policies.sql`:* `roles` + `qual`; specifically whether it exposes `invite_token`. *Suggested fix:* drop it; rely on `groups_member_read` + the `lookup_invite`/`accept_invite` SECURITY DEFINER RPCs which gate on the token.
+### B0. 🔴 CRITICAL — `group_members.gm_*` legacy policies are `USING (true)` (privilege escalation)
+Four live-only policies on `group_members`, all role `authenticated`, **no scoping**:
+| policy | cmd | USING | WITH CHECK |
+|---|---|---|---|
+| `gm_read`   | SELECT | `true` | — |
+| `gm_insert` | INSERT | — | `true` |
+| `gm_update` | UPDATE | `true` | `true` |
+| `gm_delete` | DELETE | `true` | — |
 
-### B3. Overlapping/duplicate policy sets (songs, chords, lines, sections, group_members) — 🟡 REVIEW
-The drift audit found legacy permissive policies coexisting with the named ones (`songs."Users can …"` ×4, `sections/lines/chords."Users can manage …"`, `group_members.gm_*` ×4). **RLS policies are OR-combined**, so the *effective* access is the union. These legacy ones are owner-scoped (`user_id = auth.uid()`)-style, so they should not widen access beyond the named owner policies — **but** this must be verified against the live `USING`/`WITH CHECK`: any one of them with a `true` or broader predicate would silently widen access for that command.
-*Confirm via `db-policies.sql`:* that every overlapping policy's predicate is owner/membership-scoped, none is `true`. *Suggested fix:* after confirming redundancy, drop the legacy duplicates in the cleanup phase (keep the named `*_owner_all` / `*_via_*` set).
+Because policies are **OR-combined**, these completely override the intended `group_members_admin_*` / `_self_or_group_read` policies. Any authenticated user can:
+- **read every membership row of every team** (all members' `email`, `display_name`, `instrument`, `user_id`);
+- **insert themselves into any team as `owner`/`admin`** (`gm_insert` check `true`);
+- **update any membership** — e.g. set their own `role = 'owner'` in someone else's team, or reassign `user_id` (`gm_update`);
+- **delete any membership**, including kicking real owners (`gm_delete`).
 
-### B4. Tables with RLS disabled — 🟡 REVIEW (pending)
-The query reports `relrowsecurity` per table. Expected: all 13 public tables ENABLED (schema.sql enables RLS on each). Any `DISABLED` row = RISK (table fully readable/writable through the anon/authenticated PostgREST API). To be confirmed from the result.
+This is full read/write takeover of the team system. **This is the top fix.**
+*Suggested (do not apply):* drop `gm_read`, `gm_insert`, `gm_update`, `gm_delete`; keep `group_members_admin_*` and `group_members_self_or_group_read`. (Verify no live data was already tampered.)
+
+### B1. `profiles_public_read` — 🔴 RISK (confirmed)
+`profiles.profiles_public_read` = SELECT, role **`authenticated`**, `USING (true)`. Any signed-in user can read **all rows** of `profiles`, including every user's **`email`** and **`stripe_customer_id`** (plus `full_name`, `plan`). `schema.sql` intends self-read only (`profiles_self_read`); this policy nullifies that.
+*Suggested:* drop `profiles_public_read` (keep `profiles_self_read`). If a public-facing subset is genuinely needed (e.g. display names for shared songs), expose it via a dedicated view/RPC selecting only non-sensitive columns — never table-wide RLS `true` (RLS can't restrict columns).
+
+### B2. `groups_authenticated_read` — 🔴 RISK (confirmed)
+`groups.groups_authenticated_read` = SELECT, role **`authenticated`**, `USING (true)`. Any signed-in user can read **every group row**, including **`invite_token`** (the secret `/join/[token]` slug) and the legacy `join_code`. Combined with `gm_insert`/`accept_invite`, an attacker can enumerate all teams and join any of them — the invite model provides no protection.
+*Suggested:* drop `groups_authenticated_read` (keep `groups_member_read`); the `lookup_invite`/`accept_invite` SECURITY DEFINER RPCs already gate join-by-token safely.
+
+### B3. Legacy `songs` / `sections` / `lines` / `chords` "Users can …" policies — 🟡 REVIEW (no widening)
+These legacy policies use role `public` (all roles) **but are predicate-gated to the owner** (`auth.uid() = user_id`, or an EXISTS join to `songs.user_id = auth.uid()`). For `anon`, `auth.uid()` is null so they match nothing — **no real widening** beyond the named `*_owner_all` / `*_via_*` policies. They're redundant clutter, not a hole.
+*Suggested:* drop in the cleanup phase (keep the named set). Low priority.
+
+### B4. Tables with RLS disabled — ✅ OK
+All 13 public tables report `relrowsecurity = ENABLED`. None disabled. (`force=off` on all is normal — it only means the table owner/service-role bypasses RLS, which is expected and not exposed to API roles.)
+
+> Note: this supersedes the drift report's earlier characterization of `gm_*` as harmless "redundant duplicates" — the live `USING (true)` makes them a critical hole, not clutter.
 
 ---
 
@@ -73,11 +95,14 @@ The query reports `relrowsecurity` per table. Expected: all 13 public tables ENA
 
 ## Prioritized fix order (suggested — nothing applied)
 
-1. **🔴 B1 `profiles_public_read`** — stop exposing email/`stripe_customer_id`. Highest privacy impact. *(Pending exact role/qual.)*
-2. **🔴 B2 `groups_authenticated_read`** — stop exposing `invite_token`; protects the team-invite model. *(Pending exact role/qual.)*
-3. **🔴 A4 AI routes** — add server-side auth + plan enforcement + rate limit + input cap. Direct cost/paywall-bypass exposure.
-4. **🟡 A6 Security headers** — add `headers()` (frame-ancestors, nosniff, HSTS, CSP report-only).
-5. **🟡 B3 legacy duplicate policies** — confirm none widen access, then remove in cleanup.
-6. **🟡 Dashboard items** — verify redirect allowlist, auth rate limits, AI spend caps.
+1. **🔴 B0 `group_members.gm_*` (`USING true`)** — full takeover of every team membership (read all PII; insert self as owner; update/delete any member). Drop the four `gm_*` policies. **Most severe; fix first.** Also check whether any membership data was already tampered.
+2. **🔴 B1 `profiles_public_read`** — drop it; stops every signed-in user reading all users' `email` + `stripe_customer_id`.
+3. **🔴 B2 `groups_authenticated_read`** — drop it; stops exposure of every group's `invite_token`/`join_code` (protects the invite model).
+4. **🔴 A4 AI routes** — add server-side auth + plan enforcement + rate limit + input cap. Direct cost/paywall-bypass exposure.
+5. **🟡 A6 Security headers** — add `headers()` (frame-ancestors, nosniff, HSTS, CSP report-only).
+6. **🟡 B3 legacy `songs/sections/lines/chords` "Users can …" policies** — predicate-gated, no widening; remove in cleanup.
+7. **🟡 Dashboard items** — verify redirect allowlist, auth email/OTP rate limits, AI spend caps.
 
-> Items A1, A2, A3, A5 are ✅ OK — no action.
+> Items A1, A2, A3, A5, B4 are ✅ OK — no action.
+>
+> **The top 3 (B0/B1/B2) are RLS policy drops that can be applied together in one reviewed migration** — all are "drop the live-only over-permissive policy, keep the schema.sql-defined one." They overlap with the cleanup phase already noted in `docs/db-drift-report.md`, but B0 in particular should not wait for a general cleanup pass.
