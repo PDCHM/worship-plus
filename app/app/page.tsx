@@ -1263,6 +1263,9 @@ export default function Home() {
       if (have.has(songId)) continue;
       const { data, error } = await supabase.rpc("add_song_to_folder", { p_folder_id: folderId, p_song_id: songId, p_position: position });
       if (error) { logErr("bulk add to setlist", error); continue; }
+      // Null = already in the folder ("on conflict do nothing"); skip without
+      // consuming a position slot. (Caller shows the summary toast.)
+      if (!data) { have.add(songId); continue; }
       const r = data as { id: string; folder_id: string; song_id: string; position: number };
       newRows.push({ id: r.id, folderId: r.folder_id, songId: r.song_id, position: r.position });
       have.add(songId);
@@ -1726,6 +1729,9 @@ export default function Home() {
   const shareGroupSong=async(groupId:string,songId:string):Promise<void>=>{
     const{data,error}=await supabase.rpc("add_song_to_group",{p_group_id:groupId,p_song_id:songId});
     if(error){logErr("share song",error);showToast("Error: "+error.message);return;}
+    // add_song_to_group returns null when the (group_id, song_id) row already
+    // exists ("on conflict do nothing") — treat as a no-op, not a row to deref.
+    if(!data){showToast("Already in this group");return;}
     const r=data as{id:string;group_id:string;song_id:string};
     setGroupSongs(prev=>[...prev,{id:r.id,groupId:r.group_id,songId:r.song_id}]);
   };
@@ -1798,6 +1804,8 @@ export default function Home() {
     const position=existing.length>0?Math.max(...existing.map(fs=>fs.position))+1:0;
     const{data,error}=await supabase.rpc("add_song_to_folder",{p_folder_id:folderId,p_song_id:songId,p_position:position});
     if(error){logErr("add song to folder",error);showToast("Error: "+error.message);return;}
+    // Null = song already in this folder ("on conflict do nothing"); no-op.
+    if(!data){showToast("Already in this setlist");return;}
     const r=data as{id:string;folder_id:string;song_id:string;position:number};
     setFolderSongs(prev=>[...prev,{id:r.id,folderId:r.folder_id,songId:r.song_id,position:r.position}]);
   };
