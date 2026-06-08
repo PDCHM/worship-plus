@@ -107,6 +107,13 @@ create table if not exists public.folder_songs (
 alter table public.folder_songs add column if not exists position integer not null default 0;
 create index if not exists folder_songs_position_idx on public.folder_songs(folder_id, position);
 
+-- Ensure the (folder_id, song_id) uniqueness exists on installs whose
+-- folder_songs table predates the inline constraint above (create-table is a
+-- no-op there, so it never landed). Idempotent: drop-if-exists then add. Backs
+-- the no-op in add_song_to_folder's "on conflict (folder_id, song_id) do nothing".
+alter table public.folder_songs drop constraint if exists folder_songs_folder_id_song_id_key;
+alter table public.folder_songs add constraint folder_songs_folder_id_song_id_key unique (folder_id, song_id);
+
 create table if not exists public.groups (
   id          uuid primary key default gen_random_uuid(),
   name        text not null,
@@ -156,6 +163,12 @@ create table if not exists public.group_songs (
   updated_at  timestamptz not null default now(),
   unique (group_id, song_id)
 );
+
+-- Ensure the (group_id, song_id) uniqueness exists on installs whose group_songs
+-- table predates the inline constraint above. Idempotent. Backs the no-op in
+-- add_song_to_group's "on conflict (group_id, song_id) do nothing".
+alter table public.group_songs drop constraint if exists group_songs_group_id_song_id_key;
+alter table public.group_songs add constraint group_songs_group_id_song_id_key unique (group_id, song_id);
 
 -- ============================================================
 -- Profiles
@@ -598,6 +611,113 @@ drop trigger if exists groups_after_insert_owner on public.groups;
 create trigger groups_after_insert_owner
   after insert on public.groups
   for each row execute function public.handle_new_group();
+
+-- ============================================================
+-- Group / folder management RPCs (SECURITY DEFINER)
+--
+-- These mirror the functions running in the live DB; the client calls them
+-- (app/app/page.tsx) for group creation, member slots, and song sharing.
+-- Captured here so a rebuild from this file produces a working app — they were
+-- previously manual-only (see docs/db-drift-report.md).
+-- ============================================================
+
+-- create_worship_group: create a team. The OWNER ROW IS INSERTED BY THE
+-- groups_after_insert_owner trigger above (handle_new_group). This function's
+-- own owner-insert is a DELIBERATE no-op guarded by "on conflict do nothing" —
+-- it collides with the trigger's row on the partial unique
+-- group_members(group_id, user_id). Keep the on-conflict clause: it is
+-- load-bearing. Returns the new group row (the client reads invite_token from
+-- it, populated by the groups.invite_token column default).
+--
+-- NOTE: a 4-arg overload (…, leader_instrument, leader_instrument_detail) exists
+-- in the live DB but is intentionally NOT captured here. It has a silent bug:
+-- the trigger inserts the owner first, so the 4-arg insert carrying the leader's
+-- instrument is swallowed by the conflict and the instrument is lost. The app
+-- only calls this 1-arg form — do not resurrect the 4-arg form as-is.
+create or replace function public.create_worship_group(group_name text)
+returns json
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare new_group record;
+begin
+  insert into public.groups(name) values(group_name) returning * into new_group;
+  insert into public.group_members(group_id, user_id, role, display_name, status)
+  values(new_group.id, auth.uid(), 'owner',
+    (select full_name from public.profiles where id = auth.uid()),
+    'joined')
+  on conflict do nothing;   -- trigger already inserted the owner; this is a no-op
+  return row_to_json(new_group);
+end;
+$$;
+
+-- add_group_member: a leader pre-creates a pending slot (user_id null, status
+-- 'pending') that an invitee later claims via accept_invite. Returns the new row.
+create or replace function public.add_group_member(
+  p_group_id uuid, p_display_name text, p_role text,
+  p_instrument text, p_instrument_detail text)
+returns json
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare new_row record;
+begin
+  insert into public.group_members(group_id, display_name, role, instrument, instrument_detail, status)
+  values(p_group_id, p_display_name, p_role, p_instrument, p_instrument_detail, 'pending')
+  returning * into new_row;
+  return row_to_json(new_row);
+end;
+$$;
+
+-- add_song_to_group: share a song with a team. "on conflict do nothing" makes a
+-- repeat share a no-op now that group_songs has unique(group_id, song_id).
+-- NOTE: on a conflict this returns NULL (no row inserted) — callers must treat a
+-- null result as "already shared" rather than dereference it.
+create or replace function public.add_song_to_group(p_group_id uuid, p_song_id uuid)
+returns json
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare new_row record;
+begin
+  insert into public.group_songs(group_id, song_id)
+  values(p_group_id, p_song_id)
+  on conflict (group_id, song_id) do nothing
+  returning * into new_row;
+  return row_to_json(new_row);
+end;
+$$;
+
+-- add_song_to_folder: add a song to a folder/setlist at p_position.
+-- "on conflict do nothing" makes a repeat add a no-op now that folder_songs has
+-- unique(folder_id, song_id). NOTE: returns NULL on conflict — see above.
+create or replace function public.add_song_to_folder(p_folder_id uuid, p_song_id uuid, p_position integer)
+returns json
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare new_row record;
+begin
+  insert into public.folder_songs(folder_id, song_id, position)
+  values(p_folder_id, p_song_id, p_position)
+  on conflict (folder_id, song_id) do nothing
+  returning * into new_row;
+  return row_to_json(new_row);
+end;
+$$;
+
+revoke all on function public.create_worship_group(text)                     from public;
+revoke all on function public.add_group_member(uuid, text, text, text, text) from public;
+revoke all on function public.add_song_to_group(uuid, uuid)                  from public;
+revoke all on function public.add_song_to_folder(uuid, uuid, integer)        from public;
+grant execute on function public.create_worship_group(text)                     to authenticated;
+grant execute on function public.add_group_member(uuid, text, text, text, text) to authenticated;
+grant execute on function public.add_song_to_group(uuid, uuid)                  to authenticated;
+grant execute on function public.add_song_to_folder(uuid, uuid, integer)        to authenticated;
 
 -- ============================================================
 -- Row Level Security
