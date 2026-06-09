@@ -1063,9 +1063,19 @@ export default function SongEditor({
 
     const setCols = (n: number) => { inner.style.columnCount = String(n); };
     const setFont = (px: number) => { inner.style.setProperty("--fit-font", `${px}px`); };
-    // The container is locked to 100% width, so a line wider than its column
-    // shows up as horizontal overflow on the sections container.
-    const widthFits = () => inner.scrollWidth <= inner.clientWidth + 1;
+    // Per-line width check — NOT the multicol container's scrollWidth. In a
+    // multi-column flow a line that's wider than its column bleeds sideways into
+    // the *adjacent* column's space, which does not grow the container's
+    // scrollWidth, so a container-level check misses it entirely. Each line's
+    // content lives in a [data-fit-line] box that's flex-shrunk to the column
+    // width, so its own scrollWidth > clientWidth is the true overflow signal.
+    const lineEls = Array.from(inner.querySelectorAll<HTMLElement>("[data-fit-line]"));
+    const widthFits = () => {
+      for (const el of lineEls) {
+        if (el.scrollWidth > el.clientWidth + 1) return false;
+      }
+      return true;
+    };
     const heightFits = () => inner.scrollHeight <= wrapH + 1;
     const bothFit = () => widthFits() && heightFits();
 
@@ -2590,7 +2600,7 @@ export default function SongEditor({
                         className="group/line flex items-start gap-1"
                         onClick={readOnly ? undefined : () => setActiveLine(line.id)}
                       >
-                        <div className="flex-1 min-w-0">
+                        <div className="flex-1 min-w-0" data-fit-line>
                         {editingLine === line.id && !readOnly ? (
                           <input
                             autoFocus
