@@ -59,6 +59,9 @@ export type FoldersViewProps = {
   // Google Calendar export is Team+. When false, the calendar button triggers
   // onRequireUpgrade instead of opening the calendar link.
   canUseCalendar: boolean;
+  // Setlists are Personal+. When false, the setlist create CTAs open the upgrade
+  // prompt instead of the create input. (Folders are free.)
+  canUseSetlists: boolean;
   onRequireUpgrade: () => void;
   showToast: (msg: string) => void;
 };
@@ -140,6 +143,7 @@ export default function FoldersView(props: FoldersViewProps) {
 
 function Overview({
   folders, folderSongs, teams, onNavigate, onCreate, onRename, onDelete, showToast, currentUserId, onMoveToTeam,
+  canUseSetlists, onRequireUpgrade,
 }: FoldersViewProps) {
   const [newFolderName, setNewFolderName] = useState("");
   const [newSetlistName, setNewSetlistName] = useState("");
@@ -256,11 +260,22 @@ function Overview({
             </div>
           )
         )}
+        {folderList.length === 0 && !showNewFolder && (
+          <EmptyHint
+            label="No folders yet"
+            sub="Group your songs however you like."
+            cta="Create a folder"
+            onClick={() => setShowNewFolder(true)}
+          />
+        )}
       </section>
 
       {/* Setlists */}
       <section>
-        <div className="flex items-center gap-2 mb-4 cursor-pointer group" onClick={() => setShowNewSetlist(true)}>
+        <div
+          className="flex items-center gap-2 mb-4 cursor-pointer group"
+          onClick={() => (canUseSetlists ? setShowNewSetlist(true) : onRequireUpgrade())}
+        >
           <h2 className="font-semibold text-base">Setlists</h2>
           <span className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-sm font-bold group-hover:bg-indigo-600 group-hover:text-white transition-colors">+</span>
         </div>
@@ -339,6 +354,23 @@ function Overview({
                 />
               ))}
             </div>
+          )
+        )}
+        {setlistList.length === 0 && !showNewSetlist && (
+          canUseSetlists ? (
+            <EmptyHint
+              label="No setlists yet"
+              sub="Plan a service or rehearsal set, then export it as a PDF."
+              cta="Create your first setlist"
+              onClick={() => setShowNewSetlist(true)}
+            />
+          ) : (
+            <EmptyHint
+              label="Setlists are a Personal feature"
+              sub="Upgrade to build dated setlists with one-tap PDF export."
+              cta="Upgrade"
+              onClick={onRequireUpgrade}
+            />
           )
         )}
       </section>
@@ -1454,6 +1486,27 @@ function SongCard({
 }
 
 /* ─── Tiny helpers ────────────────────────────────────────────────────────── */
+
+// Compact, warm empty hint shown under a Folders/Setlists section that has no
+// items yet. The CTA reuses the section's existing create flow (or the upgrade
+// prompt for gated setlists).
+function EmptyHint({ label, sub, cta, onClick }: {
+  label: string; sub: string; cta: string; onClick: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 px-5 py-6 text-center">
+      <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{label}</p>
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{sub}</p>
+      <button
+        type="button"
+        onClick={onClick}
+        className="mt-4 h-9 px-4 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors"
+      >
+        {cta}
+      </button>
+    </div>
+  );
+}
 
 function NewNameInput({ placeholder, value, onChange, onSubmit, onCancel }: {
   placeholder: string; value: string;

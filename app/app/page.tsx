@@ -1943,6 +1943,8 @@ export default function Home() {
               onAiChords={() => { setPasteAiIntent(true); setPasteOpen(true); }}
               onImportFile={() => fileInputRef.current?.click()}
               onSearchOnline={gatedSearchOnline}
+              canUseAiChords={gate.canUse("ai_chords")}
+              onRequireUpgrade={() => setUpgradeModal({ reason: "AI chord generation" })}
               showToast={showToast}
               filter={view.filter}
               libraryView={libraryView}
@@ -2034,6 +2036,7 @@ export default function Home() {
               onAddEvent={addSetlistEvent}
               onDeleteEvent={deleteSetlistEvent}
               canUseCalendar={gate.canUse("google_calendar")}
+              canUseSetlists={gate.canUse("setlists")}
               onRequireUpgrade={() => setUpgradeModal({ reason: "Google Calendar sync" })}
               showToast={showToast}
             />

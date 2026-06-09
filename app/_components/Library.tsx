@@ -19,6 +19,10 @@ type Props = {
   onAiChords: () => void;
   onImportFile: () => void;
   onSearchOnline: () => void;
+  // AI chord generation is Personal+. When false, the welcoming empty state's
+  // "Generate with AI" CTA opens the upgrade prompt instead of the AI flow.
+  canUseAiChords: boolean;
+  onRequireUpgrade: () => void;
   showToast: (msg: string) => void;
   filter: LibraryFilter;
   libraryView: LibraryView;
@@ -40,6 +44,8 @@ export default function Library({
   onAiChords,
   onImportFile,
   onSearchOnline,
+  canUseAiChords,
+  onRequireUpgrade,
   showToast,
   filter,
   libraryView,
@@ -324,13 +330,27 @@ export default function Library({
       </div>
 
       {filtered.length === 0 ? (
-        <div className="text-center py-16 text-slate-400 dark:text-slate-500">
-          <p className="text-sm">
-            {query.trim()
-              ? `No songs match "${query.trim()}"`
-              : "No songs yet"}
-          </p>
-        </div>
+        songs.length === 0 && !query.trim() ? (
+          <LibraryWelcome
+            onImportFile={onImportFile}
+            onNewSong={onNewSong}
+            onAiChords={onAiChords}
+            canUseAiChords={canUseAiChords}
+            onRequireUpgrade={onRequireUpgrade}
+          />
+        ) : (
+          <div className="text-center py-16 text-slate-400 dark:text-slate-500">
+            <p className="text-sm">
+              {query.trim()
+                ? `No songs match "${query.trim()}"`
+                : filter === "favorites"
+                  ? "No favourites yet — tap the star on a song to add it here."
+                  : filter === "recent"
+                    ? "Nothing here yet — songs you open will show up under Recent."
+                    : "No songs yet"}
+            </p>
+          </div>
+        )
       ) : libraryView === "grid" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((song) => (
@@ -617,6 +637,92 @@ export default function Library({
       )}
 
       {addSheetOpen && <AddSongSheet onBuildNew={onNewSong} onPasteChart={onPasteChart} onAiChords={onAiChords} onImportFile={onImportFile} onSearchOnline={onSearchOnline} onClose={()=>setAddSheetOpen(false)} />}
+    </div>
+  );
+}
+
+// Welcoming first-run state for a brand-new (zero-song) library. Reuses the
+// existing flows — Import (headline for SongBook Pro switchers), Create, and the
+// gating-aware AI generate (Personal+). No new flows are introduced here.
+function LibraryWelcome({
+  onImportFile, onNewSong, onAiChords, canUseAiChords, onRequireUpgrade,
+}: {
+  onImportFile: () => void;
+  onNewSong: () => void;
+  onAiChords: () => void;
+  canUseAiChords: boolean;
+  onRequireUpgrade: () => void;
+}) {
+  return (
+    <div className="max-w-xl w-full mx-auto px-2 py-12 sm:py-16 text-center">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/WorplusLogo-ICON.png" alt="Worship+" className="w-16 h-16 sm:w-20 sm:h-20 object-contain mx-auto mb-5" />
+      <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
+        Your songbook starts here
+      </h2>
+      <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+        Bring your existing songs across, build a new chart, or let AI generate the chords for you.
+      </p>
+
+      <div className="mt-8 space-y-3 text-left">
+        {/* Lead CTA — Import (headline for switchers). */}
+        <button
+          type="button"
+          onClick={onImportFile}
+          className="w-full flex items-center gap-4 p-4 rounded-2xl bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-600/20"
+        >
+          <span className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+          </span>
+          <span className="min-w-0">
+            <span className="block font-semibold text-sm">Import your library</span>
+            <span className="block text-xs text-indigo-100/90">Switching from SongBook Pro? Bring everything across.</span>
+          </span>
+        </button>
+
+        {/* Create */}
+        <button
+          type="button"
+          onClick={onNewSong}
+          className="w-full flex items-center gap-4 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-800 transition-colors"
+        >
+          <span className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
+            </svg>
+          </span>
+          <span className="min-w-0">
+            <span className="block font-semibold text-sm text-slate-900 dark:text-slate-100">Create a song</span>
+            <span className="block text-xs text-slate-500 dark:text-slate-400">Start a fresh chord chart from scratch.</span>
+          </span>
+        </button>
+
+        {/* Generate with AI — Personal+; opens the upgrade prompt for Free users. */}
+        <button
+          type="button"
+          onClick={canUseAiChords ? onAiChords : onRequireUpgrade}
+          className="w-full flex items-center gap-4 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-800 transition-colors"
+        >
+          <span className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15l-1.9-4.1L5.5 9l4.6-1.4L12 3z" /><path d="M19 14l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z" />
+            </svg>
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-2">
+              <span className="font-semibold text-sm text-slate-900 dark:text-slate-100">Generate with AI</span>
+              {!canUseAiChords && (
+                <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+                  Personal
+                </span>
+              )}
+            </span>
+            <span className="block text-xs text-slate-500 dark:text-slate-400">Paste lyrics and let Claude add the chords.</span>
+          </span>
+        </button>
+      </div>
     </div>
   );
 }

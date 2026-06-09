@@ -120,6 +120,11 @@ function NoGroupView({ onCreateGroup, showToast }: GroupsViewProps) {
           Create Your Team
         </button>
       )}
+
+      {/* Joining is free — invitees arrive via their leader's /join link. */}
+      <p className="mt-5 text-xs text-slate-500 dark:text-slate-400">
+        Already invited? Ask your worship leader for their team join link — opening it adds you to the team.
+      </p>
     </div>
   );
 }
