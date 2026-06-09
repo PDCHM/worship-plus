@@ -1031,55 +1031,103 @@ export default function SongEditor({
     };
   }, [fitMode]);
 
-  // The fit-to-screen pass. Runs synchronously before paint (no flicker):
-  //   1. Reserve the viewport height below the song so it scrolls only when it
-  //      must overflow, not the whole page.
-  //   2. Pick a responsive column count from width + orientation.
-  //   3. Binary-search the largest font (≤ the user's preferred size, ≥ the
-  //      legibility floor) at which the whole song fits. If it can't fit even at
-  //      the floor, we stop there and the wrapper scrolls vertically.
-  // Manual zoom overrides auto-fit: any non-zero zoomOffset uses that size and
-  // lets the columns scroll, so the musician's explicit choice always wins.
+  // The fit-to-screen pass. Runs synchronously before paint (no flicker) and
+  // fits BOTH dimensions — a chord chart must never scroll horizontally:
+  //   1. Reserve the viewport height below the song so any overflow scrolls
+  //      inside the card, not the whole page.
+  //   2. For each candidate column count, binary-search the largest font
+  //      (≤ the user's preferred size, ≥ the legibility floor) at which the
+  //      whole song fits the available HEIGHT *and* no line is wider than its
+  //      column (no horizontal overflow). The binding constraint is the widest
+  //      line at that column count.
+  //   3. Pick the arrangement with the largest readable font. Column count is
+  //      therefore adaptive: if more columns would force the font below the
+  //      floor to fit width, fewer/wider columns win; ties go to more columns so
+  //      wide screens use their space.
+  //   4. If nothing fits even at the floor, fall back to 1 column at the floor
+  //      and let the wrapper scroll VERTICALLY (overflow-x stays hidden).
+  // Manual zoom overrides auto-fit: honor the chosen size, keep as many columns
+  // as fit the width, and let it scroll vertically.
   useLayoutEffect(() => {
     if (!fitMode) return;
     const wrap = fitWrapRef.current;
     const inner = sectionsRef.current;
     if (!wrap || !inner) return;
 
+    // Reserve the height so overflow scrolls inside the card, not the page.
     const top = wrap.getBoundingClientRect().top;
     const avail = Math.max(220, Math.round(window.innerHeight - top - 16));
     wrap.style.height = `${avail}px`; // apply now so clientHeight is correct below
     setFitHeight(avail);
-
-    const w = wrap.clientWidth;
-    const portrait = window.innerHeight >= window.innerWidth;
-    const cols = portrait || w < 680 ? 1 : w < 1080 ? 2 : 3;
-    inner.style.columnCount = String(cols); // apply now so measurement uses it
-    setFitColumns(cols);
-
     const wrapH = wrap.clientHeight;
 
+    const setCols = (n: number) => { inner.style.columnCount = String(n); };
+    const setFont = (px: number) => { inner.style.setProperty("--fit-font", `${px}px`); };
+    // The container is locked to 100% width, so a line wider than its column
+    // shows up as horizontal overflow on the sections container.
+    const widthFits = () => inner.scrollWidth <= inner.clientWidth + 1;
+    const heightFits = () => inner.scrollHeight <= wrapH + 1;
+    const bothFit = () => widthFits() && heightFits();
+
+    // Don't try more columns than the width can sensibly carry.
+    const w = wrap.clientWidth;
+    const maxCols = w >= 1024 ? 3 : w >= 640 ? 2 : 1;
+
     if (zoomOffset !== 0) {
-      // User has taken manual control of the size — honor it, scroll if needed.
+      // User has taken manual control of the size — honor it. Keep the most
+      // columns whose width the zoomed font fits (so it never spills sideways);
+      // vertical overflow scrolls.
       const f = Math.max(MIN_FIT_FONT, baseFontSize);
-      inner.style.setProperty("--fit-font", `${f}px`);
+      let cols = 1;
+      for (let n = maxCols; n >= 1; n--) {
+        setCols(n); setFont(f);
+        if (widthFits()) { cols = n; break; }
+      }
+      setCols(cols); setFont(f);
+      setFitColumns(cols);
       setFitFont(f);
       return;
     }
 
-    const userPref = LYRIC_FONT_SIZE_PX[prefs.lyricFontSize];
-    let lo = MIN_FIT_FONT;
-    let hi = Math.max(MIN_FIT_FONT, userPref);
-    let best = MIN_FIT_FONT;
-    for (let i = 0; i < 8; i++) {
-      const mid = (lo + hi) / 2;
-      inner.style.setProperty("--fit-font", `${mid}px`);
-      const fits = inner.scrollHeight <= wrapH + 1;
-      if (fits) { best = mid; lo = mid; } else { hi = mid; }
+    const userPref = Math.max(MIN_FIT_FONT, LYRIC_FONT_SIZE_PX[prefs.lyricFontSize]);
+    let chosen = { cols: 1, font: MIN_FIT_FONT, fits: false };
+    for (let n = 1; n <= maxCols; n++) {
+      setCols(n);
+      let best = MIN_FIT_FONT;
+      let ok = false;
+      // Fast path: does the user's preferred size already fit both dimensions?
+      setFont(userPref);
+      if (bothFit()) {
+        best = userPref;
+        ok = true;
+      } else {
+        // Only worth searching if the floor itself fits both dimensions.
+        setFont(MIN_FIT_FONT);
+        if (bothFit()) {
+          ok = true;
+          let lo = MIN_FIT_FONT;
+          let hi = userPref;
+          let b = MIN_FIT_FONT;
+          for (let i = 0; i < 8; i++) {
+            const mid = (lo + hi) / 2;
+            setFont(mid);
+            if (bothFit()) { b = mid; lo = mid; } else { hi = mid; }
+          }
+          best = b;
+        }
+      }
+      // Maximize readable font; tie → more columns (better use of wide screens).
+      if (ok && (best > chosen.font + 0.01 || (Math.abs(best - chosen.font) <= 0.01 && n > chosen.cols))) {
+        chosen = { cols: n, font: best, fits: true };
+      }
     }
-    best = Math.max(MIN_FIT_FONT, Math.round(best * 2) / 2);
-    inner.style.setProperty("--fit-font", `${best}px`);
-    setFitFont(best);
+
+    const cols = chosen.fits ? chosen.cols : 1;
+    const font = chosen.fits ? Math.max(MIN_FIT_FONT, Math.round(chosen.font * 2) / 2) : MIN_FIT_FONT;
+    setCols(cols);
+    setFont(font);
+    setFitColumns(cols);
+    setFitFont(font);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitMode, zoomOffset, baseFontSize, prefs.lyricFontSize, lineHeight, lyricFontFamily, showChords, song, resizeTick]);
 
@@ -1930,6 +1978,10 @@ export default function SongEditor({
     ? ({
         columnCount: fitColumns,
         columnGap: `${fitColumns === 3 ? 16 : 24}px`,
+        // Locked to the available width so columns can never push the layout
+        // wider than the viewport (the hard stop against sideways scroll).
+        width: "100%",
+        maxWidth: "100%",
         "--fit-font": `${fitFont}px`,
       } as React.CSSProperties)
     : columnView
