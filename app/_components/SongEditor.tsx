@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import ConfirmDialog from "@/app/_components/ConfirmDialog";
 import PrintPreviewModal from "@/app/_components/PrintPreviewModal";
 import QuickActionsPanel from "@/app/_components/QuickActionsPanel";
@@ -773,6 +773,18 @@ export default function SongEditor({
   const [autoScrolling, setAutoScrolling] = useState(false);
   const [scrollSpeed, setScrollSpeed] = useState(3);
   const [zoomOffset, setZoomOffset] = useState(0);
+  // Opt-in performance layout: "scroll" (default — continuous scroll + autoscroll,
+  // unchanged) vs "fit" (fit-to-screen multi-column). Only relevant in read-only
+  // performance mode; persisted per user in localStorage.
+  const [playLayout, setPlayLayout] = useState<"scroll" | "fit">("scroll");
+  // Fit-mode measured layout: responsive column count, the binary-searched font
+  // size (px) that makes the song fit the viewport, and the scrollable height.
+  const [fitColumns, setFitColumns] = useState(1);
+  const [fitFont, setFitFont] = useState(LYRIC_FONT_SIZE_PX.large);
+  const [fitHeight, setFitHeight] = useState<number | null>(null);
+  // Bumped on resize / orientationchange to re-run the fit measurement.
+  const [resizeTick, setResizeTick] = useState(0);
+  const fitWrapRef = useRef<HTMLDivElement>(null);
   const scrollRafRef = useRef<number | null>(null);
   const sectionRefs = useRef<Map<string, HTMLElement>>(new Map());
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
@@ -818,9 +830,32 @@ export default function SongEditor({
     });
   };
 
+  // Load the saved performance layout choice (default "scroll" so the existing
+  // continuous-scroll experience is untouched until the user opts in).
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem("wp-play-layout-v1");
+      if (v === "fit" || v === "scroll") setPlayLayout(v);
+    } catch {}
+  }, []);
+
+  const changePlayLayout = (next: "scroll" | "fit") => {
+    setPlayLayout(next);
+    try { localStorage.setItem("wp-play-layout-v1", next); } catch {}
+  };
+
   const colors = isDark ? settings.sectionColorsDark : settings.sectionColorsLight;
   const readOnly = !editMode;
+  // Fit-to-screen play view: opt-in, read-only only. Reuses the column-flow used
+  // by split view / print, but auto-sizes the font and scrolls only when needed.
+  const fitMode = readOnly && playLayout === "fit";
+  // Lowest font size the fit pass will shrink to before it gives up and lets the
+  // columns scroll. ~12px keeps lyrics legible at arm's length on a stage.
+  const MIN_FIT_FONT = 12;
   const columnView = viewMode !== "standard";
+  // Whichever path drives a multi-column flow: the editor's split view OR the
+  // performance fit-to-screen mode. Section break-inside/spacing keys off this.
+  const effColumnView = columnView || fitMode;
   const numCols = viewMode === "split-2" ? 2 : viewMode === "split-3" ? 3 : 1;
   // Grid gutter between columns. Word-block lines wrap on their own, so this is
   // purely visual spacing now — no chord-position math depends on it.
@@ -833,12 +868,17 @@ export default function SongEditor({
   // column view keeps its tighter size by lowering the ceiling; clamp then
   // scales fluidly from a 13px floor up to it based on viewport width.
   const lyricCeiling = viewMode === "split-3" ? Math.max(13, Math.round(baseFontSize * 0.78)) : baseFontSize;
-  const lyricFontSize = LYRIC_FONT_CLAMP;
-  const chordFontSize = CHORD_FONT_CLAMP;
+  // In fit mode the font is an exact measured px value (driven through the
+  // --fit-font CSS var set on the sections container), overriding the fluid
+  // clamp so the whole song can be scaled to fit the available viewport.
+  const lyricFontSize = fitMode ? "var(--fit-font, 16px)" : LYRIC_FONT_CLAMP;
+  const chordFontSize = fitMode ? "calc(var(--fit-font, 16px) - 2px)" : CHORD_FONT_CLAMP;
   const lineHeight = LINE_SPACING[prefs.lineSpacing];
   // Height reserved for the chord slot above every word so word baselines stay
   // aligned across a line whether or not a given word carries a chord.
-  const chordSlotHeight = `calc(${CHORD_FONT_CLAMP} + 4px)`;
+  const chordSlotHeight = fitMode
+    ? "calc(var(--fit-font, 16px) - 2px + 4px)"
+    : `calc(${CHORD_FONT_CLAMP} + 4px)`;
 
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -966,6 +1006,82 @@ export default function SongEditor({
     scrollRafRef.current = requestAnimationFrame(tick);
     return () => { if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current); };
   }, [autoScrolling, scrollSpeed]);
+
+  // Fit mode has nothing to continuously scroll, so any running autoscroll is
+  // stopped when entering it. (The control itself is also hidden — see below.)
+  useEffect(() => {
+    if (fitMode && autoScrolling) setAutoScrolling(false);
+  }, [fitMode, autoScrolling]);
+
+  // Re-run the fit measurement on viewport resize and orientation change. rAF-
+  // coalesced so a burst of resize events triggers a single recompute.
+  useEffect(() => {
+    if (!fitMode) return;
+    let raf = 0;
+    const onResize = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => setResizeTick((t) => t + 1));
+    };
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", onResize);
+      window.removeEventListener("orientationchange", onResize);
+    };
+  }, [fitMode]);
+
+  // The fit-to-screen pass. Runs synchronously before paint (no flicker):
+  //   1. Reserve the viewport height below the song so it scrolls only when it
+  //      must overflow, not the whole page.
+  //   2. Pick a responsive column count from width + orientation.
+  //   3. Binary-search the largest font (≤ the user's preferred size, ≥ the
+  //      legibility floor) at which the whole song fits. If it can't fit even at
+  //      the floor, we stop there and the wrapper scrolls vertically.
+  // Manual zoom overrides auto-fit: any non-zero zoomOffset uses that size and
+  // lets the columns scroll, so the musician's explicit choice always wins.
+  useLayoutEffect(() => {
+    if (!fitMode) return;
+    const wrap = fitWrapRef.current;
+    const inner = sectionsRef.current;
+    if (!wrap || !inner) return;
+
+    const top = wrap.getBoundingClientRect().top;
+    const avail = Math.max(220, Math.round(window.innerHeight - top - 16));
+    wrap.style.height = `${avail}px`; // apply now so clientHeight is correct below
+    setFitHeight(avail);
+
+    const w = wrap.clientWidth;
+    const portrait = window.innerHeight >= window.innerWidth;
+    const cols = portrait || w < 680 ? 1 : w < 1080 ? 2 : 3;
+    inner.style.columnCount = String(cols); // apply now so measurement uses it
+    setFitColumns(cols);
+
+    const wrapH = wrap.clientHeight;
+
+    if (zoomOffset !== 0) {
+      // User has taken manual control of the size — honor it, scroll if needed.
+      const f = Math.max(MIN_FIT_FONT, baseFontSize);
+      inner.style.setProperty("--fit-font", `${f}px`);
+      setFitFont(f);
+      return;
+    }
+
+    const userPref = LYRIC_FONT_SIZE_PX[prefs.lyricFontSize];
+    let lo = MIN_FIT_FONT;
+    let hi = Math.max(MIN_FIT_FONT, userPref);
+    let best = MIN_FIT_FONT;
+    for (let i = 0; i < 8; i++) {
+      const mid = (lo + hi) / 2;
+      inner.style.setProperty("--fit-font", `${mid}px`);
+      const fits = inner.scrollHeight <= wrapH + 1;
+      if (fits) { best = mid; lo = mid; } else { hi = mid; }
+    }
+    best = Math.max(MIN_FIT_FONT, Math.round(best * 2) / 2);
+    inner.style.setProperty("--fit-font", `${best}px`);
+    setFitFont(best);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitMode, zoomOffset, baseFontSize, prefs.lyricFontSize, lineHeight, lyricFontFamily, showChords, song, resizeTick]);
 
   const switchView = (mode: ViewMode) => {
     setEditingChord(null);
@@ -1804,7 +1920,19 @@ export default function SongEditor({
   // each column — a short INTRO doesn't leave a gap; the next section flows up
   // right under it. Reading order is preserved: fill column 1 top-to-bottom,
   // then 2, then 3.
-  const sectionsContainerStyle: React.CSSProperties = columnView
+  //
+  // Fit mode reuses the same flow, but with the responsively-measured column
+  // count and the --fit-font var that drives the auto-sized text. The inner
+  // container keeps an auto (natural) height; the wrapper supplies the fixed
+  // viewport height + vertical scroll, so overflow scrolls cleanly instead of
+  // spilling into extra columns.
+  const sectionsContainerStyle: React.CSSProperties = fitMode
+    ? ({
+        columnCount: fitColumns,
+        columnGap: `${fitColumns === 3 ? 16 : 24}px`,
+        "--fit-font": `${fitFont}px`,
+      } as React.CSSProperties)
+    : columnView
     ? {
         columnCount: numCols,
         columnGap: colGap,
@@ -1814,7 +1942,7 @@ export default function SongEditor({
   // be clipped regardless of column width — no overflow clipping needed.
   // break-inside: avoid keeps a section whole within one column; marginBottom
   // gives vertical separation between stacked sections.
-  const sectionInColumnStyle: React.CSSProperties = columnView
+  const sectionInColumnStyle: React.CSSProperties = effColumnView
     ? {
         minWidth: 0,
         overflow: "visible",
@@ -2155,11 +2283,18 @@ export default function SongEditor({
         />
       )}
 
-      <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-4 sm:p-6 md:p-8 overflow-x-auto print:border-0 print:shadow-none print:p-0">
+      <div
+        ref={fitWrapRef}
+        className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-4 sm:p-6 md:p-8 overflow-x-auto print:border-0 print:shadow-none print:p-0"
+        // Fit mode turns this card into the scroll viewport: fixed height with
+        // vertical overflow, so the song scrolls inside it only when it can't be
+        // shrunk to fit. Scroll mode keeps the card's natural auto height.
+        style={fitMode ? { height: fitHeight ?? undefined, overflowY: "auto", overflowX: "hidden" } : undefined}
+      >
         <div
           ref={sectionsRef}
           data-bubble-skip
-          className={columnView ? "" : "space-y-8 min-w-fit"}
+          className={effColumnView ? "" : "space-y-8 min-w-fit"}
           style={sectionsContainerStyle}
         >
           {song.sections.map((section, sIdx) => {
@@ -2288,7 +2423,7 @@ export default function SongEditor({
 
                 <div
                   className={
-                    columnView ? "pl-3 space-y-2" : "pl-4 space-y-3"
+                    effColumnView ? "pl-3 space-y-2" : "pl-4 space-y-3"
                   }
                   style={{ borderLeft: `3px solid ${c.bg}` }}
                 >
@@ -2864,12 +2999,15 @@ export default function SongEditor({
           className={"w-11 h-11 rounded-full shadow-lg border flex items-center justify-center transition-colors " + (quickActionsOpen ? "bg-indigo-600 text-white border-indigo-600" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-indigo-50 dark:hover:bg-slate-700")}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
-        <button type="button" onClick={() => setAutoScrolling(o => !o)} title={autoScrolling ? "Pause" : "Auto-scroll"}
-          className={"w-11 h-11 rounded-full shadow-lg border flex items-center justify-center transition-colors " + (autoScrolling ? "bg-indigo-600 text-white border-indigo-600" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-indigo-50 dark:hover:bg-slate-700")}>
-          {autoScrolling
-            ? <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
-            : <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>}
-        </button>
+        {/* Auto-scroll has nothing to drive in fit mode — hide it there. */}
+        {!fitMode && (
+          <button type="button" onClick={() => setAutoScrolling(o => !o)} title={autoScrolling ? "Pause" : "Auto-scroll"}
+            className={"w-11 h-11 rounded-full shadow-lg border flex items-center justify-center transition-colors " + (autoScrolling ? "bg-indigo-600 text-white border-indigo-600" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-indigo-50 dark:hover:bg-slate-700")}>
+            {autoScrolling
+              ? <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+              : <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>}
+          </button>
+        )}
         <button type="button" onClick={() => setZoomOffset(z => Math.min(z + 2, 14))} title="Larger text"
           className="w-11 h-11 rounded-full shadow-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-slate-700 flex items-center justify-center transition-colors">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -2884,9 +3022,12 @@ export default function SongEditor({
           song={song}
           settings={settings}
           zoomOffset={zoomOffset}
-          effectiveFontSize={lyricCeiling}
+          effectiveFontSize={fitMode ? Math.round(fitFont) : lyricCeiling}
           autoScrolling={autoScrolling}
           scrollSpeed={scrollSpeed}
+          readOnly={readOnly}
+          playLayout={playLayout}
+          onPlayLayoutChange={changePlayLayout}
           onTranspose={handleTranspose}
           onCapoChange={handleCapoChange}
           onSettingsChange={onSettingsChange}
