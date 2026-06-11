@@ -65,6 +65,9 @@ function markTipSeen(id: TipId) {
     /* localStorage unavailable — tip just won't persist as seen */
   }
 }
+// Coachmark anchors (stable refs so the bubble's position effect doesn't re-run
+// every render). The chord tip prefers a real word, falling back to the line.
+const CHORD_TIP_ANCHORS = ["[data-word-text]", "[data-fit-line]"];
 
 export type SetlistContext = {
   setlistId: string;
@@ -3128,7 +3131,7 @@ export default function SongEditor({
         </div>
       )}
 
-      <div className="fixed right-4 bottom-24 md:bottom-8 z-30 hidden sm:flex flex-col gap-2 print:hidden">
+      <div data-coach="quick-actions" className="fixed right-4 bottom-24 md:bottom-8 z-30 hidden sm:flex flex-col gap-2 print:hidden">
         <button type="button" onClick={() => setQuickActionsOpen(o => !o)} title="Quick Actions"
           className={"w-11 h-11 rounded-full shadow-lg border flex items-center justify-center transition-colors " + (quickActionsOpen ? "bg-indigo-600 text-white border-indigo-600" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-indigo-50 dark:hover:bg-slate-700")}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -3172,25 +3175,28 @@ export default function SongEditor({
         />
       )}
 
-      {/* Show-once new-user tips — one at a time, in context, non-blocking. */}
+      {/* Show-once new-user tips — anchored speech bubbles pointing at their
+          target; one at a time, in context, non-blocking. */}
       {!readOnly && activeTip === "chord" && (
         <Coachmark
+          anchor={CHORD_TIP_ANCHORS}
+          prefer="below"
           text="Tip: tap any word to add a chord above it."
           onDismiss={() => dismissTip("chord")}
         />
       )}
       {!readOnly && activeTip === "line-toolbar" && (
         <Coachmark
+          anchor="[data-fit-line]"
+          prefer="below"
           text="Tip: tap a line to reveal its tools (add chord, section, delete)."
           onDismiss={() => dismissTip("line-toolbar")}
         />
       )}
       {readOnly && activeTip === "performance" && (
         <Coachmark
-          placement="bottom-right"
-          // The controls it points at are sm+ only (hidden sm:flex), so the tip
-          // is too.
-          className="hidden sm:block"
+          anchor='[data-coach="quick-actions"]'
+          prefer="above"
           text="Tip: fit-to-screen layout, zoom, and auto-scroll live in the controls here."
           onDismiss={() => dismissTip("performance")}
         />
