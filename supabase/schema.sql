@@ -1235,3 +1235,24 @@ create policy support_messages_insert on public.support_messages
   with check (true);
 
 create index if not exists support_messages_created_at_idx on public.support_messages(created_at desc);
+
+-- ============================================================
+-- Keep-alive (free-tier anti-pause)
+-- A tiny RPC the daily GitHub Actions workflow calls so Postgres
+-- sees real activity (Free tier pauses after 7 idle days). It runs
+-- a genuine query — select now() — and returns a live timestamp, so
+-- the response can't be a cached/empty no-op. Callable with the anon
+-- key; touches no table data.
+-- ============================================================
+create or replace function public.keepalive()
+returns timestamptz
+language sql
+security definer
+volatile
+set search_path = public
+as $$
+  select now();
+$$;
+
+revoke all on function public.keepalive() from public;
+grant execute on function public.keepalive() to anon, authenticated;
