@@ -13,15 +13,51 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+// Shared marketing copy, reused across the default + social cards so they stay
+// in sync. Tweak freely — this is the one place to edit it.
+const SITE_DESCRIPTION =
+  "Create, import, and share worship chord charts and setlists with your whole team. Built for worship leaders and musicians.";
+const SITE_TITLE = "Worship+ — Worship chord charts for your team";
+
 export const metadata: Metadata = {
-  title: "Worship+ — Chord Editor",
-  description: "A beautiful chord editor for praise and worship songs.",
+  // Absolute base for resolving relative OG/Twitter image + canonical URLs.
+  // TODO: switch to https://worshipplus.life once the custom domain is connected.
+  metadataBase: new URL("https://worshipplus.vercel.app"),
+  title: {
+    default: SITE_TITLE,
+    template: "%s · Worship+",
+  },
+  description: SITE_DESCRIPTION,
   applicationName: "Worship+",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
     title: "Worship+",
+  },
+  // Public marketing + legal pages are indexable by default; authenticated
+  // /app/* routes opt out via their own layout (no SEO value behind auth).
+  robots: { index: true, follow: true },
+  openGraph: {
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    url: "/",
+    siteName: "Worship+ life",
+    type: "website",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Worship+ — chord charts & setlists for your whole worship team",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    images: ["/og-image.png"],
   },
   icons: {
     icon: [
