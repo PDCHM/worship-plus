@@ -1686,7 +1686,15 @@ export default function Home() {
       hydratedIdsRef.current.add(parsed.id);
       setSongs((prev) => [parsed, ...prev]);
       navigateTo({ kind: "editor", songId: parsed.id });
-      showToast(`Imported "${parsed.title}"`);
+      // PDF/Word go through best-effort text extraction (chords/sections can need
+      // touch-up); set that expectation in the success toast. .txt/ChordPro are
+      // faithful, so they get the plain confirmation.
+      const bestEffort = ext === "pdf" || ext === "docx";
+      showToast(
+        bestEffort
+          ? `Imported "${parsed.title}" — PDF/Word import is best-effort; chords & sections may need touch-up`
+          : `Imported "${parsed.title}"`,
+      );
       if (user) void saveSongToDb(supabase, parsed, user.id);
     } catch {
       showToast("Could not parse file");

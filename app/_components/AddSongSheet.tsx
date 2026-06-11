@@ -28,28 +28,51 @@ const ICON_GLOBE = (
 );
 
 export default function AddSongSheet({ onBuildNew, onPasteChart, onAiChords, onImportFile, onSearchOnline, onClose }: Props) {
-  // Second-level "Paste Song" menu: paste text vs import a file.
+  // Second-level menus: "Paste Song" (paste text) and "Import Song" (which shows
+  // format guidance before opening the native file picker).
   const [pasteSubOpen, setPasteSubOpen] = useState(false);
+  const [importSubOpen, setImportSubOpen] = useState(false);
+  const subOpen = pasteSubOpen || importSubOpen;
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4" onClick={onClose}>
       <div className="w-full sm:max-w-sm bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-1.5">
-            {pasteSubOpen && (
-              <button type="button" onClick={() => setPasteSubOpen(false)} aria-label="Back"
+            {subOpen && (
+              <button type="button" onClick={() => { setPasteSubOpen(false); setImportSubOpen(false); }} aria-label="Back"
                 className="w-7 h-7 -ml-1.5 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
               </button>
             )}
-            <span className="font-semibold text-sm">{pasteSubOpen ? "Paste Song" : "Add Song"}</span>
+            <span className="font-semibold text-sm">{importSubOpen ? "Import Song" : pasteSubOpen ? "Paste Song" : "Add Song"}</span>
           </div>
           <button type="button" onClick={onClose} className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
 
-        {pasteSubOpen ? (
+        {importSubOpen ? (
+          <div className="p-4 space-y-3.5">
+            <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+              For best results, import from SongBook Pro&rsquo;s{" "}
+              <span className="font-semibold text-slate-800 dark:text-slate-100">.sbp</span> or{" "}
+              <span className="font-semibold text-slate-800 dark:text-slate-100">.sbpbackup</span> — these keep your
+              songs, setlists, and lyrics (including Chinese) intact. PDF and Word files are imported best-effort and may
+              need some cleanup.
+            </p>
+            <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 px-3 py-2 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+              Supported:{" "}
+              <span className="font-medium text-slate-600 dark:text-slate-300">.sbp · .sbpbackup · .pdf · .docx · .txt</span>{" "}
+              <span className="text-slate-400 dark:text-slate-500">(also ChordPro, OnSong, PowerPoint, RTF)</span>
+            </div>
+            <button type="button" onClick={() => { onImportFile(); onClose(); }}
+              className="w-full h-11 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold flex items-center justify-center gap-2 transition-colors shadow-sm shadow-indigo-600/30">
+              {ICON_FILE}
+              Choose file
+            </button>
+          </div>
+        ) : pasteSubOpen ? (
           <div className="p-3 space-y-1">
             <SheetBtn onClick={() => { onPasteChart(); onClose(); }}
               icon={ICON_PASTE}
@@ -57,9 +80,9 @@ export default function AddSongSheet({ onBuildNew, onPasteChart, onAiChords, onI
           </div>
         ) : (
           <div className="p-3 space-y-1">
-            <SheetBtn onClick={() => { onImportFile(); onClose(); }}
+            <SheetBtn onClick={() => setImportSubOpen(true)}
               icon={ICON_FILE}
-              label="Import Song" desc="Import a file — SongBook Pro, ChordPro, OnSong, docx, PDF" />
+              label="Import Song" desc="From a file — best with SongBook Pro .sbp / .sbpbackup" chevron />
             <SheetBtn onClick={() => setPasteSubOpen(true)}
               icon={ICON_PASTE}
               label="Paste Song" desc="Paste a full chord chart as text" chevron />
