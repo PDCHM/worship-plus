@@ -922,11 +922,12 @@ export function parseSongText(text: string): Song {
     }
 
     // A section-label line → start a new section. Plain-text imports are
-    // lenient (detectSectionLabel): bare headers like "Verse 1" or "CHORUS"
-    // without a colon still count, since they're common in pasted .txt charts.
-    // (The editor's typed-label path uses the stricter, colon-required
-    // parseBareSectionLabel to avoid converting lyric lines.)
-    const bareLabel = detectSectionLabel(l);
+    // lenient (detectInlineSectionLabel): bare headers like "Verse 1", "CHORUS",
+    // "V1", "(A - QUIET)", or "ENGLISH" without a colon still count, since
+    // they're common in pasted .txt / exported charts. (The editor's typed-label
+    // path uses the stricter, colon-required parseBareSectionLabel to avoid
+    // converting lyric lines.)
+    const bareLabel = detectInlineSectionLabel(l);
     if (bareLabel) {
       startNew(bareLabel);
       continue;
@@ -972,8 +973,12 @@ export function parseSongText(text: string): Song {
     key = detectKeyFromSections(sections);
   }
 
-  if (!sections.length) {
-    sections.push({ id: uid(), label: "Verse 1", lines: [] });
+  // Fold any empty (0-line) section labels into the following section so the
+  // shared inline-label detector can't leave empty chips (e.g. consecutive
+  // headers, a trailing "ENGLISH" before "Verse 1").
+  let outSections = foldEmptySectionLabels(sections);
+  if (!outSections.length) {
+    outSections = [{ id: uid(), label: "Verse 1", lines: [] }];
   }
 
   const now = Date.now();
@@ -984,7 +989,7 @@ export function parseSongText(text: string): Song {
     key,
     capo,
     bpm: null,
-    sections,
+    sections: outSections,
     favorite: false,
     createdAt: now,
     updatedAt: now,
@@ -1029,6 +1034,33 @@ function looksLikeSbpFlowLine(t: string): boolean {
   return matched >= 2 && matched * 3 >= tokens.length * 2;
 }
 
+// Language markers that read best as a suffix on the FOLLOWING section's label
+// ("Verse 1 (English)") rather than a prefix.
+const LANG_MARKER = /^(english|chinese|mandarin|cantonese|bahasa|malay|tamil|korean|spanish|tagalog|中文|国語|國語|粵語|华语|華語)$/i;
+
+// Fold an empty (0-line) section's label into the FOLLOWING section so no empty
+// chip renders, WITHOUT losing the label text. A language marker becomes a
+// "(English)" suffix; any other empty label (e.g. "Bridge:3x" before
+// "(A - QUIET)") prefixes the next label. A trailing empty label — nothing
+// follows it — is kept as a faithful divider rather than dropping its meaning.
+function foldEmptySectionLabels(sections: Section[]): Section[] {
+  const out: Section[] = [];
+  let carry: string | null = null; // pending empty-label text to fold forward
+  for (const sec of sections) {
+    if (carry != null) {
+      const c = carry.trim();
+      sec.label = LANG_MARKER.test(c)
+        ? `${sec.label} (${c.charAt(0).toUpperCase()}${c.slice(1).toLowerCase()})`
+        : `${carry} ${sec.label}`;
+      carry = null;
+    }
+    if (sec.lines.length === 0) { carry = sec.label; continue; } // hold, don't emit
+    out.push(sec);
+  }
+  if (carry != null) out.push({ id: uid(), label: carry, lines: [] }); // trailing divider
+  return out;
+}
+
 function parseSbpContent(content: string, title: string): Section[] {
   // Normalize chord symbols so they validate (♯→#, ♭→b).
   const rawLines = content.replace(/♯/g, "#").replace(/♭/g, "b").replace(/\r/g, "").split("\n");
@@ -1059,6 +1091,11 @@ function parseSbpContent(content: string, title: string): Section[] {
     }
     // Inline ChordPro line ("[G]Great is the [C/G]Lord").
     if (/\[[^\]]+\]/.test(l)) { ensure().lines.push(parseChordProLine(l)); continue; }
+    // Inline section label that ISN'T a {c:} marker — V1, CHORUS, (A - QUIET),
+    // ENGLISH, Bridge:3x … → start a new section (conservative; chords/lyrics
+    // are left untouched by detectInlineSectionLabel).
+    const inlineLabel = detectInlineSectionLabel(t);
+    if (inlineLabel) { current = { id: uid(), label: inlineLabel, lines: [] }; sections.push(current); continue; }
     // Chord-only line followed by a lyric line → chord-above pair.
     if (isChordLine(l) && i + 1 < rawLines.length && rawLines[i + 1].trim()) {
       const next = rawLines[i + 1];
@@ -1069,8 +1106,9 @@ function parseSbpContent(content: string, title: string): Section[] {
     // Plain lyric line.
     ensure().lines.push({ id: uid(), lyric: l, chords: [] });
   }
-  if (!sections.length) sections.push({ id: uid(), label: "Verse 1", lines: [] });
-  return sections;
+  const folded = foldEmptySectionLabels(sections);
+  if (!folded.length) folded.push({ id: uid(), label: "Verse 1", lines: [] });
+  return folded;
 }
 
 // ── Unified .sbp / .sbpbackup parse ─────────────────────────────────────────
@@ -1392,6 +1430,49 @@ function detectSectionLabel(text: string): string | null {
   const m = t.match(SECTION_LABEL_LINE);
   if (!m) return null;
   return normalizeSectionLabel(m[1], m[2]);
+}
+
+// Conservative detector for inline section labels that AREN'T {c:...} markers,
+// so .sbp / .docx / .pdf / paste imports split them into real sections instead
+// of swallowing them as lyrics. ERRS TOWARD NOT SPLITTING — returns a label
+// only on a confident pattern, so a lyric line ("Hallelujah", "Shout to the
+// Lord") or a chord line never becomes a fake section. Returns the label text to
+// use (abbreviations expanded so the section TYPE is right; original preserved
+// for opaque part/language labels), or null to leave the line as a lyric.
+function detectInlineSectionLabel(text: string): string | null {
+  const t = text.trim();
+  if (!t || t.length > 40) return null;
+  if (/[[\]]/.test(t)) return null; // ChordPro brackets → never a bare label
+
+  // Strip a trailing repeat count ("x2", "3x", ":3x") for keyword matching, but
+  // keep the original text (with the count) when one was present.
+  const stripped = t.replace(/[\s:]*(?:\d+\s*x|x\s*\d+)\s*$/i, "").trim();
+
+  // (a) Standard section keyword (Verse/Chorus/Bridge/Intro/Outro/Tag/Refrain/
+  //     Interlude/Ending/Pre-Chorus), incl. [..]/(..) wrap + optional number.
+  const std = detectSectionLabel(stripped);
+  if (std) return stripped === t ? std : t; // preserve original when a count was present
+
+  // (b) Verse / Pre-Chorus abbreviations that CAN'T be confused with a chord
+  //     (V, V1, V2, PC, PC1…). Deliberately NOT C/B/A… alone — those are valid
+  //     chords, so promoting them would wreck chord-only lines.
+  const abbr = stripped.match(/^(v|pc|pre[\s-]?c)\s*(\d+)?$/i);
+  if (abbr) {
+    const base = /^v$/i.test(abbr[1]) ? "Verse" : "Pre-Chorus";
+    return abbr[2] ? `${base} ${abbr[2]}` : base;
+  }
+
+  // (c) Parenthetical part / dynamic labels: "(A - QUIET)", "(B - BUILD)". A
+  //     single part letter A–H, a dash, then a word — distinct from a lyric
+  //     aside like "(repeat)" or "(oh oh)".
+  const paren = t.match(/^\((.+)\)$/);
+  if (paren && /^[A-H]\s*[-–—]\s*\S/.test(paren[1].trim())) return t;
+
+  // (d) Language markers for bilingual charts (standalone line only).
+  if (/^(english|chinese|mandarin|cantonese|bahasa|malay|tamil|korean|spanish|tagalog|中文|国語|國語|粵語|华语|華語)$/i.test(t)) {
+    return t;
+  }
+  return null;
 }
 
 function isChordLikeToken(t: string): boolean {
