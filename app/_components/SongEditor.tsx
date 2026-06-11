@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
+import Coachmark from "@/app/_components/Coachmark";
 import ConfirmDialog from "@/app/_components/ConfirmDialog";
 import PrintPreviewModal from "@/app/_components/PrintPreviewModal";
 import QuickActionsPanel from "@/app/_components/QuickActionsPanel";
@@ -45,6 +46,25 @@ import {
 
 type ViewMode = "standard" | "split-2" | "split-3";
 type Complexity = "simple" | "standard" | "complex";
+
+// Show-once new-user coachmarks. Each tip id is tracked in localStorage so it
+// fires at most once, ever, in context — never all at once.
+const TIPS_KEY = "wp-tips-seen-v1";
+type TipId = "chord" | "line-toolbar" | "performance";
+function getSeenTips(): Record<string, boolean> {
+  try {
+    return JSON.parse(localStorage.getItem(TIPS_KEY) || "{}") as Record<string, boolean>;
+  } catch {
+    return {};
+  }
+}
+function markTipSeen(id: TipId) {
+  try {
+    localStorage.setItem(TIPS_KEY, JSON.stringify({ ...getSeenTips(), [id]: true }));
+  } catch {
+    /* localStorage unavailable — tip just won't persist as seen */
+  }
+}
 
 export type SetlistContext = {
   setlistId: string;
@@ -790,6 +810,12 @@ export default function SongEditor({
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
   const [stylesPanelOpen, setStylesPanelOpen] = useState(false);
   const [editMode, setEditMode] = useState(true);
+  // Show-once coachmarks: which tip (if any) is currently visible. `tipsReady`
+  // gates selection until the edit/read mode is resolved, and `tipShownRef`
+  // stops the same tip re-popping on mode toggles within a session.
+  const [activeTip, setActiveTip] = useState<TipId | null>(null);
+  const [tipsReady, setTipsReady] = useState(false);
+  const tipShownRef = useRef<Set<TipId>>(new Set());
   // AI chord generation sheet.
   const [generateOpen, setGenerateOpen] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -818,6 +844,8 @@ export default function SongEditor({
     } catch {
       setEditMode(!touch);
     }
+    // Mode is now resolved — let the show-once tips pick the right one for it.
+    setTipsReady(true);
   }, []);
 
   // Persist on toggle (not via an effect) so the initial editMode value can't
@@ -846,6 +874,50 @@ export default function SongEditor({
 
   const colors = isDark ? settings.sectionColorsDark : settings.sectionColorsLight;
   const readOnly = !editMode;
+
+  // ── Show-once coachmarks ──────────────────────────────────────────────────
+  const dismissTip = (id: TipId) => {
+    markTipSeen(id);
+    setActiveTip((t) => (t === id ? null : t));
+  };
+  // Pick the right unseen tip for the current mode, in context: editor mode
+  // surfaces the chord tip then the line-toolbar tip; performance mode surfaces
+  // the performance-controls tip. One at a time; each only once per session
+  // (tipShownRef) and once ever (localStorage).
+  useEffect(() => {
+    if (!tipsReady) return;
+    const seen = getSeenTips();
+    // The performance controls it points at are sm+ only, so don't even offer
+    // (or burn) that tip on phones.
+    const wideScreen =
+      typeof window !== "undefined" && window.matchMedia("(min-width: 640px)").matches;
+    const want: TipId | null = readOnly
+      ? (!seen.performance && wideScreen ? "performance" : null)
+      : (!seen.chord ? "chord" : !seen["line-toolbar"] ? "line-toolbar" : null);
+    if (want && !tipShownRef.current.has(want)) {
+      tipShownRef.current.add(want);
+      // Mark seen as soon as it's shown so it can never re-fire (even across
+      // remounts); auto-dismiss/"Got it" just clears the card early.
+      markTipSeen(want);
+      setActiveTip(want);
+    } else if (!want) {
+      // Switched into a mode whose tips are all seen — clear any stale tip.
+      setActiveTip((t) =>
+        readOnly ? (t === "performance" ? null : t) : (t === "chord" || t === "line-toolbar" ? null : t),
+      );
+    }
+  }, [readOnly, tipsReady]);
+  // Auto-dismiss once the user actually performs the action the tip describes.
+  useEffect(() => {
+    if (activeTip === "chord" && addingChord) dismissTip("chord");
+  }, [activeTip, addingChord]);
+  useEffect(() => {
+    if (activeTip === "line-toolbar" && activeLine) dismissTip("line-toolbar");
+  }, [activeTip, activeLine]);
+  useEffect(() => {
+    if (activeTip === "performance" && (quickActionsOpen || autoScrolling)) dismissTip("performance");
+  }, [activeTip, quickActionsOpen, autoScrolling]);
+
   // Fit-to-screen play view: opt-in, read-only only. Reuses the column-flow used
   // by split view / print, but auto-sizes the font and scrolls only when needed.
   const fitMode = readOnly && playLayout === "fit";
@@ -3097,6 +3169,30 @@ export default function SongEditor({
           onScrollSpeedChange={setScrollSpeed}
           onToggleAutoScroll={() => setAutoScrolling(o => !o)}
           onClose={() => setQuickActionsOpen(false)}
+        />
+      )}
+
+      {/* Show-once new-user tips — one at a time, in context, non-blocking. */}
+      {!readOnly && activeTip === "chord" && (
+        <Coachmark
+          text="Tip: tap any word to add a chord above it."
+          onDismiss={() => dismissTip("chord")}
+        />
+      )}
+      {!readOnly && activeTip === "line-toolbar" && (
+        <Coachmark
+          text="Tip: tap a line to reveal its tools (add chord, section, delete)."
+          onDismiss={() => dismissTip("line-toolbar")}
+        />
+      )}
+      {readOnly && activeTip === "performance" && (
+        <Coachmark
+          placement="bottom-right"
+          // The controls it points at are sm+ only (hidden sm:flex), so the tip
+          // is too.
+          className="hidden sm:block"
+          text="Tip: fit-to-screen layout, zoom, and auto-scroll live in the controls here."
+          onDismiss={() => dismissTip("performance")}
         />
       )}
 
