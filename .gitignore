@@ -43,3 +43,7 @@ next-env.d.ts
 # local DB introspection / drift scratch (read-only queries + apply blocks).
 # Canonical schema lives in supabase/. These are run manually in Supabase.
 /db-*.sql
+
+# read-only import verification harness + sample drop folder (scratch, untracked)
+/scripts/verify-imports.*
+/test-imports/

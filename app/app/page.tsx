@@ -1540,7 +1540,7 @@ export default function Home() {
     // [chords] and route straight through parseSongText (which handles ChordPro
     // directives, [Section] headers, and word-anchored inline chords).
     const TEXT_EXTS = ["txt", "chopro", "cho", "onsong"];
-    const EXTRACT_EXTS = ["docx", "pdf", "pptx", "sbp", "rtf"];
+    const EXTRACT_EXTS = ["docx", "pdf", "pptx", "sbp", "sbpbackup", "rtf"];
     let text: string;
     try {
       if (TEXT_EXTS.includes(ext)) {
@@ -1563,10 +1563,126 @@ export default function Home() {
       showToast("Could not read file");
       return;
     }
+    // .sbp / .sbpbackup arrive as the unzipped dataFile.txt (version line + JSON).
+    // A SongBook Pro export holds 1..N songs + sets (setlists) + folders, so we
+    // import ALL of them and recreate each set/folder — not just the first song.
+    if (ext === "sbp" || ext === "sbpbackup") {
+      let bundle: ReturnType<typeof parseSbp>;
+      try { bundle = parseSbp(text); } catch { showToast("Could not parse file"); return; }
+      const parsedSongs = bundle.songs;
+      if (!parsedSongs.length) { showToast("No songs found in file"); return; }
+
+      // Dedup by name + normalized content against the existing library so a
+      // re-import doesn't double-add. The signature ignores ids/timestamps and
+      // keys on title + each line's lyric + chord names.
+      const sig = (s: Song) =>
+        s.title.trim().toLowerCase() + " " +
+        s.sections
+          .map((sec) => sec.lines.map((l) => l.lyric.trim() + "|" + l.chords.map((c) => c.chord).join(" ")).join("\n"))
+          .join("\n");
+      const existingBySig = new Map<string, string>();
+      for (const s of songs) existingBySig.set(sig(s), s.id);
+
+      // Map SongBook Pro Id → the resolved W+ song id (reused or newly created).
+      const idMap = new Map<string, string>();
+      const toCreate: Song[] = [];
+      const resolved: { sbpId: string | null; id: string; title: string; created: boolean }[] = [];
+      for (const { sbpId, song } of parsedSongs) {
+        const stamped: Song = { ...song, userId: user?.id, favorite: false, createdAt: Date.now(), updatedAt: Date.now() };
+        const s = sig(stamped);
+        const existingId = existingBySig.get(s);
+        if (existingId) {
+          resolved.push({ sbpId, id: existingId, title: song.title, created: false });
+          if (sbpId) idMap.set(sbpId, existingId);
+        } else {
+          const fresh: Song = { ...stamped, id: uid() };
+          toCreate.push(fresh);
+          existingBySig.set(s, fresh.id); // also dedup within this same import
+          resolved.push({ sbpId, id: fresh.id, title: song.title, created: true });
+          if (sbpId) idMap.set(sbpId, fresh.id);
+        }
+      }
+
+      for (const s of toCreate) hydratedIdsRef.current.add(s.id);
+      if (toCreate.length) setSongs((prev) => [...toCreate, ...prev]);
+
+      const hasSetlists = bundle.setlists.some((sl) => sl.items.length > 0);
+      const hasFolders = bundle.folders.some((f) => f.sbpIds.length > 0);
+
+      // Single song, no sets/folders → preserve the old single-import UX.
+      if (parsedSongs.length === 1 && !hasSetlists && !hasFolders) {
+        const r0 = resolved[0];
+        navigateTo({ kind: "editor", songId: r0.id });
+        showToast(r0.created ? `Imported "${r0.title}"` : `"${r0.title}" is already in your library`);
+        if (r0.created && user) { const c = toCreate[0]; if (c) void saveSongToDb(supabase, c, user.id); }
+        return;
+      }
+
+      if (!user) {
+        showToast(`Imported ${toCreate.length} song${toCreate.length === 1 ? "" : "s"}`);
+        navigateTo({ kind: "library", filter: "all" });
+        return;
+      }
+
+      // Persist the new songs.
+      let failed = 0;
+      for (const s of toCreate) {
+        try { const r = await saveSongToDb(supabase, s, user.id); if (!r.ok) failed++; } catch { failed++; }
+      }
+
+      // Recreate each set as a setlist, in Order. NOTE: folder_songs has no
+      // per-entry key/capo column (unique per (folder, song)), so SongBook Pro's
+      // keyOfset/Capo per entry can't be persisted — songs go in at base key.
+      const addInOrder = async (folderId: string, ids: string[]) => {
+        const rows: FolderSong[] = [];
+        for (let i = 0; i < ids.length; i++) {
+          const { data: r, error } = await supabase.rpc("add_song_to_folder", { p_folder_id: folderId, p_song_id: ids[i], p_position: i });
+          if (error) { logErr("import .sbp: add song to folder", error); continue; }
+          const row = r as { id: string; folder_id: string; song_id: string; position: number };
+          rows.push({ id: row.id, folderId: row.folder_id, songId: row.song_id, position: row.position });
+        }
+        if (rows.length) setFolderSongs((prev) => [...prev, ...rows]);
+      };
+      const dedupeOrder = (ids: string[]) => {
+        const seen = new Set<string>();
+        return ids.filter((id) => (seen.has(id) ? false : (seen.add(id), true)));
+      };
+      const baseName = file.name.replace(/\.[^.]+$/, "");
+
+      let setlistsMade = 0;
+      let firstSetlistId: string | null = null;
+      for (const sl of bundle.setlists) {
+        const ids = dedupeOrder(sl.items.map((it) => (it.sbpId ? idMap.get(it.sbpId) : undefined)).filter((v): v is string => !!v));
+        if (!ids.length) continue;
+        const folder = await createFolder(sl.name?.trim() || baseName || "Imported setlist", "setlist", null);
+        if (!folder) continue;
+        await addInOrder(folder.id, ids);
+        if (!firstSetlistId) firstSetlistId = folder.id;
+        setlistsMade++;
+      }
+
+      let foldersMade = 0;
+      for (const f of bundle.folders) {
+        const ids = dedupeOrder(f.sbpIds.map((id) => idMap.get(id)).filter((v): v is string => !!v));
+        if (!ids.length) continue;
+        const folder = await createFolder(f.name?.trim() || "Imported folder", "folder", null);
+        if (!folder) continue;
+        await addInOrder(folder.id, ids);
+        foldersMade++;
+      }
+
+      const bits = [`${toCreate.length} song${toCreate.length === 1 ? "" : "s"}`];
+      if (setlistsMade) bits.push(`${setlistsMade} setlist${setlistsMade === 1 ? "" : "s"}`);
+      if (foldersMade) bits.push(`${foldersMade} folder${foldersMade === 1 ? "" : "s"}`);
+      const reused = resolved.filter((r) => !r.created).length;
+      showToast(`Imported ${bits.join(" and ")}` + (reused ? ` (${reused} already in library)` : ""));
+      if (failed) showToast(`${failed} of ${toCreate.length} songs failed to save`);
+      navigateTo(firstSetlistId ? { kind: "folders", subview: firstSetlistId } : { kind: "library", filter: "all" });
+      return;
+    }
+
     try {
-      // .sbp arrives as its unzipped dataFile.txt (version line + JSON); parse
-      // it structurally. Everything else is chord-chart text.
-      const parsed = { ...(ext === "sbp" ? parseSbp(text) : parseSongText(text)), userId: user?.id };
+      const parsed = { ...parseSongText(text), userId: user?.id };
       hydratedIdsRef.current.add(parsed.id);
       setSongs((prev) => [parsed, ...prev]);
       navigateTo({ kind: "editor", songId: parsed.id });
@@ -1888,7 +2004,7 @@ export default function Home() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".txt,.worship,.chopro,.cho,.onsong,.sbp,.docx,.pdf,.pptx,.rtf"
+        accept=".txt,.worship,.chopro,.cho,.onsong,.sbp,.sbpbackup,.docx,.pdf,.pptx,.rtf"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];

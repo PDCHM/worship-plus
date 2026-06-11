@@ -999,15 +999,34 @@ export function parseSongText(text: string): Song {
 // chord-above-lyric pairs. Metadata comes from the JSON; the content is parsed
 // line-by-line (reusing parseChordProLine / chordPositionsFromLine).
 
-// A leading "flow"/structure line like "V, C, V, C, Tag x 2" — comma-separated
-// section abbreviations. Conservative: every comma token must be a section-ish
-// abbreviation, so real lyric lines are never mistaken for it.
+// A leading "flow"/structure line like "V, C, V, C, Tag x 2" or
+// "Intro, V1, C, V2, C, B, C (last line tag 3x)" — comma-separated section
+// abbreviations, optionally with repeat counts ("x2"/"3x") and a parenthetical
+// performance note. SongBook Pro puts this summary at the top, before the first
+// {c:} marker; it must be dropped, not absorbed into Verse 1. Conservative:
+// MOST comma tokens (after stripping counts/notes) must be section-ish
+// abbreviations, so real lyric lines are never mistaken for it.
 function looksLikeSbpFlowLine(t: string): boolean {
-  if (!t.includes(",")) return false;
-  const tokens = t.split(",").map((s) => s.trim().toLowerCase().replace(/\s*x\s*\d+$/, "").trim()).filter(Boolean);
-  if (!tokens.length) return false;
-  const ABBR = /^(v|c|b|t|tag|intro|outro|pre|pre-?chorus|prechorus|verse|chorus|bridge|interlude|ending|refrain|instrumental)\s*\d*$/;
-  return tokens.every((tok) => ABBR.test(tok));
+  // Drop a trailing parenthetical note like "(last line tag 3x)" before splitting.
+  const base = t.replace(/\s*\([^)]*\)\s*$/, "").trim();
+  if (!base.includes(",")) return false;
+  const tokens = base
+    .split(",")
+    .map((s) =>
+      s
+        .trim()
+        .toLowerCase()
+        .replace(/\s*\([^)]*\)/g, "") // any inline parenthetical
+        .replace(/\s*x\s*\d+\b/g, "") // "x2"
+        .replace(/\b\d+\s*x\b/g, "") // "3x"
+        .trim(),
+    )
+    .filter(Boolean);
+  if (tokens.length < 2) return false;
+  const ABBR = /^(v|c|b|t|tag|intro|outro|pre|pre-?chorus|prechorus|verse|chorus|bridge|interlude|ending|refrain|instrumental|turnaround|vamp|chrous)\s*\d*$/;
+  const matched = tokens.filter((tok) => ABBR.test(tok)).length;
+  // Mostly abbreviations (≥ 2/3), with at least two — tolerant of one stray note.
+  return matched >= 2 && matched * 3 >= tokens.length * 2;
 }
 
 function parseSbpContent(content: string, title: string): Section[] {
@@ -1054,50 +1073,131 @@ function parseSbpContent(content: string, title: string): Section[] {
   return sections;
 }
 
-// Parse the unzipped dataFile.txt of an .sbp into a Song (first song in songs[]).
-export function parseSbp(dataFileText: string): Song {
+// ── Unified .sbp / .sbpbackup parse ─────────────────────────────────────────
+// A SongBook Pro export carries 1..N songs, plus sets (its setlists) and
+// folders, all in one dataFile.txt. parseSbp returns the WHOLE picture so the
+// importer can recreate every song + setlist + folder, not just the first song.
+
+export type SbpParsedSong = {
+  // SongBook Pro's stable per-song Id, kept so sets/folders (which reference
+  // songs by SongId) can be remapped to the imported W+ song ids. null if absent.
+  sbpId: string | null;
+  song: Song;
+};
+export type SbpSetlistItem = {
+  sbpId: string | null; // the referenced song's SongBook Pro Id
+  order: number; // sequence within the set
+  keyOffset: number; // semitone transpose for this entry (SongBook Pro "keyOfset")
+  capo: number | null; // per-entry capo
+  itemType: number | null; // SongBook Pro ItemType (songs vs other items)
+};
+export type SbpSetlist = { name: string | null; items: SbpSetlistItem[] };
+export type SbpFolder = { name: string | null; sbpIds: string[] };
+export type SbpImport = {
+  songs: SbpParsedSong[];
+  setlists: SbpSetlist[];
+  folders: SbpFolder[];
+};
+
+// Slice the version line off and JSON.parse the dataFile.txt body.
+function parseSbpJson(dataFileText: string): Record<string, unknown> | null {
   const clean = dataFileText.replace(/^﻿/, "");
-  // Skip the leading version line by slicing from the first "{" to the last "}".
   const start = clean.indexOf("{");
   const end = clean.lastIndexOf("}");
-  let parsed: unknown = null;
-  if (start !== -1 && end > start) {
-    try { parsed = JSON.parse(clean.slice(start, end + 1)); } catch { parsed = null; }
+  if (start === -1 || end <= start) return null;
+  try {
+    const obj = JSON.parse(clean.slice(start, end + 1));
+    return obj && typeof obj === "object" ? (obj as Record<string, unknown>) : null;
+  } catch {
+    return null;
   }
-  const songs = parsed && typeof parsed === "object" ? (parsed as { songs?: unknown }).songs : null;
-  const first =
-    Array.isArray(songs) && songs.length && songs[0] && typeof songs[0] === "object"
-      ? (songs[0] as Record<string, unknown>)
-      : null;
-  // Unexpected shape → fall back to the generic parser so the user at least gets
-  // the lyrics rather than an error.
-  if (!first) return parseSongText(dataFileText);
+}
 
-  const title = typeof first.name === "string" && first.name.trim() ? first.name.trim() : "Imported Song";
-  const artist = typeof first.author === "string" ? first.author.trim() : "";
-  const capoNum = Number(first.Capo);
+// One SongBook Pro song object → a W+ Song (+ its sbp Id). Key is detected from
+// the chords (SongBook Pro's stored `key` int doesn't map to a standard pitch —
+// a song plainly in G can arrive as A#), like every other import.
+function sbpSongObjToSong(obj: Record<string, unknown>): SbpParsedSong {
+  const title = typeof obj.name === "string" && obj.name.trim() ? obj.name.trim() : "Imported Song";
+  const artist = typeof obj.author === "string" ? obj.author.trim() : "";
+  const capoNum = Number(obj.Capo);
   const capo = Number.isInteger(capoNum) && capoNum > 0 ? capoNum : null;
-  const content = typeof first.content === "string" ? first.content : "";
-
+  const content = typeof obj.content === "string" ? obj.content : "";
   const sections = parseSbpContent(content, title);
-  // SongBook Pro's stored `key` int does not map to a standard pitch (a song
-  // plainly in G can arrive as A#), so it is ignored entirely: the key comes
-  // from the chords via the shared detector, like every other import.
   const key = detectKeyFromSections(sections);
-
+  const sbpId = obj.Id != null ? String(obj.Id) : null;
   const now = Date.now();
   return {
-    id: songUid(),
-    title,
-    artist,
-    key,
-    capo,
-    bpm: null,
-    sections,
-    favorite: false,
-    createdAt: now,
-    updatedAt: now,
+    sbpId,
+    song: { id: songUid(), title, artist, key, capo, bpm: null, sections, favorite: false, createdAt: now, updatedAt: now },
   };
+}
+
+// Parse the unzipped dataFile.txt of an .sbp/.sbpbackup into ALL its songs,
+// setlists (sets), and folders. Unexpected shape → a single song via the generic
+// parser, so the user at least gets the lyrics rather than an error.
+export function parseSbp(dataFileText: string): SbpImport {
+  const parsed = parseSbpJson(dataFileText);
+  const rawSongs = parsed && Array.isArray(parsed.songs) ? parsed.songs : null;
+  if (!rawSongs || !rawSongs.length) {
+    return { songs: [{ sbpId: null, song: parseSongText(dataFileText) }], setlists: [], folders: [] };
+  }
+
+  const songs: SbpParsedSong[] = rawSongs
+    .filter((s): s is Record<string, unknown> => !!s && typeof s === "object")
+    .map(sbpSongObjToSong);
+
+  // sets[].contents[] → setlists, ordered by each item's Order, referencing
+  // songs by SongId (NOT array index).
+  const rawSets = parsed && Array.isArray(parsed.sets) ? parsed.sets : [];
+  const setlists: SbpSetlist[] = rawSets
+    .filter((s): s is Record<string, unknown> => !!s && typeof s === "object")
+    .map((set) => {
+      const contents = Array.isArray(set.contents) ? set.contents : [];
+      const items: SbpSetlistItem[] = contents
+        .filter((c): c is Record<string, unknown> => !!c && typeof c === "object")
+        .map((c) => ({
+          sbpId: c.SongId != null ? String(c.SongId) : null,
+          order: Number(c.Order) || 0,
+          keyOffset: Number(c.keyOfset) || 0,
+          capo: Number.isInteger(Number(c.Capo)) ? Number(c.Capo) : null,
+          itemType: c.ItemType != null ? Number(c.ItemType) : null,
+        }))
+        .sort((a, b) => a.order - b.order);
+      const name =
+        typeof set.name === "string" ? set.name : typeof set.Name === "string" ? set.Name : null;
+      return { name, items };
+    });
+
+  // folders[] → folders. Shape varies across SongBook Pro versions, so pull the
+  // name and any embedded song-id list defensively (songs / contents / SongIds).
+  const rawFolders = parsed && Array.isArray(parsed.folders) ? parsed.folders : [];
+  const folders: SbpFolder[] = rawFolders
+    .filter((f): f is Record<string, unknown> => !!f && typeof f === "object")
+    .map((f) => {
+      const name = typeof f.name === "string" ? f.name : typeof f.Name === "string" ? f.Name : null;
+      const refs =
+        (Array.isArray(f.songs) && f.songs) ||
+        (Array.isArray(f.contents) && f.contents) ||
+        (Array.isArray(f.SongIds) && f.SongIds) ||
+        [];
+      const sbpIds = refs
+        .map((r) =>
+          r != null && typeof r === "object"
+            ? ((r as Record<string, unknown>).SongId ?? (r as Record<string, unknown>).Id ?? null)
+            : r,
+        )
+        .filter((v) => v != null)
+        .map((v) => String(v));
+      return { name, sbpIds };
+    });
+
+  return { songs, setlists, folders };
+}
+
+// Back-compat: a single Song from an .sbp (first song) — for any caller that
+// only wants one song. The full importer uses parseSbp().
+export function parseSbpFirstSong(dataFileText: string): Song {
+  return parseSbp(dataFileText).songs[0]?.song ?? parseSongText(dataFileText);
 }
 
 export function makeNewSong(): Song {
