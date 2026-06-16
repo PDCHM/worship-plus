@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import * as Sentry from "@sentry/nextjs";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
@@ -2424,8 +2425,7 @@ function TopNav({
             </button>
           )}
           <button type="button" onClick={onHome} aria-label="Worship+ home" className="flex items-center shrink-0">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo-hori.png" alt="Worship+" className="h-9 sm:h-11 w-auto max-w-[200px] object-contain" />
+            <Image src="/WorshipplusLogo.png" alt="Worship+" width={89} height={36} className="h-9 w-auto object-contain" priority />
           </button>
         </div>
         <div className="flex items-center gap-2 shrink-0">
