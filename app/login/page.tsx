@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { isPaidPlan } from "@/lib/plans";
 
@@ -134,11 +135,13 @@ export default function LoginPage() {
             alt="Worship+"
             className="w-[72px] h-[72px] sm:w-20 sm:h-20 object-contain mb-4"
           />
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <Image
             src="/worship-plus-wordmark.png"
             alt="Worship+"
-            className="h-14 sm:h-[68px] w-auto object-contain mx-auto"
+            width={339}
+            height={117}
+            priority
+            className="w-full max-w-[215px] h-auto object-contain mx-auto"
           />
         </div>
 
