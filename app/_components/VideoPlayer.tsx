@@ -40,6 +40,14 @@ export default function VideoPlayer({ src, poster, label }: Props) {
     return () => io.disconnect();
   }, [inView]);
 
+  // Keep the element genuinely muted at the DOM level. React doesn't reliably
+  // emit the `muted` attribute (only sets the property post-mount), and iOS
+  // needs the video actually muted to play *inline* — otherwise it hijacks to
+  // fullscreen, and the fullscreen exit jumps the page. Sync on mount + toggle.
+  useEffect(() => {
+    if (inView && videoRef.current) videoRef.current.muted = muted;
+  }, [inView, muted]);
+
   const startPlay = () => {
     const v = videoRef.current;
     if (!v) return;
@@ -67,6 +75,9 @@ export default function VideoPlayer({ src, poster, label }: Props) {
         {/* phone notch */}
         <span aria-hidden className="absolute top-2.5 left-1/2 z-20 h-1.5 w-16 -translate-x-1/2 rounded-full bg-white/25" />
 
+        {/* scroll-mt-20 clears the landing page's sticky 64px header: if iOS
+            scrolls the video into view when playback starts, it lands below the
+            header instead of yanking the page up to tuck it under it. */}
         {inView ? (
           <video
             ref={videoRef}
@@ -77,7 +88,7 @@ export default function VideoPlayer({ src, poster, label }: Props) {
             muted={muted}
             controls={playing}
             aria-label={label}
-            className="absolute inset-0 h-full w-full object-cover"
+            className="absolute inset-0 h-full w-full object-cover scroll-mt-20"
             onPlay={() => setPlaying(true)}
             onEnded={() => setPlaying(false)}
           />
