@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { isPaidPlan } from "@/lib/plans";
 
@@ -129,12 +128,17 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center px-6 py-12 bg-gradient-to-b from-slate-50 via-white to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 text-slate-900 dark:text-slate-100">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
-          <Image
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/WorplusLogo-ICON.png"
+            alt="Worship+"
+            className="w-[72px] h-[72px] sm:w-20 sm:h-20 object-contain mb-4"
+          />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
             src="/logo-hori.png"
-            alt="Worship+ life"
-            width={240}
-            height={74}
-            priority
+            alt="Worship+"
+            className="w-full max-w-[180px] sm:max-w-[220px] h-auto object-contain mx-auto"
           />
         </div>
 
