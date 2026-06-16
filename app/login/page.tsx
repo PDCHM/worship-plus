@@ -59,9 +59,7 @@ export default function LoginPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 flex items-center justify-center text-white font-bold shadow-lg shadow-indigo-500/30">
-            W<span className="text-blue-200">+</span>
-          </div>
+          <Image src="/worship-plus-icon.png" alt="Worship+" width={512} height={512} className="w-11 h-11 object-contain" priority />
           <svg
             className="animate-spin h-4 w-4 text-slate-400"
             viewBox="0 0 24 24"
