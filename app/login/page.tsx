@@ -136,9 +136,9 @@ export default function LoginPage() {
           />
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/logo-hori.png"
+            src="/worship-plus-wordmark.png"
             alt="Worship+"
-            className="w-full max-w-[180px] sm:max-w-[220px] h-auto object-contain mx-auto"
+            className="h-14 sm:h-[68px] w-auto object-contain mx-auto"
           />
         </div>
 
