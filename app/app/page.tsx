@@ -2425,7 +2425,7 @@ function TopNav({
             </button>
           )}
           <button type="button" onClick={onHome} aria-label="Worship+ home" className="flex items-center shrink-0">
-            <Image src="/WorshipplusLogo.png" alt="Worship+" width={89} height={36} className="h-9 w-auto object-contain" priority />
+            <Image src="/WorshipplusLogo.png" alt="Worship+ life" width={116} height={36} className="h-9 w-auto object-contain" priority />
           </button>
         </div>
         <div className="flex items-center gap-2 shrink-0">
