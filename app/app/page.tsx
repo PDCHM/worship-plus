@@ -2358,7 +2358,7 @@ function LoadingScreen() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
       <div className="flex flex-col items-center gap-3">
-        <Image src="/worship-plus-icon.png" alt="Worship+" width={96} height={96} priority className="w-24 h-24 object-contain" />
+        <Image src="/worship-plus-icon.png" alt="Worship+" width={72} height={72} priority className="w-18 h-18 object-contain" />
         <svg className="animate-spin h-4 w-4 text-slate-400" viewBox="0 0 24 24" fill="none" aria-label="Loading">
           <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.25" />
           <path d="M4 12a8 8 0 0 1 8-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
