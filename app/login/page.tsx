@@ -130,7 +130,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
           <Image
-            src="/WorshipplusLogo.png"
+            src="/logo-hori.png"
             alt="Worship+ life"
             width={240}
             height={74}
