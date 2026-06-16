@@ -138,8 +138,8 @@ export default function LoginPage() {
           <Image
             src="/worship-plus-wordmark.png"
             alt="Worship+"
-            width={339}
-            height={117}
+            width={1404}
+            height={477}
             priority
             className="w-full max-w-[215px] h-auto object-contain mx-auto"
           />

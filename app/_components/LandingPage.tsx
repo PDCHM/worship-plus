@@ -76,7 +76,7 @@ export default function LandingPage() {
       {/* ── Nav ── */}
       <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-slate-100">
         <div className="max-w-6xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
-          <Image src="/worship-plus-lockup.png" alt="Worship+" width={320} height={105} className="h-9 sm:h-10 w-auto object-contain" priority />
+          <Image src="/worship-plus-lockup.png" alt="Worship+" width={326} height={110} className="h-9 sm:h-10 w-auto object-contain" priority />
           <div className="flex items-center gap-2 sm:gap-3">
             <Link href="/login" className="hidden sm:inline-flex h-9 px-4 items-center text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">
               Sign in
@@ -257,7 +257,7 @@ export default function LandingPage() {
 
       <footer className="border-t border-slate-100 py-10">
         <div className="max-w-6xl mx-auto px-5 sm:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <Image src="/worship-plus-lockup.png" alt="Worship+" width={320} height={105} className="h-9 sm:h-10 w-auto object-contain" />
+          <Image src="/worship-plus-lockup.png" alt="Worship+" width={326} height={110} className="h-9 sm:h-10 w-auto object-contain" />
           <div className="flex items-center gap-5 flex-wrap justify-center">
             <Link href="/privacy" className="text-sm text-slate-400 hover:text-slate-600 transition-colors">Privacy</Link>
             <Link href="/terms" className="text-sm text-slate-400 hover:text-slate-600 transition-colors">Terms</Link>
