@@ -656,7 +656,7 @@ function LibraryWelcome({
   return (
     <div className="max-w-xl w-full mx-auto px-2 py-12 sm:py-16 text-center">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/WorplusLogo-ICON.png" alt="Worship+" className="w-16 h-16 sm:w-20 sm:h-20 object-contain mx-auto mb-5" />
+      <img src="/worship-plus-icon.png" alt="Worship+" className="w-16 h-16 sm:w-20 sm:h-20 object-contain mx-auto mb-5" />
       <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
         Your songbook starts here
       </h2>
