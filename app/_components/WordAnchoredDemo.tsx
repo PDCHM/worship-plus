@@ -45,8 +45,13 @@ export default function WordAnchoredDemo() {
           <div className="text-[10px] font-medium tabular-nums text-slate-300" aria-hidden>{width}px</div>
         )}
       </div>
+      {/* min-h reserves space for the tallest wrap state (2 rows at the narrow
+          widths) so the lyric rewrapping never changes the card's height — that
+          height change was reflowing the whole page below on a 1.5s loop and
+          making the videos jitter. content-start keeps rows top-aligned in the
+          reserved space. */}
       <div
-        className="flex flex-wrap items-end gap-x-2 gap-y-1 transition-[width] duration-700 ease-in-out motion-reduce:transition-none"
+        className="flex flex-wrap content-start items-end gap-x-2 gap-y-1 min-h-[6.5rem] transition-[width] duration-700 ease-in-out motion-reduce:transition-none"
         style={{ width }}
       >
         <ChordWord chord="G" word="Amazing" />
