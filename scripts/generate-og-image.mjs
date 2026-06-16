@@ -1,5 +1,5 @@
 // Generates the 1200×630 Open Graph share image at public/og-image.png.
-// Reuses the existing horizontal wordmark (public/logo-hori.png), tinted white
+// Reuses the existing horizontal wordmark (public/worship-plus-wordmark.png), tinted white
 // so it reads on the brand indigo background, plus a tagline. Re-run with:
 //   node scripts/generate-og-image.mjs
 // This is a simple, legible placeholder — a designed version can replace it.
@@ -40,8 +40,8 @@ const background = `
 
 // White-tint the dark wordmark: keep its alpha, force RGB to white.
 const logoW = 600;
-const logoH = Math.round((155 / 500) * logoW); // preserve 500×155 aspect
-const { data, info } = await sharp(join(root, "public/logo-hori.png"))
+const logoH = Math.round((117 / 339) * logoW); // preserve 339×117 aspect
+const { data, info } = await sharp(join(root, "public/worship-plus-wordmark.png"))
   .resize(logoW, logoH)
   .ensureAlpha()
   .raw()

@@ -4,20 +4,6 @@ import VideoShowcase from "@/app/_components/VideoShowcase";
 import WordAnchoredDemo from "@/app/_components/WordAnchoredDemo";
 import SupportLink from "@/app/_components/SupportLink";
 
-/* ─── Brand mark ─────────────────────────────────────────────────────────── */
-
-function Wordmark({ className = "" }: { className?: string }) {
-  return (
-    <Image
-      src="/worship-plus-lockup.png"
-      alt="Worship+"
-      width={320}
-      height={105}
-      className={"h-9 w-auto object-contain " + className}
-    />
-  );
-}
-
 /* ─── Feature card ───────────────────────────────────────────────────────── */
 
 function Feature({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
