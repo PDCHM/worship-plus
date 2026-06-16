@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import VideoShowcase from "@/app/_components/VideoShowcase";
 import WordAnchoredDemo from "@/app/_components/WordAnchoredDemo";
 import SupportLink from "@/app/_components/SupportLink";
@@ -7,14 +8,13 @@ import SupportLink from "@/app/_components/SupportLink";
 
 function Wordmark({ className = "" }: { className?: string }) {
   return (
-    <span className={"inline-flex items-center gap-2 " + className}>
-      <span className="inline-flex w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500 items-center justify-center text-white font-bold shadow-lg shadow-indigo-500/30">
-        W<span className="text-indigo-200">+</span>
-      </span>
-      <span className="text-xl font-bold tracking-tight text-slate-900">
-        Worship<span className="text-indigo-500">+</span>
-      </span>
-    </span>
+    <Image
+      src="/worship-plus-lockup.png"
+      alt="Worship+"
+      width={320}
+      height={105}
+      className={"h-9 w-auto object-contain " + className}
+    />
   );
 }
 
@@ -90,8 +90,7 @@ export default function LandingPage() {
       {/* ── Nav ── */}
       <header className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-slate-100">
         <div className="max-w-6xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/WorplusLogo-ICON_LOGO_hori.png" alt="Worship+" className="h-9 sm:h-10 w-auto object-contain" />
+          <Image src="/worship-plus-lockup.png" alt="Worship+" width={320} height={105} className="h-9 sm:h-10 w-auto object-contain" priority />
           <div className="flex items-center gap-2 sm:gap-3">
             <Link href="/login" className="hidden sm:inline-flex h-9 px-4 items-center text-sm font-medium text-slate-600 hover:text-slate-900 transition-colors">
               Sign in
@@ -272,8 +271,7 @@ export default function LandingPage() {
 
       <footer className="border-t border-slate-100 py-10">
         <div className="max-w-6xl mx-auto px-5 sm:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/WorplusLogo-ICON_LOGO_hori.png" alt="Worship+" className="h-9 sm:h-10 w-auto object-contain" />
+          <Image src="/worship-plus-lockup.png" alt="Worship+" width={320} height={105} className="h-9 sm:h-10 w-auto object-contain" />
           <div className="flex items-center gap-5 flex-wrap justify-center">
             <Link href="/privacy" className="text-sm text-slate-400 hover:text-slate-600 transition-colors">Privacy</Link>
             <Link href="/terms" className="text-sm text-slate-400 hover:text-slate-600 transition-colors">Terms</Link>
