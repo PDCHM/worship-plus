@@ -242,3 +242,31 @@ dropped; if none resolve, the highlight is dropped.
 
 **Eraser** also removes highlight items: hit-test the pointer against the highlight's current
 row rects and remove the whole item.
+
+---
+
+## 12. Premium ink — Apple Pencil (slice 7)
+
+Upgrades freehand **pen** strokes only; the snap-highlighter and eraser are unchanged.
+
+**Palm rejection** (pure PointerEvent logic, no dependency): a sticky `penSeen` flag flips true
+on the first `pointerdown` with `pointerType === "pen"`. While set, `pointerType === "touch"` is
+ignored for drawing, so a resting palm/finger doesn't draw. Touch still reaches the browser for
+scroll/pan and two-finger pinch-zoom (the existing `touch-action: pinch-zoom` is unchanged). If
+no pen is ever seen, finger draws as before — finger-only users are unaffected.
+
+**Pressure + smoothing** via `perfect-freehand` (~3KB, MIT, zero-dependency — chosen because
+hand-rolling variable-width stroke geometry is error-prone and this gives smoothing in the same
+pass):
+- Each freehand point is `[nx, ny, pressure]` (`PointerEvent.pressure`, default `0.5` for
+  non-pressure input). Backward compatible — old `[nx, ny]` points read back as pressure `0.5`.
+- Pen strokes render as a **filled** `getStroke(...)` outline `<path>` (not a stroked line), with
+  `{ size, thinning: 0.6, smoothing: 0.5, streamline: 0.5, simulatePressure: false }`. We supply
+  our own pressure, so an Apple Pencil gives natural pressure-variable width while mouse/finger
+  (constant 0.5) gives a clean, smoothed, near-uniform line.
+- On reproject, normalized points map to pixels as before, then `getStroke` runs at the current
+  scale; `size` is scaled by the anchor-box scale factor (`currentBoxH / baseH`, where `baseH` is
+  the anchor-box height stored at capture) so ink stays proportional under fit/columns/device.
+
+Legacy freehand-highlighter strokes (`tool: "highlighter"`) still render as a stroked multiply
+polyline. **Shape cleanup** (snapping circles/lines to ideal forms) is deferred — possible follow-up.

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { getStroke } from "perfect-freehand";
 import { createClient } from "@/lib/supabase/client";
 
 // Markup overlay. Two item kinds share the song_annotations `strokes` jsonb:
@@ -12,7 +13,9 @@ import { createClient } from "@/lib/supabase/client";
 // Persistence: slice 4 (load on open, debounced save). See docs/markup-spec.md.
 
 type Tool = "pen" | "highlight" | "eraser";
-type Pt = [number, number];
+// Freehand points carry an optional pressure (slice 7). Old [nx,ny] points read
+// back with pressure undefined → defaulted to 0.5 (a clean near-uniform line).
+type Pt = [number, number, number?];
 type Anchor = { type: "word" | "chord" | "line" | "section" | "body"; id?: string };
 type Box = { x: number; y: number; w: number; h: number };
 type BBox = { minX: number; minY: number; maxX: number; maxY: number };
@@ -25,7 +28,8 @@ type StrokeItem = {
   width: number;
   opacity: number;
   anchor: Anchor;
-  points: Pt[]; // normalized [0,1] relative to anchor box
+  points: Pt[]; // normalized [0,1] relative to anchor box, with optional pressure
+  baseH?: number; // anchor-box height at capture → scale pen size proportionally (slice 7)
 };
 type HighlightItem = {
   id: string;
@@ -38,8 +42,10 @@ type Item = StrokeItem | HighlightItem;
 
 const isHighlight = (it: Item): it is HighlightItem => it.kind === "highlight";
 
-// Projected (current-layout) shapes for rendering + eraser hit-testing.
-type ProjStroke = { id: string; d: string; pts: Pt[]; tool: "pen" | "highlighter"; color: string; width: number; opacity: number };
+// Projected (current-layout) shapes for rendering + eraser hit-testing. `fill`
+// marks pen strokes (filled perfect-freehand outline) vs legacy highlighter
+// strokes (stroked polyline). `pts` is the centerline, used for eraser tests.
+type ProjStroke = { id: string; d: string; pts: Pt[]; fill: boolean; tool: "pen" | "highlighter"; color: string; width: number; opacity: number };
 type ProjHighlight = { id: string; color: string; opacity: number; rects: Box[] };
 
 const COLORS = ["#111827", "#EF4444", "#F97316", "#EAB308", "#22C55E", "#3B82F6", "#7C3AED", "#EC4899"];
@@ -54,6 +60,11 @@ const LOCALIZE_W = 1.8;
 const LOCALIZE_W_FLOOR = 70;
 const LOCALIZE_H_LINES = 3;
 const LOCALIZE_PAD = 12;
+// Pen ink (slice 7, perfect-freehand). size ≈ visible nib width; we pass our
+// own pressure (default 0.5) so mouse/finger get a clean near-uniform line and
+// an Apple Pencil gets natural pressure-variable width.
+const PEN_SIZE_MULT = 2;
+const PEN_OPTS = { thinning: 0.6, smoothing: 0.5, streamline: 0.5, simulatePressure: false };
 
 function uid(): string {
   return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
@@ -76,6 +87,27 @@ function toPath(points: Pt[]): string {
   const last = points[points.length - 1];
   d += ` L ${last[0]} ${last[1]}`;
   return d;
+}
+
+// perfect-freehand outline (array of [x,y]) → filled SVG path (canonical helper).
+function outlineToPath(stroke: number[][]): string {
+  if (!stroke.length) return "";
+  const d = stroke.reduce(
+    (acc: (string | number)[], [x0, y0], i, arr) => {
+      const [x1, y1] = arr[(i + 1) % arr.length];
+      acc.push(x0, y0, (x0 + x1) / 2, (y0 + y1) / 2);
+      return acc;
+    },
+    ["M", ...stroke[0], "Q"],
+  );
+  d.push("Z");
+  return d.join(" ");
+}
+
+// Pen stroke → filled outline path at the given nib size.
+function penPath(pixelPts: Pt[], size: number, last: boolean): string {
+  const input = pixelPts.map((p) => [p[0], p[1], p[2] ?? 0.5]);
+  return outlineToPath(getStroke(input, { size, ...PEN_OPTS, last }));
 }
 
 function dist2(ax: number, ay: number, bx: number, by: number): number {
@@ -156,6 +188,9 @@ export default function MarkupOverlay({
   const drawingId = useRef<number | null>(null);
   const aborted = useRef(false);
   const hlDraftRef = useRef<{ lineId: string; startIndex: number; endIndex: number } | null>(null);
+  // Palm rejection: once a pen (Apple Pencil) is ever seen, touch no longer
+  // draws — a resting palm/finger is ignored. Finger-only users are unaffected.
+  const penSeen = useRef(false);
 
   // ── Anchor / geometry helpers (boxes relative to overlay origin) ───────────
   const boxOf = (el: Element, origin: DOMRect): Box => {
@@ -228,8 +263,16 @@ export default function MarkupOverlay({
       } else {
         const box = anchorBox(it.anchor, origin);
         if (!box || box.w === 0 || box.h === 0) continue;
-        const pts: Pt[] = it.points.map(([nx, ny]) => [box.x + nx * box.w, box.y + ny * box.h]);
-        nextPaths.push({ id: it.id, d: toPath(pts), pts, tool: it.tool, color: it.color, width: it.width, opacity: it.opacity });
+        const pts: Pt[] = it.points.map(([nx, ny, p]) => [box.x + nx * box.w, box.y + ny * box.h, p]);
+        if (it.tool === "pen") {
+          // Scale nib size by how much the anchor box grew/shrank since capture,
+          // so the ink stays proportional under fit/columns/device changes.
+          const scale = it.baseH ? box.h / it.baseH : 1;
+          const d = penPath(pts, Math.max(0.5, it.width * PEN_SIZE_MULT * scale), true);
+          nextPaths.push({ id: it.id, d, pts, fill: true, tool: "pen", color: it.color, width: it.width, opacity: it.opacity });
+        } else {
+          nextPaths.push({ id: it.id, d: toPath(pts), pts, fill: false, tool: it.tool, color: it.color, width: it.width, opacity: it.opacity });
+        }
       }
     }
     setPaths(nextPaths);
@@ -431,8 +474,14 @@ export default function MarkupOverlay({
     setHlPreview(computeHighlightRects(nd.lineId, nd.startIndex, nd.endIndex, origin));
   };
 
+  // Palm rejection: ignore touch input for drawing once a pen has been seen.
+  // (Touch still reaches the browser for pinch-zoom via touch-action.)
+  const ignoreInput = (e: React.PointerEvent) => penSeen.current && e.pointerType === "touch";
+
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     if (!enabled) return;
+    if (e.pointerType === "pen") penSeen.current = true;
+    if (ignoreInput(e)) return;
     pointers.current.add(e.pointerId);
     if (pointers.current.size > 1) {
       aborted.current = true;
@@ -454,18 +503,20 @@ export default function MarkupOverlay({
       svgRef.current?.setPointerCapture?.(e.pointerId);
       return;
     }
-    setCurrent([p]);
+    setCurrent([[p[0], p[1], e.pressure || 0.5]]);
     svgRef.current?.setPointerCapture?.(e.pointerId);
   };
 
   const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
     if (!enabled || aborted.current) return;
+    if (ignoreInput(e)) return;
     if (drawingId.current !== e.pointerId || pointers.current.size > 1) return;
     const origin = svgRef.current!.getBoundingClientRect();
     const p = localPoint(e);
     if (tool === "eraser") { eraseAt(p); return; }
     if (tool === "highlight") { updateHighlightDraft(p, origin); return; }
-    setCurrent((c) => (c ? [...c, p] : [p]));
+    const pp: Pt = [p[0], p[1], e.pressure || 0.5];
+    setCurrent((c) => (c ? [...c, pp] : [pp]));
   };
 
   const finish = (e: React.PointerEvent<SVGSVGElement>) => {
@@ -490,10 +541,10 @@ export default function MarkupOverlay({
             const anchor = resolveAnchor(current, origin);
             const box = anchorBox(anchor, origin);
             if (box && box.w > 0 && box.h > 0) {
-              const norm: Pt[] = current.map(([x, y]) => [(x - box.x) / box.w, (y - box.y) / box.h]);
+              const norm: Pt[] = current.map(([x, y, p]) => [(x - box.x) / box.w, (y - box.y) / box.h, p ?? 0.5]);
               setStrokes((prev) => [
                 ...prev,
-                { id: uid(), kind: "stroke", tool: "pen", color, width, opacity: 1, anchor, points: norm },
+                { id: uid(), kind: "stroke", tool: "pen", color, width, opacity: 1, anchor, points: norm, baseH: box.h },
               ]);
               scheduleSave();
             }
@@ -559,29 +610,27 @@ export default function MarkupOverlay({
             style={{ mixBlendMode: "multiply" }}
           />
         ))}
-        {paths.map((pr) => (
-          <path
-            key={pr.id}
-            d={pr.d}
-            fill="none"
-            stroke={pr.color}
-            strokeWidth={pr.width}
-            strokeOpacity={pr.opacity}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            style={pr.tool === "highlighter" ? { mixBlendMode: "multiply" } : undefined}
-          />
-        ))}
-        {current && tool === "pen" && (
-          <path
-            d={toPath(current)}
-            fill="none"
-            stroke={color}
-            strokeWidth={width}
-            strokeOpacity={1}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
+        {paths.map((pr) =>
+          pr.fill ? (
+            // Pen — filled perfect-freehand outline (pressure-variable width).
+            <path key={pr.id} d={pr.d} fill={pr.color} fillOpacity={pr.opacity} />
+          ) : (
+            // Legacy freehand highlighter — stroked polyline, multiply blend.
+            <path
+              key={pr.id}
+              d={pr.d}
+              fill="none"
+              stroke={pr.color}
+              strokeWidth={pr.width}
+              strokeOpacity={pr.opacity}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ mixBlendMode: "multiply" }}
+            />
+          ),
+        )}
+        {current && tool === "pen" && current.length > 0 && (
+          <path d={penPath(current, width * PEN_SIZE_MULT, false)} fill={color} fillOpacity={1} />
         )}
       </svg>
 
