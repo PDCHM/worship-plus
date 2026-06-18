@@ -406,6 +406,7 @@ export default function Home() {
   const [navCollapsed, setNavCollapsed] = useState(false);
   // The active editor's read-only (performance/view) state, reported up by SongEditor.
   const [editorReadOnly, setEditorReadOnly] = useState(false);
+  const [editorMarkup, setEditorMarkup] = useState(false);
   // Auto-collapse the nav ONLY on entering performance mode, and restore the
   // prior state on leaving — so we never fight a user who re-opens the nav while
   // playing. wasInPerfRef tracks the edge; navBeforePerfRef remembers the state.
@@ -427,7 +428,7 @@ export default function Home() {
   // Clear the reported read-only flag when no song is open, so a stale value
   // can't momentarily trip performance mode when the next editor view mounts.
   useEffect(() => {
-    if (view.kind !== "editor") setEditorReadOnly(false);
+    if (view.kind !== "editor") { setEditorReadOnly(false); setEditorMarkup(false); }
   }, [view.kind]);
   const [libraryView, setLibraryView] = useState<LibraryView>("grid");
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set());
@@ -2109,6 +2110,7 @@ export default function Home() {
                 ? { kind: "folders", subview: view.setlistId }
                 : { kind: "library", filter: "all" })}
               onReadOnlyChange={setEditorReadOnly}
+              onMarkupModeChange={setEditorMarkup}
               bubbleAuthors={bubbleAuthors}
               sectionStyles={sectionStyles}
               onSectionStylesChange={setSectionStyles}
@@ -2177,7 +2179,7 @@ export default function Home() {
         </main>
       </div>
 
-      <BottomTabs view={view} onNavigate={navigateTo} onAdd={() => setAddSheetOpen(true)} />
+      {!editorMarkup && <BottomTabs view={view} onNavigate={navigateTo} onAdd={() => setAddSheetOpen(true)} />}
 
       {activeSong && <PrintLayout song={activeSong} settings={settings} sectionStyles={sectionStyles} />}
       {printSongs && <SetlistPrintLayout songs={printSongs} settings={settings} sectionStyles={sectionStyles} />}

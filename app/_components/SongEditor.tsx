@@ -132,6 +132,8 @@ type Props = {
   // can auto-collapse the left nav for full-width playing. Fires on mount and
   // whenever the edit/read toggle flips.
   onReadOnlyChange?: (readOnly: boolean) => void;
+  // Markup mode is a focused drawing mode; the shell hides the bottom nav while on.
+  onMarkupModeChange?: (markupOn: boolean) => void;
 };
 
 // Small chord-name input used both when adding a chord to a word and when
@@ -776,6 +778,7 @@ export default function SongEditor({
   bubbleAuthors,
   onBack,
   onReadOnlyChange,
+  onMarkupModeChange,
 }: Props) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -1029,6 +1032,11 @@ export default function SongEditor({
   useEffect(() => {
     if (!readOnly) setMarkupMode(false);
   }, [readOnly]);
+
+  // Report markup mode up so the app shell can hide the bottom nav while drawing.
+  useEffect(() => {
+    onMarkupModeChange?.(markupMode);
+  }, [markupMode, onMarkupModeChange]);
 
   // Report read-only (performance/view) state up to the app shell so it can
   // auto-collapse the left nav for full-width playing.
@@ -2354,6 +2362,18 @@ export default function SongEditor({
               <span>Generate Chords</span>
             </button>
           )}
+          <button type="button" onClick={toggleEditMode}
+            title={editMode ? "Switch to read-only performance mode" : "Switch to edit mode"}
+            aria-pressed={editMode}
+            aria-label={editMode ? "Switch to read-only performance mode" : "Switch to edit mode"}
+            className={
+              "h-9 w-9 rounded-lg flex items-center justify-center transition-colors " +
+              (editMode
+                ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-600/30"
+                : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300")
+            }>
+            <SquarePenIcon />
+          </button>
           {readOnly && (
             <button type="button" onClick={() => setMarkupMode((m) => !m)}
               title={markupMode ? "Exit markup mode" : "Markup — draw on the chart"}
@@ -2368,18 +2388,6 @@ export default function SongEditor({
               <HighlighterIcon />
             </button>
           )}
-          <button type="button" onClick={toggleEditMode}
-            title={editMode ? "Switch to read-only performance mode" : "Switch to edit mode"}
-            aria-pressed={editMode}
-            aria-label={editMode ? "Switch to read-only performance mode" : "Switch to edit mode"}
-            className={
-              "h-9 w-9 rounded-lg flex items-center justify-center transition-colors " +
-              (editMode
-                ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-600/30"
-                : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300")
-            }>
-            <SquarePenIcon />
-          </button>
           <button type="button" onClick={() => setMoreOpen(true)} title="More" aria-label="More actions"
             className="h-9 w-9 rounded-lg flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>

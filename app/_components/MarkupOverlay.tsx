@@ -63,6 +63,10 @@ export default function MarkupOverlay({ enabled, onDone }: { enabled: boolean; o
   const [tool, setTool] = useState<Tool>("pen");
   const [color, setColor] = useState("#7C3AED");
   const [width, setWidth] = useState(WIDTHS[0]);
+  // Color/width collapse into single buttons with popovers so the toolbar fits
+  // any phone width (the 8 swatches + 3 widths used to overflow off the edge).
+  const [colorOpen, setColorOpen] = useState(false);
+  const [widthOpen, setWidthOpen] = useState(false);
 
   // Multi-touch: a single pointer draws; a second pointer aborts the stroke so
   // the browser's pinch-zoom (allowed via touch-action) shows through cleanly.
@@ -78,6 +82,8 @@ export default function MarkupOverlay({ enabled, onDone }: { enabled: boolean; o
       drawingId.current = null;
       aborted.current = false;
       pointers.current.clear();
+      setColorOpen(false);
+      setWidthOpen(false);
     }
   }, [enabled]);
 
@@ -198,66 +204,107 @@ export default function MarkupOverlay({ enabled, onDone }: { enabled: boolean; o
       </svg>
 
       {enabled && (
-        <div
-          className="fixed left-1/2 -translate-x-1/2 bottom-6 z-50 flex items-center gap-1 px-2.5 py-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl print:hidden"
-          style={{ touchAction: "manipulation" }}
-        >
-          <TBtn active={tool === "pen"} onClick={() => setTool("pen")} label="Pen">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" /></svg>
-          </TBtn>
-          <TBtn active={tool === "highlighter"} onClick={() => setTool("highlighter")} label="Highlighter">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l-6 6v3h3l6-6" /><path d="M14 6l4 4" /><path d="M21 3l-7 7-4-4 7-7z" /></svg>
-          </TBtn>
-          <TBtn active={tool === "eraser"} onClick={() => setTool("eraser")} label="Eraser">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 20H7L3 16a2 2 0 0 1 0-3l9-9a2 2 0 0 1 3 0l5 5a2 2 0 0 1 0 3l-8 8" /></svg>
-          </TBtn>
-
-          <span className="mx-1 h-6 w-px bg-slate-200 dark:bg-slate-700" />
-
-          {COLORS.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => { setColor(c); if (tool === "eraser") setTool("pen"); }}
-              aria-label={`Colour ${c}`}
-              aria-pressed={color === c}
-              className={"w-6 h-6 rounded-full transition-transform hover:scale-110 " + (color === c ? "ring-2 ring-offset-1 ring-indigo-500 dark:ring-offset-slate-900" : "")}
-              style={{ background: c, boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.1)" }}
+        <>
+          {(colorOpen || widthOpen) && (
+            <div
+              className="fixed inset-0 z-40"
+              aria-hidden
+              onPointerDown={() => { setColorOpen(false); setWidthOpen(false); }}
             />
-          ))}
-
-          <span className="mx-1 h-6 w-px bg-slate-200 dark:bg-slate-700" />
-
-          {WIDTHS.map((w) => (
-            <button
-              key={w}
-              type="button"
-              onClick={() => setWidth(w)}
-              aria-label={`Stroke width ${w}`}
-              aria-pressed={width === w}
-              className={"w-7 h-7 rounded-lg flex items-center justify-center transition-colors " + (width === w ? "bg-indigo-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60")}
-            >
-              <span className="block rounded-full bg-current" style={{ width: w + 1, height: w + 1 }} />
-            </button>
-          ))}
-
-          <span className="mx-1 h-6 w-px bg-slate-200 dark:bg-slate-700" />
-
-          <TBtn onClick={undo} label="Undo" disabled={strokes.length === 0}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" /></svg>
-          </TBtn>
-          <TBtn onClick={clear} label="Clear all" disabled={strokes.length === 0}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /></svg>
-          </TBtn>
-
-          <button
-            type="button"
-            onClick={onDone}
-            className="ml-1 h-8 px-3.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold transition-colors"
+          )}
+          <div
+            className="fixed left-1/2 -translate-x-1/2 bottom-6 z-50 flex items-center gap-0.5 px-1.5 py-1.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl print:hidden max-w-[calc(100vw-16px)] overflow-x-auto"
+            style={{ touchAction: "manipulation" }}
           >
-            Done
-          </button>
-        </div>
+            <TBtn active={tool === "pen"} onClick={() => setTool("pen")} label="Pen">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" /></svg>
+            </TBtn>
+            <TBtn active={tool === "highlighter"} onClick={() => setTool("highlighter")} label="Highlighter">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l-6 6v3h3l6-6" /><path d="M14 6l4 4" /><path d="M21 3l-7 7-4-4 7-7z" /></svg>
+            </TBtn>
+            <TBtn active={tool === "eraser"} onClick={() => setTool("eraser")} label="Eraser">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 20H7L3 16a2 2 0 0 1 0-3l9-9a2 2 0 0 1 3 0l5 5a2 2 0 0 1 0 3l-8 8" /></svg>
+            </TBtn>
+
+            <span className="mx-0.5 h-6 w-px bg-slate-200 dark:bg-slate-700 shrink-0" />
+
+            {/* Colour — current swatch; opens a popover (rendered outside this
+                scrolling toolbar so overflow-x-auto can't clip it). */}
+            <button
+              type="button"
+              onClick={() => { setColorOpen((o) => !o); setWidthOpen(false); }}
+              aria-label="Colour"
+              aria-expanded={colorOpen}
+              className="w-10 h-10 shrink-0 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              <span className="w-5 h-5 rounded-full" style={{ background: color, boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.2)" }} />
+            </button>
+
+            {/* Stroke width — current width; opens a popover. */}
+            <button
+              type="button"
+              onClick={() => { setWidthOpen((o) => !o); setColorOpen(false); }}
+              aria-label="Stroke width"
+              aria-expanded={widthOpen}
+              className="w-10 h-10 shrink-0 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              <span className="block rounded-full bg-current" style={{ width: width + 2, height: width + 2 }} />
+            </button>
+
+            <span className="mx-0.5 h-6 w-px bg-slate-200 dark:bg-slate-700 shrink-0" />
+
+            <TBtn onClick={undo} label="Undo" disabled={strokes.length === 0}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" /></svg>
+            </TBtn>
+            <TBtn onClick={clear} label="Clear all" disabled={strokes.length === 0}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /></svg>
+            </TBtn>
+
+            <button
+              type="button"
+              onClick={onDone}
+              aria-label="Done"
+              className="ml-0.5 h-10 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold flex items-center gap-1.5 transition-colors shrink-0"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+              <span className="hidden sm:inline">Done</span>
+            </button>
+          </div>
+
+          {/* Popovers live outside the (overflow-x-auto) toolbar so they aren't
+              clipped; centered just above it. */}
+          {colorOpen && (
+            <div className="fixed left-1/2 -translate-x-1/2 bottom-[5.25rem] z-50 grid grid-cols-4 gap-1.5 p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl max-w-[calc(100vw-16px)]">
+              {COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => { setColor(c); if (tool === "eraser") setTool("pen"); setColorOpen(false); }}
+                  aria-label={`Colour ${c}`}
+                  aria-pressed={color === c}
+                  className={"w-10 h-10 rounded-full transition-transform hover:scale-110 " + (color === c ? "ring-2 ring-offset-2 ring-indigo-500 dark:ring-offset-slate-900" : "")}
+                  style={{ background: c, boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.12)" }}
+                />
+              ))}
+            </div>
+          )}
+          {widthOpen && (
+            <div className="fixed left-1/2 -translate-x-1/2 bottom-[5.25rem] z-50 flex items-center gap-1 p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl">
+              {WIDTHS.map((w) => (
+                <button
+                  key={w}
+                  type="button"
+                  onClick={() => { setWidth(w); setWidthOpen(false); }}
+                  aria-label={`Stroke width ${w}`}
+                  aria-pressed={width === w}
+                  className={"w-10 h-10 rounded-lg flex items-center justify-center transition-colors " + (width === w ? "bg-indigo-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60")}
+                >
+                  <span className="block rounded-full bg-current" style={{ width: w + 2, height: w + 2 }} />
+                </button>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </>
   );
@@ -277,7 +324,7 @@ function TBtn({
       aria-pressed={active}
       title={label}
       className={
-        "w-8 h-8 rounded-lg flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed " +
+        "w-10 h-10 shrink-0 rounded-lg flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed " +
         (active
           ? "bg-indigo-600 text-white"
           : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800")
