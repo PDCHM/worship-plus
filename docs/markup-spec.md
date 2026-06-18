@@ -167,3 +167,41 @@ Whole set is loaded on song open and saved together (debounced ~800ms after last
 2. Pen/highlighter only at launch, or typed notes too in 2a?
 3. Personal-only at launch (recommended), or do you want shared band markup sooner?
 4. Default color palette + how many colors (Songbook Pro offers 20; 6–8 is plenty to start)?
+
+---
+
+## 10. Word/chord-level anchoring (slice 5)
+
+A finer anchor tier below `line`: a *localized* mark (highlight, circle, underline on a
+single word or chord) pins to that exact word/chord and tracks it pixel-precise across
+re-wrap, transpose, and device. Additive — `line`/`section`/`body` strokes are unchanged.
+This is the precision edge over PDF-based markup apps.
+
+**Stable element IDs (renderer):**
+- Chords already expose `data-chord-id` (the chord's UUID).
+- Each lyric word span exposes **`data-word-id = "{lineId}:{wordIndex}"`** (`wordIndex` =
+  the word's position in the line's lyric). Stable across transpose (lyrics don't change)
+  and across devices (same word order). `data-word-text` is retained.
+
+**Anchor resolution on commit — most specific localized element wins:**
+1. Compute the stroke's bbox + centroid.
+2. **Word/chord tier:** if the bbox overlaps **at most one word** (doesn't span several),
+   pick the smallest element whose box contains the centroid (padded ~8px to catch
+   underlines/circles) and whose width satisfies `bboxWidth ≤ ~1.8× elementWidth` →
+   `{type:"word"|"chord", id}`. Smallest-box-wins makes a chord beat the word beneath it.
+3. Otherwise fall back to slice-3: single line → `line`; multiple lines → `section`;
+   multiple sections → `body`.
+   (`LOCALIZE_W ≈ 1.8`, `LOCALIZE_PAD ≈ 8` — both tunable.)
+
+**Normalization:** word/chord points are normalized to the element box **without clamping**
+to `[0,1]` — a mark drawn *around* a word legitimately has points like `nx ∈ -0.2..1.2`, so
+it stays proportionally around the word as the box moves/re-wraps.
+
+**Reproject:** resolve by type → selector: `word → [data-word-id]`, `chord → [data-chord-id]`,
+`line → [data-line-id]`, `section → [data-section-id]`, `body → [data-song-body]`. Missing
+element → drop (unchanged). Same reproject triggers as slice 3.
+
+**Backward compatible:** existing saved `line`/`section`/`body` strokes reproject unchanged.
+
+**Stroke `anchor.type`** now ⊇ `"word" | "chord"`; `anchor.id` for a word is `"{lineId}:{wordIndex}"`,
+for a chord the chord UUID.

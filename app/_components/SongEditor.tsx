@@ -2849,6 +2849,7 @@ export default function SongEditor({
                                     ))}
                                     <span
                                       data-word-text="1"
+                                      data-word-id={`${line.id}:${u.dragIndex}`}
                                       onClick={
                                         readOnly || !showChords || !u.tappable
                                           ? undefined

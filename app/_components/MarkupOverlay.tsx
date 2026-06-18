@@ -11,7 +11,7 @@ import { createClient } from "@/lib/supabase/client";
 
 type Tool = "pen" | "highlighter" | "eraser";
 type Pt = [number, number];
-type Anchor = { type: "line" | "section" | "body"; id?: string };
+type Anchor = { type: "word" | "chord" | "line" | "section" | "body"; id?: string };
 type Box = { x: number; y: number; w: number; h: number };
 type BBox = { minX: number; minY: number; maxX: number; maxY: number };
 
@@ -43,6 +43,11 @@ const WIDTHS = [3, 5, 8];
 const HL_OPACITY = 0.35;
 const HL_WIDTH_MULT = 4;
 const ERASE_PAD = 8;
+// Word/chord localization thresholds (tunable): a mark anchors to a single word
+// or chord when its bbox is no wider than ~1.8× the element and its centroid
+// falls within the element's box (padded slightly to catch underlines/circles).
+const LOCALIZE_W = 1.8;
+const LOCALIZE_PAD = 8;
 
 function uid(): string {
   return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
@@ -94,6 +99,22 @@ function rectIntersect(box: Box, b: BBox): boolean {
   return !(b.minX > box.x + box.w || b.maxX < box.x || b.minY > box.y + box.h || b.maxY < box.y);
 }
 
+function pointInBox(x: number, y: number, box: Box, pad = 0): boolean {
+  return x >= box.x - pad && x <= box.x + box.w + pad && y >= box.y - pad && y <= box.y + box.h + pad;
+}
+
+// CSS selector for an anchor element by type (null for body — it has no id and
+// resolves to the overlay's own container). Shared by reproject + save-prune.
+function anchorSelector(a: Anchor): string | null {
+  switch (a.type) {
+    case "word": return `[data-word-id="${a.id}"]`;
+    case "chord": return `[data-chord-id="${a.id}"]`;
+    case "line": return `[data-line-id="${a.id}"]`;
+    case "section": return `[data-section-id="${a.id}"]`;
+    default: return null;
+  }
+}
+
 // reprojectKey changes whenever a layout-affecting input changes (transpose,
 // capo, font/zoom, scroll/fit, column count) so the overlay re-measures and
 // remaps every stroke.
@@ -139,8 +160,8 @@ export default function MarkupOverlay({
   //    capture and reproject share one coordinate space) ──────────────────────
   const anchorElement = (a: Anchor): Element | null => {
     if (a.type === "body") return svgRef.current?.parentElement ?? null;
-    const sel = a.type === "line" ? `[data-line-id="${a.id}"]` : `[data-section-id="${a.id}"]`;
-    return a.id ? document.querySelector(sel) : null;
+    const sel = anchorSelector(a);
+    return sel && a.id ? document.querySelector(sel) : null;
   };
 
   const boxOf = (el: Element, origin: DOMRect): Box => {
@@ -182,13 +203,11 @@ export default function MarkupOverlay({
     // doesn't accumulate — but only while still mounted, so a transient unmount
     // can't wrongly discard valid strokes we just couldn't measure.
     if (svgRef.current?.isConnected) {
-      toSave = toSave.filter(
-        (s) =>
-          s.anchor.type === "body" ||
-          document.querySelector(
-            s.anchor.type === "line" ? `[data-line-id="${s.anchor.id}"]` : `[data-section-id="${s.anchor.id}"]`,
-          ) != null,
-      );
+      toSave = toSave.filter((s) => {
+        if (s.anchor.type === "body") return true;
+        const sel = anchorSelector(s.anchor);
+        return sel ? document.querySelector(sel) != null : true;
+      });
     }
     const { error } = await createClient()
       .from("song_annotations")
@@ -268,6 +287,33 @@ export default function MarkupOverlay({
   // ── Anchor resolution on commit (line → section → body) ────────────────────
   const resolveAnchor = (pts: Pt[], origin: DOMRect): Anchor => {
     const bbox = bboxOf(pts);
+    const cx = (bbox.minX + bbox.maxX) / 2;
+    const cy = (bbox.minY + bbox.maxY) / 2;
+    const bboxW = bbox.maxX - bbox.minX;
+
+    // ── Word/chord tier — a mark localized to one word or chord pins to it.
+    //    Most specific (smallest) element under the centroid wins. ────────────
+    const collect = (attr: string, type: "word" | "chord") =>
+      Array.from(document.querySelectorAll<HTMLElement>(`[${attr}]`)).map((el) => ({
+        type,
+        id: el.getAttribute(attr)!,
+        box: boxOf(el, origin),
+      }));
+    const words = collect("data-word-id", "word");
+    const chords = collect("data-chord-id", "chord");
+    const wordsHit = words.filter((w) => rectIntersect(w.box, bbox));
+    if (wordsHit.length <= 1) {
+      // Not spanning multiple words → eligible for word/chord anchoring.
+      const local = [...chords, ...words].filter(
+        (t) => pointInBox(cx, cy, t.box, LOCALIZE_PAD) && bboxW <= t.box.w * LOCALIZE_W,
+      );
+      if (local.length) {
+        local.sort((a, b) => a.box.w * a.box.h - b.box.w * b.box.h); // smallest = most specific
+        return { type: local[0].type, id: local[0].id };
+      }
+    }
+
+    // ── Slice-3 tier — line / section / body. ──
     const lines = Array.from(document.querySelectorAll<HTMLElement>("[data-line-id]")).map((el) => ({
       id: el.getAttribute("data-line-id")!,
       sectionId: el.closest("[data-section-id]")?.getAttribute("data-section-id") ?? null,
