@@ -1277,7 +1277,7 @@ alter table song_annotations enable row level security;
 
 create policy "own annotations - select" on song_annotations
   for select using (auth.uid() = user_id);
-create policy "own annotations - upsert" on song_annotations
+create policy "own annotations - insert" on song_annotations
   for insert with check (auth.uid() = user_id);
 create policy "own annotations - update" on song_annotations
   for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
