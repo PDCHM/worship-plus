@@ -2478,6 +2478,8 @@ export default function SongEditor({
             <MarkupOverlay
               enabled={markupMode}
               onDone={() => setMarkupMode(false)}
+              songId={song.id}
+              userId={currentUserId}
               reprojectKey={`${zoomOffset}|${Math.round(fitFont)}|${playLayout}|${viewMode}|${fitColumns}|${effColumnView}|${song.key}|${song.capo ?? "-"}`}
             />
           )}

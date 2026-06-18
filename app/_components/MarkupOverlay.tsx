@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 // Slice 3 — anchor + reproject engine. Strokes are stored relative to a content
 // anchor (line → section → body fallback) as normalized [0,1] coordinates, so
@@ -100,10 +101,14 @@ export default function MarkupOverlay({
   enabled,
   onDone,
   reprojectKey,
+  songId,
+  userId,
 }: {
   enabled: boolean;
   onDone: () => void;
   reprojectKey: string;
+  songId: string;
+  userId: string | null;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
@@ -120,6 +125,11 @@ export default function MarkupOverlay({
   strokesRef.current = strokes;
   const pathsRef = useRef(paths);
   pathsRef.current = paths;
+  const songIdRef = useRef(songId);
+  songIdRef.current = songId;
+  const userIdRef = useRef(userId);
+  userIdRef.current = userId;
+  const saveTimer = useRef<number | null>(null);
 
   const pointers = useRef<Set<number>>(new Set());
   const drawingId = useRef<number | null>(null);
@@ -158,6 +168,68 @@ export default function MarkupOverlay({
     }
     setPaths(next);
   }, []);
+
+  // ── Persistence (slice 4): one song_annotations row per user per song ───────
+  // saveNow reads everything from refs so it stays referentially stable (empty
+  // deps), which lets the unmount-flush effect run only on real unmount.
+  const saveNow = useCallback(async () => {
+    const sid = songIdRef.current;
+    const uidNow = userIdRef.current;
+    if (!sid || !uidNow) return;
+    if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
+    let toSave = strokesRef.current;
+    // Prune strokes whose line/section anchor is gone (deleted line) so dead ink
+    // doesn't accumulate — but only while still mounted, so a transient unmount
+    // can't wrongly discard valid strokes we just couldn't measure.
+    if (svgRef.current?.isConnected) {
+      toSave = toSave.filter(
+        (s) =>
+          s.anchor.type === "body" ||
+          document.querySelector(
+            s.anchor.type === "line" ? `[data-line-id="${s.anchor.id}"]` : `[data-section-id="${s.anchor.id}"]`,
+          ) != null,
+      );
+    }
+    const { error } = await createClient()
+      .from("song_annotations")
+      .upsert(
+        { song_id: sid, user_id: uidNow, strokes: toSave, updated_at: new Date().toISOString() },
+        { onConflict: "song_id,user_id" },
+      );
+    if (error) console.warn("[markup] save failed:", error.message);
+  }, []);
+
+  // Debounced save — fires ~800ms after the last stroke commit/erase/clear.
+  const scheduleSave = useCallback(() => {
+    if (!songIdRef.current || !userIdRef.current) return;
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => { void saveNow(); }, 800);
+  }, [saveNow]);
+
+  // Load the user's saved strokes when the song/user changes. Hydration goes
+  // through setStrokes only (never scheduleSave), so loading can't echo a save.
+  // Slice 3's reproject runs after this sets state.
+  useEffect(() => {
+    if (!songId || !userId) { setStrokes([]); return; }
+    let cancelled = false;
+    createClient()
+      .from("song_annotations")
+      .select("strokes")
+      .eq("song_id", songId)
+      .eq("user_id", userId)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) { console.warn("[markup] load failed:", error.message); return; }
+        setStrokes(Array.isArray(data?.strokes) ? (data!.strokes as Stroke[]) : []);
+      });
+    return () => { cancelled = true; };
+  }, [songId, userId]);
+
+  // Flush a pending save if the overlay unmounts (fast exit from the play view).
+  useEffect(() => {
+    return () => { if (saveTimer.current) void saveNow(); };
+  }, [saveNow]);
 
   // Reproject after layout-affecting changes + whenever the stroke set changes.
   // useLayoutEffect measures post-reflow, pre-paint (no flash).
@@ -232,7 +304,10 @@ export default function MarkupOverlay({
       const t2 = thr * thr;
       if (pr.pts.some(([x, y]) => dist2(x, y, p[0], p[1]) <= t2)) remove.add(pr.id);
     }
-    if (remove.size) setStrokes((prev) => prev.filter((s) => !remove.has(s.id)));
+    if (remove.size) {
+      setStrokes((prev) => prev.filter((s) => !remove.has(s.id)));
+      scheduleSave();
+    }
   };
 
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
@@ -290,6 +365,7 @@ export default function MarkupOverlay({
                 points: norm,
               },
             ]);
+            scheduleSave();
           }
         }
       }
@@ -299,8 +375,9 @@ export default function MarkupOverlay({
     if (pointers.current.size === 0) aborted.current = false;
   };
 
-  const undo = () => setStrokes((p) => p.slice(0, -1));
-  const clear = () => setStrokes([]);
+  const undo = () => { setStrokes((p) => p.slice(0, -1)); scheduleSave(); };
+  const clear = () => { setStrokes([]); scheduleSave(); };
+  const handleDone = () => { void saveNow(); onDone(); };
 
   return (
     <>
@@ -404,7 +481,7 @@ export default function MarkupOverlay({
 
             <button
               type="button"
-              onClick={onDone}
+              onClick={handleDone}
               aria-label="Done"
               className="ml-0.5 h-10 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold flex items-center gap-1.5 transition-colors shrink-0"
             >
