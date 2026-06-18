@@ -15,6 +15,10 @@ type Props = {
   readOnly?: boolean;
   playLayout?: "scroll" | "fit";
   onPlayLayoutChange?: (layout: "scroll" | "fit") => void;
+  // Anchored chart markup (play view only). When the toggle is wired, a Markup
+  // row appears; ON reveals the drawing toolbar + overlay capture.
+  markupMode?: boolean;
+  onToggleMarkup?: () => void;
   onTranspose: (key: string) => void;
   onCapoChange: (capo: number | null) => void;
   onSettingsChange: (s: Settings) => void;
@@ -28,6 +32,7 @@ export default function QuickActionsPanel({
   song, settings, zoomOffset, effectiveFontSize,
   autoScrolling, scrollSpeed,
   readOnly = false, playLayout = "scroll", onPlayLayoutChange,
+  markupMode = false, onToggleMarkup,
   onTranspose, onCapoChange, onSettingsChange, onZoomChange,
   onScrollSpeedChange, onToggleAutoScroll, onClose,
 }: Props) {
@@ -130,6 +135,16 @@ export default function QuickActionsPanel({
                 Fit
               </button>
             </div>
+          </QARow>
+        )}
+        {readOnly && onToggleMarkup && (
+          <QARow label="Markup">
+            <button type="button" onClick={onToggleMarkup} aria-pressed={markupMode}
+              aria-label={markupMode ? "Exit markup mode" : "Enter markup mode"}
+              className={"h-7 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors " + (markupMode ? "bg-indigo-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-indigo-50 hover:text-indigo-600")}>
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+              {markupMode ? "On" : "Off"}
+            </button>
           </QARow>
         )}
         {fsSupported && (

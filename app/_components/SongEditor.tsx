@@ -5,6 +5,7 @@ import Coachmark from "@/app/_components/Coachmark";
 import ConfirmDialog from "@/app/_components/ConfirmDialog";
 import PrintPreviewModal from "@/app/_components/PrintPreviewModal";
 import QuickActionsPanel from "@/app/_components/QuickActionsPanel";
+import MarkupOverlay from "@/app/_components/MarkupOverlay";
 import { LineBubbles, useSongBubbles } from "@/app/_components/SongBubbles";
 import {
   CHORD_FONT_CLAMP,
@@ -793,6 +794,7 @@ export default function SongEditor({
   const [keyPickerOpen, setKeyPickerOpen] = useState(false);
   const [capoPickerOpen, setCapoPickerOpen] = useState(false);
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
+  const [markupMode, setMarkupMode] = useState(false);
   const [autoScrolling, setAutoScrolling] = useState(false);
   const [scrollSpeed, setScrollSpeed] = useState(3);
   const [zoomOffset, setZoomOffset] = useState(0);
@@ -1002,6 +1004,11 @@ export default function SongEditor({
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [keyPickerOpen, capoPickerOpen]);
+
+  // Markup is a play-view-only mode; leaving read-only exits it.
+  useEffect(() => {
+    if (!readOnly) setMarkupMode(false);
+  }, [readOnly]);
 
   // Report read-only (performance/view) state up to the app shell so it can
   // auto-collapse the left nav for full-width playing.
@@ -2432,9 +2439,10 @@ export default function SongEditor({
           ref={sectionsRef}
           data-bubble-skip
           data-song-body
-          className={effColumnView ? "" : "space-y-8 min-w-fit"}
+          className={"relative " + (effColumnView ? "" : "space-y-8 min-w-fit")}
           style={sectionsContainerStyle}
         >
+          {readOnly && <MarkupOverlay enabled={markupMode} onDone={() => setMarkupMode(false)} />}
           {song.sections.map((section, sIdx) => {
             const colorKey = getSectionColorKey(section.label);
             const c = colors[colorKey];
@@ -3167,6 +3175,8 @@ export default function SongEditor({
           readOnly={readOnly}
           playLayout={playLayout}
           onPlayLayoutChange={changePlayLayout}
+          markupMode={markupMode}
+          onToggleMarkup={() => setMarkupMode((m) => !m)}
           onTranspose={handleTranspose}
           onCapoChange={handleCapoChange}
           onSettingsChange={onSettingsChange}
