@@ -66,6 +66,26 @@ function markTipSeen(id: TipId) {
     /* localStorage unavailable — tip just won't persist as seen */
   }
 }
+// Edit / Markup toggle icons — exact path data lifted from Lucide's `square-pen`
+// and `highlighter` glyphs (ISC-licensed), inlined to match this codebase's
+// inline-SVG convention rather than pull in the lucide-react dependency.
+function SquarePenIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" />
+    </svg>
+  );
+}
+function HighlighterIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="m9 11-6 6v3h9l3-3" />
+      <path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4" />
+    </svg>
+  );
+}
+
 // Coachmark anchors (stable refs so the bubble's position effect doesn't re-run
 // every render). The chord tip prefers a real word, falling back to the line.
 const CHORD_TIP_ANCHORS = ["[data-word-text]", "[data-fit-line]"];
@@ -2334,6 +2354,20 @@ export default function SongEditor({
               <span>Generate Chords</span>
             </button>
           )}
+          {readOnly && (
+            <button type="button" onClick={() => setMarkupMode((m) => !m)}
+              title={markupMode ? "Exit markup mode" : "Markup — draw on the chart"}
+              aria-pressed={markupMode}
+              aria-label={markupMode ? "Exit markup mode" : "Enter markup mode"}
+              className={
+                "h-9 w-9 rounded-lg flex items-center justify-center transition-colors " +
+                (markupMode
+                  ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-600/30"
+                  : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300")
+              }>
+              <HighlighterIcon />
+            </button>
+          )}
           <button type="button" onClick={toggleEditMode}
             title={editMode ? "Switch to read-only performance mode" : "Switch to edit mode"}
             aria-pressed={editMode}
@@ -2344,17 +2378,7 @@ export default function SongEditor({
                 ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-600/30"
                 : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300")
             }>
-            {editMode ? (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 20h9"/>
-                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z"/>
-              </svg>
-            ) : (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 20h9"/>
-                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z"/>
-              </svg>
-            )}
+            <SquarePenIcon />
           </button>
           <button type="button" onClick={() => setMoreOpen(true)} title="More" aria-label="More actions"
             className="h-9 w-9 rounded-lg flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors">
@@ -3175,8 +3199,6 @@ export default function SongEditor({
           readOnly={readOnly}
           playLayout={playLayout}
           onPlayLayoutChange={changePlayLayout}
-          markupMode={markupMode}
-          onToggleMarkup={() => setMarkupMode((m) => !m)}
           onTranspose={handleTranspose}
           onCapoChange={handleCapoChange}
           onSettingsChange={onSettingsChange}
