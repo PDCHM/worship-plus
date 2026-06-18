@@ -3,52 +3,53 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-// Slice 3 — anchor + reproject engine. Strokes are stored relative to a content
-// anchor (line → section → body fallback) as normalized [0,1] coordinates, so
-// they survive transpose, capo, font/zoom, layout (scroll/fit/columns), resize,
-// orientation, and device. Still no persistence (slice 4) — strokes live in
-// component state and reset on leaving the view. See docs/markup-spec.md §2.
+// Markup overlay. Two item kinds share the song_annotations `strokes` jsonb:
+//   • freehand strokes (pen; legacy "highlighter" freehand still renders) —
+//     anchored to a word/chord/line/section/body, normalized points (slices 3–5)
+//   • word-range highlights (slice 6) — snap to whole words, reflow per visual
+//     row like a text selection, anchored to {lineId, startIndex, endIndex}
+// Items without a `kind` are treated as freehand strokes (backward compatible).
+// Persistence: slice 4 (load on open, debounced save). See docs/markup-spec.md.
 
-type Tool = "pen" | "highlighter" | "eraser";
+type Tool = "pen" | "highlight" | "eraser";
 type Pt = [number, number];
 type Anchor = { type: "word" | "chord" | "line" | "section" | "body"; id?: string };
 type Box = { x: number; y: number; w: number; h: number };
 type BBox = { minX: number; minY: number; maxX: number; maxY: number };
 
-// Stored stroke — points are NORMALIZED [0,1] relative to the anchor element's box.
-type Stroke = {
+type StrokeItem = {
   id: string;
-  tool: "pen" | "highlighter";
+  kind?: "stroke";
+  tool: "pen" | "highlighter"; // "highlighter" = legacy freehand items only
   color: string;
   width: number;
   opacity: number;
   anchor: Anchor;
-  points: Pt[];
+  points: Pt[]; // normalized [0,1] relative to anchor box
 };
-
-// Projected stroke — pixel-space path + points for the current layout (rebuilt on
-// every reproject). Drives both rendering and eraser hit-testing.
-type Projected = {
+type HighlightItem = {
   id: string;
-  d: string;
-  pts: Pt[];
-  tool: "pen" | "highlighter";
+  kind: "highlight";
   color: string;
-  width: number;
   opacity: number;
+  anchor: { type: "wordRange"; lineId: string; startIndex: number; endIndex: number };
 };
+type Item = StrokeItem | HighlightItem;
+
+const isHighlight = (it: Item): it is HighlightItem => it.kind === "highlight";
+
+// Projected (current-layout) shapes for rendering + eraser hit-testing.
+type ProjStroke = { id: string; d: string; pts: Pt[]; tool: "pen" | "highlighter"; color: string; width: number; opacity: number };
+type ProjHighlight = { id: string; color: string; opacity: number; rects: Box[] };
 
 const COLORS = ["#111827", "#EF4444", "#F97316", "#EAB308", "#22C55E", "#3B82F6", "#7C3AED", "#EC4899"];
 const WIDTHS = [3, 5, 8];
 const HL_OPACITY = 0.35;
-const HL_WIDTH_MULT = 4;
+const HL_PAD = 2; // px padding around a highlight row-run
 const ERASE_PAD = 8;
-// Word/chord localization thresholds (tunable). A mark anchors to a single word
-// or chord when it's a small, localized gesture whose centroid is over the
-// element. The width gate is the MAX of a relative (1.8× element) and an
-// ABSOLUTE floor (~70px) — chords are only ~15–25px wide, so a relative-only
-// gate is unwinnable for them (any circle is several × their width). A height
-// cap (~3 line-heights) keeps genuine multi-line gestures out of this tier.
+// Word/chord localization thresholds (tunable). Width gate = max(1.8× element,
+// ~70px absolute floor) so a small circle binds even around a tiny chord; height
+// gate ≤ ~3 line-heights keeps multi-line gestures out of the word/chord tier.
 const LOCALIZE_W = 1.8;
 const LOCALIZE_W_FLOOR = 70;
 const LOCALIZE_H_LINES = 3;
@@ -102,8 +103,7 @@ function pointInBox(x: number, y: number, box: Box, pad = 0): boolean {
   return x >= box.x - pad && x <= box.x + box.w + pad && y >= box.y - pad && y <= box.y + box.h + pad;
 }
 
-// CSS selector for an anchor element by type (null for body — it has no id and
-// resolves to the overlay's own container). Shared by reproject + save-prune.
+// CSS selector for a freehand-stroke anchor element (null for body / wordRange).
 function anchorSelector(a: Anchor): string | null {
   switch (a.type) {
     case "word": return `[data-word-id="${a.id}"]`;
@@ -114,9 +114,6 @@ function anchorSelector(a: Anchor): string | null {
   }
 }
 
-// reprojectKey changes whenever a layout-affecting input changes (transpose,
-// capo, font/zoom, scroll/fit, column count) so the overlay re-measures and
-// remaps every stroke.
 export default function MarkupOverlay({
   enabled,
   onDone,
@@ -131,20 +128,23 @@ export default function MarkupOverlay({
   userId: string | null;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
-  const [strokes, setStrokes] = useState<Stroke[]>([]);
-  const [paths, setPaths] = useState<Projected[]>([]);
-  const [current, setCurrent] = useState<Pt[] | null>(null);
+  const [strokes, setStrokes] = useState<Item[]>([]); // the song_annotations.strokes array (mixed kinds)
+  const [paths, setPaths] = useState<ProjStroke[]>([]);
+  const [highlights, setHighlights] = useState<ProjHighlight[]>([]);
+  const [current, setCurrent] = useState<Pt[] | null>(null); // freehand pen in progress
+  const [hlPreview, setHlPreview] = useState<Box[]>([]); // snap-highlight preview during drag
   const [tool, setTool] = useState<Tool>("pen");
   const [color, setColor] = useState("#7C3AED");
   const [width, setWidth] = useState(WIDTHS[0]);
   const [colorOpen, setColorOpen] = useState(false);
   const [widthOpen, setWidthOpen] = useState(false);
 
-  // Latest values for use inside event listeners / reproject (which are stable).
   const strokesRef = useRef(strokes);
   strokesRef.current = strokes;
   const pathsRef = useRef(paths);
   pathsRef.current = paths;
+  const highlightsRef = useRef(highlights);
+  highlightsRef.current = highlights;
   const songIdRef = useRef(songId);
   songIdRef.current = songId;
   const userIdRef = useRef(userId);
@@ -155,18 +155,18 @@ export default function MarkupOverlay({
   const pointers = useRef<Set<number>>(new Set());
   const drawingId = useRef<number | null>(null);
   const aborted = useRef(false);
+  const hlDraftRef = useRef<{ lineId: string; startIndex: number; endIndex: number } | null>(null);
 
-  // ── Anchor measurement (all boxes relative to the overlay's own origin so
-  //    capture and reproject share one coordinate space) ──────────────────────
+  // ── Anchor / geometry helpers (boxes relative to overlay origin) ───────────
+  const boxOf = (el: Element, origin: DOMRect): Box => {
+    const r = el.getBoundingClientRect();
+    return { x: r.left - origin.left, y: r.top - origin.top, w: r.width, h: r.height };
+  };
+
   const anchorElement = (a: Anchor): Element | null => {
     if (a.type === "body") return svgRef.current?.parentElement ?? null;
     const sel = anchorSelector(a);
     return sel && a.id ? document.querySelector(sel) : null;
-  };
-
-  const boxOf = (el: Element, origin: DOMRect): Box => {
-    const r = el.getBoundingClientRect();
-    return { x: r.left - origin.left, y: r.top - origin.top, w: r.width, h: r.height };
   };
 
   const anchorBox = (a: Anchor, origin: DOMRect): Box | null => {
@@ -174,25 +174,68 @@ export default function MarkupOverlay({
     return el ? boxOf(el, origin) : null;
   };
 
-  // ── Reproject: rebuild every stroke's pixel path from its normalized points
-  //    and its anchor's current box. Drops strokes whose anchor is gone. ───────
+  // Word under an overlay-space point (geometric — the overlay sits above the
+  // chart, so elementFromPoint would just return the SVG).
+  const wordAt = (p: Pt, origin: DOMRect): { lineId: string; index: number } | null => {
+    for (const el of Array.from(document.querySelectorAll<HTMLElement>("[data-word-id]"))) {
+      if (pointInBox(p[0], p[1], boxOf(el, origin))) {
+        const id = el.getAttribute("data-word-id")!;
+        const c = id.lastIndexOf(":"); // lineId is a UUID (no colon); index after the last ':'
+        return { lineId: id.slice(0, c), index: Number(id.slice(c + 1)) };
+      }
+    }
+    return null;
+  };
+
+  // Highlight rects: one rounded union-rect per visual row of the word range.
+  const computeHighlightRects = (lineId: string, startIndex: number, endIndex: number, origin: DOMRect): Box[] => {
+    const lo = Math.min(startIndex, endIndex);
+    const hi = Math.max(startIndex, endIndex);
+    const boxes: Box[] = [];
+    for (let i = lo; i <= hi; i++) {
+      const el = document.querySelector(`[data-word-id="${lineId}:${i}"]`);
+      if (el) boxes.push(boxOf(el, origin));
+    }
+    if (!boxes.length) return [];
+    boxes.sort((a, b) => a.y - b.y || a.x - b.x);
+    // Group by visual row (same top within ~half a word height → handles wrap).
+    const rows: Box[][] = [];
+    for (const b of boxes) {
+      const last = rows[rows.length - 1];
+      if (last && Math.abs(last[0].y - b.y) <= Math.max(b.h, last[0].h) * 0.5) last.push(b);
+      else rows.push([b]);
+    }
+    return rows.map((row) => {
+      const minX = Math.min(...row.map((r) => r.x));
+      const minY = Math.min(...row.map((r) => r.y));
+      const maxX = Math.max(...row.map((r) => r.x + r.w));
+      const maxY = Math.max(...row.map((r) => r.y + r.h));
+      return { x: minX - HL_PAD, y: minY - HL_PAD, w: maxX - minX + 2 * HL_PAD, h: maxY - minY + 2 * HL_PAD };
+    });
+  };
+
+  // ── Reproject: rebuild pixel geometry for strokes + highlights. ────────────
   const reproject = useCallback(() => {
     const svg = svgRef.current;
     if (!svg) return;
     const origin = svg.getBoundingClientRect();
-    const next: Projected[] = [];
-    for (const s of strokesRef.current) {
-      const box = anchorBox(s.anchor, origin);
-      if (!box || box.w === 0 || box.h === 0) continue; // anchor missing/unmeasurable → skip
-      const pts: Pt[] = s.points.map(([nx, ny]) => [box.x + nx * box.w, box.y + ny * box.h]);
-      next.push({ id: s.id, d: toPath(pts), pts, tool: s.tool, color: s.color, width: s.width, opacity: s.opacity });
+    const nextPaths: ProjStroke[] = [];
+    const nextHl: ProjHighlight[] = [];
+    for (const it of strokesRef.current) {
+      if (isHighlight(it)) {
+        const rects = computeHighlightRects(it.anchor.lineId, it.anchor.startIndex, it.anchor.endIndex, origin);
+        if (rects.length) nextHl.push({ id: it.id, color: it.color, opacity: it.opacity, rects });
+      } else {
+        const box = anchorBox(it.anchor, origin);
+        if (!box || box.w === 0 || box.h === 0) continue;
+        const pts: Pt[] = it.points.map(([nx, ny]) => [box.x + nx * box.w, box.y + ny * box.h]);
+        nextPaths.push({ id: it.id, d: toPath(pts), pts, tool: it.tool, color: it.color, width: it.width, opacity: it.opacity });
+      }
     }
-    setPaths(next);
+    setPaths(nextPaths);
+    setHighlights(nextHl);
   }, []);
 
-  // Orientation/viewport changes can fire before layout reflows, so a direct
-  // re-measure would read stale boxes. Defer to after the next frame (two rAFs)
-  // so we measure in the settled, post-reflow coordinate space.
   const deferReproject = useCallback(() => {
     if (reprojectRaf.current) cancelAnimationFrame(reprojectRaf.current);
     reprojectRaf.current = requestAnimationFrame(() => {
@@ -203,22 +246,27 @@ export default function MarkupOverlay({
     });
   }, [reproject]);
 
-  // ── Persistence (slice 4): one song_annotations row per user per song ───────
-  // saveNow reads everything from refs so it stays referentially stable (empty
-  // deps), which lets the unmount-flush effect run only on real unmount.
+  // ── Persistence (slice 4) ──────────────────────────────────────────────────
   const saveNow = useCallback(async () => {
     const sid = songIdRef.current;
     const uidNow = userIdRef.current;
     if (!sid || !uidNow) return;
     if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
     let toSave = strokesRef.current;
-    // Prune strokes whose line/section anchor is gone (deleted line) so dead ink
-    // doesn't accumulate — but only while still mounted, so a transient unmount
-    // can't wrongly discard valid strokes we just couldn't measure.
     if (svgRef.current?.isConnected) {
-      toSave = toSave.filter((s) => {
-        if (s.anchor.type === "body") return true;
-        const sel = anchorSelector(s.anchor);
+      // Prune items whose anchor is gone (deleted line/word) — only while still
+      // mounted, so a transient unmount can't discard valid items.
+      toSave = toSave.filter((it) => {
+        if (isHighlight(it)) {
+          const lo = Math.min(it.anchor.startIndex, it.anchor.endIndex);
+          const hi = Math.max(it.anchor.startIndex, it.anchor.endIndex);
+          for (let i = lo; i <= hi; i++) {
+            if (document.querySelector(`[data-word-id="${it.anchor.lineId}:${i}"]`)) return true;
+          }
+          return false;
+        }
+        if (it.anchor.type === "body") return true;
+        const sel = anchorSelector(it.anchor);
         return sel ? document.querySelector(sel) != null : true;
       });
     }
@@ -231,16 +279,12 @@ export default function MarkupOverlay({
     if (error) console.warn("[markup] save failed:", error.message);
   }, []);
 
-  // Debounced save — fires ~800ms after the last stroke commit/erase/clear.
   const scheduleSave = useCallback(() => {
     if (!songIdRef.current || !userIdRef.current) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(() => { void saveNow(); }, 800);
   }, [saveNow]);
 
-  // Load the user's saved strokes when the song/user changes. Hydration goes
-  // through setStrokes only (never scheduleSave), so loading can't echo a save.
-  // Slice 3's reproject runs after this sets state.
   useEffect(() => {
     if (!songId || !userId) { setStrokes([]); return; }
     let cancelled = false;
@@ -253,28 +297,22 @@ export default function MarkupOverlay({
       .then(({ data, error }) => {
         if (cancelled) return;
         if (error) { console.warn("[markup] load failed:", error.message); return; }
-        setStrokes(Array.isArray(data?.strokes) ? (data!.strokes as Stroke[]) : []);
+        setStrokes(Array.isArray(data?.strokes) ? (data!.strokes as Item[]) : []);
       });
     return () => { cancelled = true; };
   }, [songId, userId]);
 
-  // Flush a pending save if the overlay unmounts (fast exit from the play view).
   useEffect(() => {
     return () => { if (saveTimer.current) void saveNow(); };
   }, [saveNow]);
 
-  // Reproject after layout-affecting changes + whenever the stroke set changes.
-  // useLayoutEffect measures post-reflow, pre-paint (no flash).
+  // ── Reproject triggers (slices 3/5) ────────────────────────────────────────
   useLayoutEffect(() => {
     reproject();
   }, [reprojectKey, strokes, reproject]);
 
-  // Reproject on song-body resize + viewport changes (covers async reflow, fit
-  // re-sizing, device rotation).
   useEffect(() => {
     const body = svgRef.current?.parentElement ?? null;
-    // ResizeObserver fires post-reflow, so it can reproject directly; window
-    // resize/orientation are deferred a frame so layout has settled first.
     const ro = typeof ResizeObserver !== "undefined" && body ? new ResizeObserver(() => reproject()) : null;
     if (ro && body) ro.observe(body);
     const onWin = () => deferReproject();
@@ -288,10 +326,11 @@ export default function MarkupOverlay({
     };
   }, [reproject, deferReproject]);
 
-  // Leaving markup mode mid-stroke shouldn't strand an in-progress path.
   useEffect(() => {
     if (!enabled) {
       setCurrent(null);
+      setHlPreview([]);
+      hlDraftRef.current = null;
       drawingId.current = null;
       aborted.current = false;
       pointers.current.clear();
@@ -300,7 +339,7 @@ export default function MarkupOverlay({
     }
   }, [enabled]);
 
-  // ── Anchor resolution on commit (line → section → body) ────────────────────
+  // ── Freehand-stroke anchor resolution (pen) — slice 5. ─────────────────────
   const resolveAnchor = (pts: Pt[], origin: DOMRect): Anchor => {
     const bbox = bboxOf(pts);
     const cx = (bbox.minX + bbox.maxX) / 2;
@@ -319,17 +358,11 @@ export default function MarkupOverlay({
       sectionId: el.closest("[data-section-id]")?.getAttribute("data-section-id") ?? null,
       box: boxOf(el, origin),
     }));
-    // Representative line height for the absolute localization gates (median is
-    // robust to a stray tall/short line).
     const lineHs = lines.map((l) => l.box.h).filter((h) => h > 0).sort((a, b) => a - b);
     const lineH = lineHs.length ? lineHs[Math.floor(lineHs.length / 2)] : 40;
     const bboxH = bbox.maxY - bbox.minY;
 
-    // ── Word/chord tier — a small, localized gesture binds to the word or chord
-    //    under its centroid. Width gate = max(1.8× element, ~70px absolute) so a
-    //    circle around a tiny chord qualifies; height gate ≤ ~3 line-heights so a
-    //    circle/underline can spill into the chord row without being mistaken for
-    //    a multi-line gesture. Smallest box wins → a chord beats the word beneath. ─
+    // Word/chord tier — small localized gesture, absolute-or-relative width gate.
     const localized =
       bboxH <= lineH * LOCALIZE_H_LINES
         ? [...collect("data-chord-id", "chord"), ...collect("data-word-id", "word")]
@@ -338,15 +371,11 @@ export default function MarkupOverlay({
                 pointInBox(cx, cy, t.box, LOCALIZE_PAD) &&
                 bboxW <= Math.max(t.box.w * LOCALIZE_W, LOCALIZE_W_FLOOR),
             )
-            .sort((a, b) => a.box.w * a.box.h - b.box.w * b.box.h) // smallest = most specific
+            .sort((a, b) => a.box.w * a.box.h - b.box.w * b.box.h)
         : [];
     if (localized.length) return { type: localized[0].type, id: localized[0].id };
 
-    // ── Line / section / body tier — by how many lines the stroke genuinely
-    //    COVERS (a line counts only when its vertical CENTER lies within the
-    //    stroke's vertical span), so a tall narrow loop stays a line rather than
-    //    escalating to a section. Section boxes change width on a column-count
-    //    change, so we only anchor to one for a true multi-line gesture. ────────
+    // Line / section / body tier — by lines genuinely covered (center in span).
     const covered = lines.filter((l) => {
       const c = l.box.y + l.box.h / 2;
       return c >= bbox.minY && c <= bbox.maxY;
@@ -356,9 +385,6 @@ export default function MarkupOverlay({
       const secs = Array.from(new Set(covered.map((l) => l.sectionId).filter(Boolean))) as string[];
       return secs.length === 1 ? { type: "section", id: secs[0] } : { type: "body" };
     }
-    // No line center inside the vertical span (small mark above a line's center,
-    // or in a gap) → nearest line by centroid if the stroke touches it, else
-    // section/body by overlap.
     let nearest: (typeof lines)[number] | null = null;
     let bestDist = Infinity;
     for (const l of lines) {
@@ -382,29 +408,50 @@ export default function MarkupOverlay({
     const remove = new Set<string>();
     for (const pr of pathsRef.current) {
       const thr = pr.width / 2 + ERASE_PAD;
-      const t2 = thr * thr;
-      if (pr.pts.some(([x, y]) => dist2(x, y, p[0], p[1]) <= t2)) remove.add(pr.id);
+      if (pr.pts.some(([x, y]) => dist2(x, y, p[0], p[1]) <= thr * thr)) remove.add(pr.id);
+    }
+    for (const h of highlightsRef.current) {
+      if (h.rects.some((r) => pointInBox(p[0], p[1], r))) remove.add(h.id);
     }
     if (remove.size) {
-      setStrokes((prev) => prev.filter((s) => !remove.has(s.id)));
+      setStrokes((prev) => prev.filter((it) => !remove.has(it.id)));
       scheduleSave();
     }
+  };
+
+  const updateHighlightDraft = (p: Pt, origin: DOMRect) => {
+    const w = wordAt(p, origin);
+    if (!w) return;
+    const d = hlDraftRef.current;
+    let nd: { lineId: string; startIndex: number; endIndex: number };
+    if (!d) nd = { lineId: w.lineId, startIndex: w.index, endIndex: w.index };
+    else if (w.lineId !== d.lineId) nd = d; // v1: clamp to the start line
+    else nd = { ...d, endIndex: w.index };
+    hlDraftRef.current = nd;
+    setHlPreview(computeHighlightRects(nd.lineId, nd.startIndex, nd.endIndex, origin));
   };
 
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     if (!enabled) return;
     pointers.current.add(e.pointerId);
     if (pointers.current.size > 1) {
-      aborted.current = true; // second finger → stop drawing, let pinch-zoom pass
+      aborted.current = true;
       setCurrent(null);
+      setHlPreview([]);
+      hlDraftRef.current = null;
       drawingId.current = null;
       return;
     }
     aborted.current = false;
     drawingId.current = e.pointerId;
+    const origin = svgRef.current!.getBoundingClientRect();
     const p = localPoint(e);
-    if (tool === "eraser") {
-      eraseAt(p);
+    if (tool === "eraser") { eraseAt(p); return; }
+    if (tool === "highlight") {
+      hlDraftRef.current = null;
+      setHlPreview([]);
+      updateHighlightDraft(p, origin);
+      svgRef.current?.setPointerCapture?.(e.pointerId);
       return;
     }
     setCurrent([p]);
@@ -414,43 +461,48 @@ export default function MarkupOverlay({
   const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
     if (!enabled || aborted.current) return;
     if (drawingId.current !== e.pointerId || pointers.current.size > 1) return;
+    const origin = svgRef.current!.getBoundingClientRect();
     const p = localPoint(e);
-    if (tool === "eraser") {
-      eraseAt(p);
-      return;
-    }
+    if (tool === "eraser") { eraseAt(p); return; }
+    if (tool === "highlight") { updateHighlightDraft(p, origin); return; }
     setCurrent((c) => (c ? [...c, p] : [p]));
   };
 
   const finish = (e: React.PointerEvent<SVGSVGElement>) => {
     pointers.current.delete(e.pointerId);
     if (drawingId.current === e.pointerId) {
-      if (!aborted.current && tool !== "eraser" && current && current.length > 0) {
-        const svg = svgRef.current;
-        if (svg) {
-          const origin = svg.getBoundingClientRect();
-          const anchor = resolveAnchor(current, origin);
-          const box = anchorBox(anchor, origin);
-          if (box && box.w > 0 && box.h > 0) {
-            const norm: Pt[] = current.map(([x, y]) => [(x - box.x) / box.w, (y - box.y) / box.h]);
-            const isHl = tool === "highlighter";
+      if (!aborted.current) {
+        if (tool === "highlight") {
+          const d = hlDraftRef.current;
+          if (d) {
+            const lo = Math.min(d.startIndex, d.endIndex);
+            const hi = Math.max(d.startIndex, d.endIndex);
             setStrokes((prev) => [
               ...prev,
-              {
-                id: uid(),
-                tool: isHl ? "highlighter" : "pen",
-                color,
-                width: isHl ? width * HL_WIDTH_MULT : width,
-                opacity: isHl ? HL_OPACITY : 1,
-                anchor,
-                points: norm,
-              },
+              { id: uid(), kind: "highlight", color, opacity: HL_OPACITY, anchor: { type: "wordRange", lineId: d.lineId, startIndex: lo, endIndex: hi } },
             ]);
             scheduleSave();
+          }
+        } else if (tool === "pen" && current && current.length > 0) {
+          const svg = svgRef.current;
+          if (svg) {
+            const origin = svg.getBoundingClientRect();
+            const anchor = resolveAnchor(current, origin);
+            const box = anchorBox(anchor, origin);
+            if (box && box.w > 0 && box.h > 0) {
+              const norm: Pt[] = current.map(([x, y]) => [(x - box.x) / box.w, (y - box.y) / box.h]);
+              setStrokes((prev) => [
+                ...prev,
+                { id: uid(), kind: "stroke", tool: "pen", color, width, opacity: 1, anchor, points: norm },
+              ]);
+              scheduleSave();
+            }
           }
         }
       }
       setCurrent(null);
+      setHlPreview([]);
+      hlDraftRef.current = null;
       drawingId.current = null;
     }
     if (pointers.current.size === 0) aborted.current = false;
@@ -459,6 +511,8 @@ export default function MarkupOverlay({
   const undo = () => { setStrokes((p) => p.slice(0, -1)); scheduleSave(); };
   const clear = () => { setStrokes([]); scheduleSave(); };
   const handleDone = () => { void saveNow(); onDone(); };
+
+  const rectRx = (h: number) => Math.min(6, h / 3);
 
   return (
     <>
@@ -476,6 +530,35 @@ export default function MarkupOverlay({
         onPointerUp={finish}
         onPointerCancel={finish}
       >
+        {/* Highlights first (under freehand ink); multiply blend = highlighter look. */}
+        {highlights.map((h) =>
+          h.rects.map((r, i) => (
+            <rect
+              key={`${h.id}:${i}`}
+              x={r.x}
+              y={r.y}
+              width={r.w}
+              height={r.h}
+              rx={rectRx(r.h)}
+              fill={h.color}
+              fillOpacity={h.opacity}
+              style={{ mixBlendMode: "multiply" }}
+            />
+          )),
+        )}
+        {hlPreview.map((r, i) => (
+          <rect
+            key={`prev:${i}`}
+            x={r.x}
+            y={r.y}
+            width={r.w}
+            height={r.h}
+            rx={rectRx(r.h)}
+            fill={color}
+            fillOpacity={HL_OPACITY}
+            style={{ mixBlendMode: "multiply" }}
+          />
+        ))}
         {paths.map((pr) => (
           <path
             key={pr.id}
@@ -489,16 +572,15 @@ export default function MarkupOverlay({
             style={pr.tool === "highlighter" ? { mixBlendMode: "multiply" } : undefined}
           />
         ))}
-        {current && tool !== "eraser" && (
+        {current && tool === "pen" && (
           <path
             d={toPath(current)}
             fill="none"
             stroke={color}
-            strokeWidth={tool === "highlighter" ? width * HL_WIDTH_MULT : width}
-            strokeOpacity={tool === "highlighter" ? HL_OPACITY : 1}
+            strokeWidth={width}
+            strokeOpacity={1}
             strokeLinecap="round"
             strokeLinejoin="round"
-            style={tool === "highlighter" ? { mixBlendMode: "multiply" } : undefined}
           />
         )}
       </svg>
@@ -519,7 +601,7 @@ export default function MarkupOverlay({
             <TBtn active={tool === "pen"} onClick={() => setTool("pen")} label="Pen">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" /></svg>
             </TBtn>
-            <TBtn active={tool === "highlighter"} onClick={() => setTool("highlighter")} label="Highlighter">
+            <TBtn active={tool === "highlight"} onClick={() => setTool("highlight")} label="Highlight">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l-6 6v3h3l6-6" /><path d="M14 6l4 4" /><path d="M21 3l-7 7-4-4 7-7z" /></svg>
             </TBtn>
             <TBtn active={tool === "eraser"} onClick={() => setTool("eraser")} label="Eraser">
@@ -528,8 +610,6 @@ export default function MarkupOverlay({
 
             <span className="mx-0.5 h-6 w-px bg-slate-200 dark:bg-slate-700 shrink-0" />
 
-            {/* Colour — current swatch; opens a popover (rendered outside this
-                scrolling toolbar so overflow-x-auto can't clip it). */}
             <button
               type="button"
               onClick={() => { setColorOpen((o) => !o); setWidthOpen(false); }}
@@ -540,7 +620,6 @@ export default function MarkupOverlay({
               <span className="w-5 h-5 rounded-full" style={{ background: color, boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.2)" }} />
             </button>
 
-            {/* Stroke width — current width; opens a popover. */}
             <button
               type="button"
               onClick={() => { setWidthOpen((o) => !o); setColorOpen(false); }}
@@ -571,8 +650,6 @@ export default function MarkupOverlay({
             </button>
           </div>
 
-          {/* Popovers live outside the (overflow-x-auto) toolbar so they aren't
-              clipped; centered just above it. */}
           {colorOpen && (
             <div className="fixed left-1/2 -translate-x-1/2 bottom-[5.25rem] z-50 grid grid-cols-4 gap-1.5 p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl max-w-[calc(100vw-16px)]">
               {COLORS.map((c) => (

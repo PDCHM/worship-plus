@@ -205,3 +205,40 @@ element → drop (unchanged). Same reproject triggers as slice 3.
 
 **Stroke `anchor.type`** now ⊇ `"word" | "chord"`; `anchor.id` for a word is `"{lineId}:{wordIndex}"`,
 for a chord the chord UUID.
+
+---
+
+## 11. Snap-highlighter (slice 6)
+
+A semantic highlight tool built on slice-5 word anchors: it snaps to whole-word bounds
+and reflows perfectly per visual row, like a text selection. It **replaces the freehand
+highlighter**; the pen stays for freehand circles/underlines, the eraser is unchanged.
+
+**Tool trio:** Pen (freehand, unchanged) · Highlight (snap-to-words) · Eraser. The Highlight
+button keeps the highlighter icon.
+
+**Interaction (live snapping):**
+- Pointer down over a word (`[data-word-id]`) records the start word (`lineId` + index). If
+  not over a word, no-op until the pointer reaches one.
+- On drag, the word under the pointer **on the same line** becomes the end word; a live
+  preview spans start..end as whole words (that's the snap).
+- Pointer up commits. **v1 = a word range within ONE line** (the common phrase case); if the
+  pointer wanders to another line the end is clamped to the start line. Multi-line is a follow-up.
+
+**Data model** (in the existing `strokes` jsonb, via a `kind` discriminator — items with no
+`kind` are legacy freehand strokes, so it's backward compatible and slice-4 persistence is
+unchanged):
+```jsonc
+{ "id": "uuid", "kind": "highlight", "color": "#7C3AED", "opacity": 0.35,
+  "anchor": { "type": "wordRange", "lineId": "<uuid>", "startIndex": 2, "endIndex": 5 } }  // start ≤ end
+```
+
+**Render / reproject:** resolve `[data-word-id="{lineId}:{idx}"]` for `idx ∈ start..end`; group
+the resolved word rects by visual row (same top within ~½ a word-height → a wrap splits into
+rows); draw one rounded union-rect (small padding) per row-run with `mix-blend-mode: multiply`
+(the highlighter look — text reads through). Recompute on every reproject trigger (slices 3/5),
+so it reflows on transpose / layout / columns / wrap / device. Missing words (edited away) are
+dropped; if none resolve, the highlight is dropped.
+
+**Eraser** also removes highlight items: hit-test the pointer against the highlight's current
+row rects and remove the whole item.
