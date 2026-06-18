@@ -270,3 +270,34 @@ pass):
 
 Legacy freehand-highlighter strokes (`tool: "highlighter"`) still render as a stroked multiply
 polyline. **Shape cleanup** (snapping circles/lines to ideal forms) is deferred — possible follow-up.
+
+---
+
+## 13. Typed notes (slice 8)
+
+A small text note pinned to a spot, anchored like the marks so it rides with the content
+through transpose / layout / columns / device. First of the §6.4 "typed notes" follow-ups.
+
+**Tool:** a **Note** tool joins Pen / Highlight / Eraser in the toolbar (note/message icon).
+
+**Place / edit:** with the Note tool, **tap** a spot → resolve the anchor under the tap (reuses
+`resolveAnchor`: word/chord/line/section/body) → open a small inline text input there → type →
+commit on **blur / Enter** (Escape cancels). Tapping an existing note re-opens its input to edit;
+committing an **empty** note discards it (and deletes the note if it had existed). The **eraser**
+deletes notes too (hit-test the note's label rect).
+
+**Data model** (in the existing `strokes` jsonb via the `kind` discriminator; items with no
+`kind` remain freehand strokes — slice-4 persistence is unchanged):
+```jsonc
+{ "id": "uuid", "kind": "note", "text": "watch the build", "color": "#7C3AED",
+  "anchor": { "type": "word", "id": "<lineId>:5" }, "offset": [0.4, -0.2] }  // tap, normalized to the anchor box
+```
+The separate `notes` column from §3 is now redundant (everything lives in `strokes`) — can be
+dropped in a later migration.
+
+**Render / reproject:** each note is a small rounded HTML label (padding, subtle translucent
+background for legibility over the chart, a left color accent) positioned at
+`anchorBoxOrigin + offset` mapped to pixels. The label layer sits above the ink with
+`pointer-events: none`, so the SVG still receives taps (tap-to-edit / erase is resolved by
+hit-testing the label rects). Recomputed on every reproject trigger (slices 3/5/7) so notes ride
+with their content. Missing anchor → the note is dropped (and pruned from the saved JSON).

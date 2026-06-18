@@ -12,7 +12,7 @@ import { createClient } from "@/lib/supabase/client";
 // Items without a `kind` are treated as freehand strokes (backward compatible).
 // Persistence: slice 4 (load on open, debounced save). See docs/markup-spec.md.
 
-type Tool = "pen" | "highlight" | "eraser";
+type Tool = "pen" | "highlight" | "eraser" | "note";
 // Freehand points carry an optional pressure (slice 7). Old [nx,ny] points read
 // back with pressure undefined → defaulted to 0.5 (a clean near-uniform line).
 type Pt = [number, number, number?];
@@ -38,15 +38,26 @@ type HighlightItem = {
   opacity: number;
   anchor: { type: "wordRange"; lineId: string; startIndex: number; endIndex: number };
 };
-type Item = StrokeItem | HighlightItem;
+type NoteItem = {
+  id: string;
+  kind: "note";
+  text: string;
+  color: string;
+  anchor: Anchor;
+  offset: [number, number]; // tap point normalized to the anchor box
+};
+type Item = StrokeItem | HighlightItem | NoteItem;
 
 const isHighlight = (it: Item): it is HighlightItem => it.kind === "highlight";
+const isNote = (it: Item): it is NoteItem => it.kind === "note";
 
 // Projected (current-layout) shapes for rendering + eraser hit-testing. `fill`
 // marks pen strokes (filled perfect-freehand outline) vs legacy highlighter
 // strokes (stroked polyline). `pts` is the centerline, used for eraser tests.
 type ProjStroke = { id: string; d: string; pts: Pt[]; fill: boolean; tool: "pen" | "highlighter"; color: string; width: number; opacity: number };
 type ProjHighlight = { id: string; color: string; opacity: number; rects: Box[] };
+type ProjNote = { id: string; x: number; y: number; text: string; color: string };
+type EditingNote = { id: string | null; anchor: Anchor; offset: Pt; x: number; y: number; text: string };
 
 const COLORS = ["#111827", "#EF4444", "#F97316", "#EAB308", "#22C55E", "#3B82F6", "#7C3AED", "#EC4899"];
 const WIDTHS = [3, 5, 8];
@@ -163,6 +174,8 @@ export default function MarkupOverlay({
   const [strokes, setStrokes] = useState<Item[]>([]); // the song_annotations.strokes array (mixed kinds)
   const [paths, setPaths] = useState<ProjStroke[]>([]);
   const [highlights, setHighlights] = useState<ProjHighlight[]>([]);
+  const [notes, setNotes] = useState<ProjNote[]>([]);
+  const [editingNote, setEditingNote] = useState<EditingNote | null>(null);
   const [current, setCurrent] = useState<Pt[] | null>(null); // freehand pen in progress
   const [hlPreview, setHlPreview] = useState<Box[]>([]); // snap-highlight preview during drag
   const [tool, setTool] = useState<Tool>("pen");
@@ -180,6 +193,8 @@ export default function MarkupOverlay({
   pathsRef.current = paths;
   const highlightsRef = useRef(highlights);
   highlightsRef.current = highlights;
+  const editingNoteRef = useRef(editingNote);
+  editingNoteRef.current = editingNote;
   const songIdRef = useRef(songId);
   songIdRef.current = songId;
   const userIdRef = useRef(userId);
@@ -266,10 +281,15 @@ export default function MarkupOverlay({
     const origin = svg.getBoundingClientRect();
     const nextPaths: ProjStroke[] = [];
     const nextHl: ProjHighlight[] = [];
+    const nextNotes: ProjNote[] = [];
     for (const it of strokesRef.current) {
       if (isHighlight(it)) {
         const rects = computeHighlightRects(it.anchor.lineId, it.anchor.startIndex, it.anchor.endIndex, origin);
         if (rects.length) nextHl.push({ id: it.id, color: it.color, opacity: it.opacity, rects });
+      } else if (isNote(it)) {
+        const box = anchorBox(it.anchor, origin);
+        if (!box || box.w === 0 || box.h === 0) continue;
+        nextNotes.push({ id: it.id, x: box.x + it.offset[0] * box.w, y: box.y + it.offset[1] * box.h, text: it.text, color: it.color });
       } else {
         const box = anchorBox(it.anchor, origin);
         if (!box || box.w === 0 || box.h === 0) continue;
@@ -287,6 +307,7 @@ export default function MarkupOverlay({
     }
     setPaths(nextPaths);
     setHighlights(nextHl);
+    setNotes(nextNotes);
   }, []);
 
   const deferReproject = useCallback(() => {
@@ -391,6 +412,7 @@ export default function MarkupOverlay({
       currentInput.current = null;
       penSeen.current = false; // sticky only within a markup session
       lastTouchCommitId.current = null;
+      setEditingNote(null);
       setColorOpen(false);
       setWidthOpen(false);
     }
@@ -461,6 +483,14 @@ export default function MarkupOverlay({
     return [e.clientX - r.left, e.clientY - r.top];
   };
 
+  // Note hit-test by the rendered label's box (HTML, so measured from the DOM).
+  const noteAt = (p: Pt, origin: DOMRect): string | null => {
+    for (const el of Array.from(document.querySelectorAll<HTMLElement>("[data-note-id]"))) {
+      if (pointInBox(p[0], p[1], boxOf(el, origin))) return el.getAttribute("data-note-id");
+    }
+    return null;
+  };
+
   const eraseAt = (p: Pt) => {
     const remove = new Set<string>();
     for (const pr of pathsRef.current) {
@@ -470,10 +500,52 @@ export default function MarkupOverlay({
     for (const h of highlightsRef.current) {
       if (h.rects.some((r) => pointInBox(p[0], p[1], r))) remove.add(h.id);
     }
+    const n = noteAt(p, svgRef.current!.getBoundingClientRect());
+    if (n) remove.add(n);
     if (remove.size) {
       setStrokes((prev) => prev.filter((it) => !remove.has(it.id)));
       scheduleSave();
     }
+  };
+
+  // Note tool: tap an existing note to edit it, else open a new note editor at
+  // the tap (anchor resolved like any mark). A tap while already editing just
+  // lets the open editor commit via blur.
+  const handleNoteTap = (p: Pt, origin: DOMRect) => {
+    if (editingNoteRef.current) return;
+    const hitId = noteAt(p, origin);
+    if (hitId) {
+      const it = strokesRef.current.find((s) => s.id === hitId && isNote(s)) as NoteItem | undefined;
+      if (it) {
+        const box = anchorBox(it.anchor, origin);
+        const x = box ? box.x + it.offset[0] * box.w : p[0];
+        const y = box ? box.y + it.offset[1] * box.h : p[1];
+        setEditingNote({ id: it.id, anchor: it.anchor, offset: it.offset, x, y, text: it.text });
+        return;
+      }
+    }
+    const anchor = resolveAnchor([p], origin);
+    const box = anchorBox(anchor, origin);
+    if (!box || box.w === 0 || box.h === 0) return;
+    const offset: Pt = [(p[0] - box.x) / box.w, (p[1] - box.y) / box.h];
+    setEditingNote({ id: null, anchor, offset, x: p[0], y: p[1], text: "" });
+  };
+
+  const commitNote = () => {
+    const en = editingNoteRef.current;
+    if (!en) return;
+    setEditingNote(null);
+    const text = en.text.trim();
+    if (!text) {
+      if (en.id) { setStrokes((prev) => prev.filter((s) => s.id !== en.id)); scheduleSave(); } // emptied existing → delete
+      return;
+    }
+    if (en.id) {
+      setStrokes((prev) => prev.map((s) => (s.id === en.id && isNote(s) ? { ...s, text } : s)));
+    } else {
+      setStrokes((prev) => [...prev, { id: uid(), kind: "note", text, color, anchor: en.anchor, offset: [en.offset[0], en.offset[1]] }]);
+    }
+    scheduleSave();
   };
 
   const updateHighlightDraft = (p: Pt, origin: DOMRect) => {
@@ -545,6 +617,7 @@ export default function MarkupOverlay({
       svgRef.current?.setPointerCapture?.(e.pointerId);
       return;
     }
+    if (tool === "note") { handleNoteTap(p, origin); return; }
     setCurrent([[p[0], p[1], e.pressure || 0.5]]);
     svgRef.current?.setPointerCapture?.(e.pointerId);
   };
@@ -686,6 +759,43 @@ export default function MarkupOverlay({
         )}
       </svg>
 
+      {/* Notes layer — HTML labels above the ink (pointer-events none so the SVG
+          still gets taps; tap-to-edit is resolved by hit-testing in the handler).
+          The note being edited is hidden behind its input. */}
+      {notes.length > 0 && (
+        <div className="absolute inset-0 z-20 print:hidden" style={{ pointerEvents: "none" }}>
+          {notes
+            .filter((n) => n.id !== editingNote?.id)
+            .map((n) => (
+              <div
+                key={n.id}
+                data-note-id={n.id}
+                className="absolute -translate-y-1/2 max-w-[16rem] px-2 py-1 rounded-lg text-xs font-medium leading-snug whitespace-pre-wrap break-words bg-white/95 dark:bg-slate-900/95 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 shadow-sm"
+                style={{ left: n.x, top: n.y, borderLeftWidth: 3, borderLeftColor: n.color }}
+              >
+                {n.text}
+              </div>
+            ))}
+        </div>
+      )}
+
+      {enabled && editingNote && (
+        <input
+          key={editingNote.id ?? "new-note"}
+          autoFocus
+          value={editingNote.text}
+          placeholder="Note…"
+          onChange={(e) => setEditingNote((n) => (n ? { ...n, text: e.target.value } : n))}
+          onBlur={commitNote}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") { e.preventDefault(); commitNote(); }
+            else if (e.key === "Escape") { e.preventDefault(); setEditingNote(null); }
+          }}
+          className="absolute z-30 -translate-y-1/2 w-44 max-w-[60vw] px-2 py-1 rounded-lg text-xs font-medium bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border-2 border-indigo-500 shadow-lg outline-none"
+          style={{ left: editingNote.x, top: editingNote.y, borderLeftColor: color }}
+        />
+      )}
+
       {enabled && (
         <>
           {(colorOpen || widthOpen) && (
@@ -707,6 +817,9 @@ export default function MarkupOverlay({
             </TBtn>
             <TBtn active={tool === "eraser"} onClick={() => setTool("eraser")} label="Eraser">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 20H7L3 16a2 2 0 0 1 0-3l9-9a2 2 0 0 1 3 0l5 5a2 2 0 0 1 0 3l-8 8" /></svg>
+            </TBtn>
+            <TBtn active={tool === "note"} onClick={() => setTool("note")} label="Note">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /><line x1="8" y1="9" x2="16" y2="9" /><line x1="8" y1="13" x2="13" y2="13" /></svg>
             </TBtn>
 
             <span className="mx-0.5 h-6 w-px bg-slate-200 dark:bg-slate-700 shrink-0" />
