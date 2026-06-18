@@ -43,11 +43,16 @@ const WIDTHS = [3, 5, 8];
 const HL_OPACITY = 0.35;
 const HL_WIDTH_MULT = 4;
 const ERASE_PAD = 8;
-// Word/chord localization thresholds (tunable): a mark anchors to a single word
-// or chord when its bbox is no wider than ~1.8× the element and its centroid
-// falls within the element's box (padded slightly to catch underlines/circles).
+// Word/chord localization thresholds (tunable). A mark anchors to a single word
+// or chord when it's a small, localized gesture whose centroid is over the
+// element. The width gate is the MAX of a relative (1.8× element) and an
+// ABSOLUTE floor (~70px) — chords are only ~15–25px wide, so a relative-only
+// gate is unwinnable for them (any circle is several × their width). A height
+// cap (~3 line-heights) keeps genuine multi-line gestures out of this tier.
 const LOCALIZE_W = 1.8;
-const LOCALIZE_PAD = 8;
+const LOCALIZE_W_FLOOR = 70;
+const LOCALIZE_H_LINES = 3;
+const LOCALIZE_PAD = 12;
 
 function uid(): string {
   return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
@@ -309,28 +314,39 @@ export default function MarkupOverlay({
         box: boxOf(el, origin),
       }));
 
-    // ── Word/chord tier — decided by the CENTROID + HORIZONTAL extent only.
-    //    A circle/underline naturally spills up into the chord row or just below
-    //    the word; that vertical spill must NOT escalate the anchor. Pick the
-    //    smallest word/chord whose box holds the centroid, as long as the stroke
-    //    is no wider than ~1.8× that element (i.e. confined to ~one word). ──────
-    const underCentroid = [...collect("data-chord-id", "chord"), ...collect("data-word-id", "word")]
-      .filter((t) => pointInBox(cx, cy, t.box, LOCALIZE_PAD))
-      .sort((a, b) => a.box.w * a.box.h - b.box.w * b.box.h); // smallest = most specific
-    if (underCentroid.length && bboxW <= underCentroid[0].box.w * LOCALIZE_W) {
-      return { type: underCentroid[0].type, id: underCentroid[0].id };
-    }
+    const lines = Array.from(document.querySelectorAll<HTMLElement>("[data-line-id]")).map((el) => ({
+      id: el.getAttribute("data-line-id")!,
+      sectionId: el.closest("[data-section-id]")?.getAttribute("data-section-id") ?? null,
+      box: boxOf(el, origin),
+    }));
+    // Representative line height for the absolute localization gates (median is
+    // robust to a stray tall/short line).
+    const lineHs = lines.map((l) => l.box.h).filter((h) => h > 0).sort((a, b) => a - b);
+    const lineH = lineHs.length ? lineHs[Math.floor(lineHs.length / 2)] : 40;
+    const bboxH = bbox.maxY - bbox.minY;
+
+    // ── Word/chord tier — a small, localized gesture binds to the word or chord
+    //    under its centroid. Width gate = max(1.8× element, ~70px absolute) so a
+    //    circle around a tiny chord qualifies; height gate ≤ ~3 line-heights so a
+    //    circle/underline can spill into the chord row without being mistaken for
+    //    a multi-line gesture. Smallest box wins → a chord beats the word beneath. ─
+    const localized =
+      bboxH <= lineH * LOCALIZE_H_LINES
+        ? [...collect("data-chord-id", "chord"), ...collect("data-word-id", "word")]
+            .filter(
+              (t) =>
+                pointInBox(cx, cy, t.box, LOCALIZE_PAD) &&
+                bboxW <= Math.max(t.box.w * LOCALIZE_W, LOCALIZE_W_FLOOR),
+            )
+            .sort((a, b) => a.box.w * a.box.h - b.box.w * b.box.h) // smallest = most specific
+        : [];
+    if (localized.length) return { type: localized[0].type, id: localized[0].id };
 
     // ── Line / section / body tier — by how many lines the stroke genuinely
     //    COVERS (a line counts only when its vertical CENTER lies within the
     //    stroke's vertical span), so a tall narrow loop stays a line rather than
     //    escalating to a section. Section boxes change width on a column-count
     //    change, so we only anchor to one for a true multi-line gesture. ────────
-    const lines = Array.from(document.querySelectorAll<HTMLElement>("[data-line-id]")).map((el) => ({
-      id: el.getAttribute("data-line-id")!,
-      sectionId: el.closest("[data-section-id]")?.getAttribute("data-section-id") ?? null,
-      box: boxOf(el, origin),
-    }));
     const covered = lines.filter((l) => {
       const c = l.box.y + l.box.h / 2;
       return c >= bbox.minY && c <= bbox.maxY;
