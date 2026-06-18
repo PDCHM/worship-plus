@@ -1256,3 +1256,32 @@ $$;
 
 revoke all on function public.keepalive() from public;
 grant execute on function public.keepalive() to anon, authenticated;
+
+-- ============================================================
+-- song_annotations — anchored chart markup (Phase 2a foundation).
+-- One annotation set per user per song; strokes/notes stored as jsonb.
+-- Personal-only: RLS scopes every row to its owner. Canonical DDL mirrors
+-- docs/markup-spec.md §3 and is applied manually in the Supabase SQL editor.
+-- ============================================================
+create table song_annotations (
+  id          uuid primary key default gen_random_uuid(),
+  song_id     uuid not null references songs(id) on delete cascade,
+  user_id     uuid not null references auth.users(id) on delete cascade,
+  strokes     jsonb not null default '[]',
+  notes       jsonb not null default '[]',  -- typed sticky notes (phase 2b)
+  updated_at  timestamptz not null default now(),
+  unique (song_id, user_id)
+);
+
+alter table song_annotations enable row level security;
+
+create policy "own annotations - select" on song_annotations
+  for select using (auth.uid() = user_id);
+create policy "own annotations - upsert" on song_annotations
+  for insert with check (auth.uid() = user_id);
+create policy "own annotations - update" on song_annotations
+  for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "own annotations - delete" on song_annotations
+  for delete using (auth.uid() = user_id);
+
+create index song_annotations_song_user on song_annotations (song_id, user_id);

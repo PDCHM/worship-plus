@@ -2431,6 +2431,7 @@ export default function SongEditor({
         <div
           ref={sectionsRef}
           data-bubble-skip
+          data-song-body
           className={effColumnView ? "" : "space-y-8 min-w-fit"}
           style={sectionsContainerStyle}
         >
@@ -2672,6 +2673,7 @@ export default function SongEditor({
                     return (
                       <div
                         key={line.id}
+                        data-line-id={line.id}
                         className="group/line flex items-start gap-1"
                         onClick={readOnly ? undefined : () => setActiveLine(line.id)}
                       >
