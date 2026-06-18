@@ -170,6 +170,9 @@ export default function MarkupOverlay({
   const [width, setWidth] = useState(WIDTHS[0]);
   const [colorOpen, setColorOpen] = useState(false);
   const [widthOpen, setWidthOpen] = useState(false);
+  // Bulletproof override: when on, touch never draws regardless of pen state.
+  // Auto-enabled the first time an Apple Pencil is detected; user-toggleable.
+  const [pencilOnly, setPencilOnly] = useState(false);
 
   const strokesRef = useRef(strokes);
   strokesRef.current = strokes;
@@ -188,9 +191,16 @@ export default function MarkupOverlay({
   const drawingId = useRef<number | null>(null);
   const aborted = useRef(false);
   const hlDraftRef = useRef<{ lineId: string; startIndex: number; endIndex: number } | null>(null);
-  // Palm rejection: once a pen (Apple Pencil) is ever seen, touch no longer
-  // draws — a resting palm/finger is ignored. Finger-only users are unaffected.
+  // Palm rejection. penSeen is sticky for the markup session (set on the first
+  // pen event, cleared only when markup mode turns off). ptrType tracks each live
+  // pointer's type; currentInput is the type of the in-progress draw; lastTouch*
+  // records the most recent touch-committed stroke so a pen landing just after a
+  // palm-first mark can retract it.
   const penSeen = useRef(false);
+  const ptrType = useRef<Map<number, string>>(new Map());
+  const currentInput = useRef<string | null>(null);
+  const lastTouchCommitId = useRef<string | null>(null);
+  const lastTouchCommitT = useRef(0);
 
   // ── Anchor / geometry helpers (boxes relative to overlay origin) ───────────
   const boxOf = (el: Element, origin: DOMRect): Box => {
@@ -377,6 +387,10 @@ export default function MarkupOverlay({
       drawingId.current = null;
       aborted.current = false;
       pointers.current.clear();
+      ptrType.current.clear();
+      currentInput.current = null;
+      penSeen.current = false; // sticky only within a markup session
+      lastTouchCommitId.current = null;
       setColorOpen(false);
       setWidthOpen(false);
     }
@@ -474,14 +488,41 @@ export default function MarkupOverlay({
     setHlPreview(computeHighlightRects(nd.lineId, nd.startIndex, nd.endIndex, origin));
   };
 
-  // Palm rejection: ignore touch input for drawing once a pen has been seen.
-  // (Touch still reaches the browser for pinch-zoom via touch-action.)
-  const ignoreInput = (e: React.PointerEvent) => penSeen.current && e.pointerType === "touch";
+  // Touch never draws once a pen is active for the session, or whenever the
+  // Pencil-only override is on. (Touch still reaches the browser for scroll and
+  // two-finger pinch-zoom via touch-action.)
+  const ignoreTouch = (e: React.PointerEvent) => (penSeen.current || pencilOnly) && e.pointerType === "touch";
+
+  // When a pen lands: discard any in-progress touch stroke, evict touch pointers
+  // (so they don't trip the multi-touch guard), and retract a touch stroke that
+  // committed in the last 750ms — this is the palm-first case (palm contacts and
+  // marks just before the pencil).
+  const onPenEngaged = () => {
+    if (currentInput.current === "touch") {
+      setCurrent(null);
+      setHlPreview([]);
+      hlDraftRef.current = null;
+      drawingId.current = null;
+      currentInput.current = null;
+    }
+    for (const [pid, t] of ptrType.current) if (t === "touch") pointers.current.delete(pid);
+    if (lastTouchCommitId.current && performance.now() - lastTouchCommitT.current < 750) {
+      const rm = lastTouchCommitId.current;
+      setStrokes((prev) => prev.filter((s) => s.id !== rm));
+      scheduleSave();
+    }
+    lastTouchCommitId.current = null;
+  };
 
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
     if (!enabled) return;
-    if (e.pointerType === "pen") penSeen.current = true;
-    if (ignoreInput(e)) return;
+    ptrType.current.set(e.pointerId, e.pointerType);
+    if (e.pointerType === "pen") {
+      penSeen.current = true;
+      if (!pencilOnly) setPencilOnly(true); // auto-enable the bulletproof override
+      onPenEngaged();
+    }
+    if (ignoreTouch(e)) return;
     pointers.current.add(e.pointerId);
     if (pointers.current.size > 1) {
       aborted.current = true;
@@ -493,6 +534,7 @@ export default function MarkupOverlay({
     }
     aborted.current = false;
     drawingId.current = e.pointerId;
+    currentInput.current = e.pointerType;
     const origin = svgRef.current!.getBoundingClientRect();
     const p = localPoint(e);
     if (tool === "eraser") { eraseAt(p); return; }
@@ -509,7 +551,7 @@ export default function MarkupOverlay({
 
   const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
     if (!enabled || aborted.current) return;
-    if (ignoreInput(e)) return;
+    if (ignoreTouch(e)) return;
     if (drawingId.current !== e.pointerId || pointers.current.size > 1) return;
     const origin = svgRef.current!.getBoundingClientRect();
     const p = localPoint(e);
@@ -522,17 +564,23 @@ export default function MarkupOverlay({
   const finish = (e: React.PointerEvent<SVGSVGElement>) => {
     pointers.current.delete(e.pointerId);
     if (drawingId.current === e.pointerId) {
+      const wasTouch = currentInput.current === "touch";
+      const noteTouchCommit = (newId: string) => {
+        if (wasTouch) { lastTouchCommitId.current = newId; lastTouchCommitT.current = performance.now(); }
+      };
       if (!aborted.current) {
         if (tool === "highlight") {
           const d = hlDraftRef.current;
           if (d) {
             const lo = Math.min(d.startIndex, d.endIndex);
             const hi = Math.max(d.startIndex, d.endIndex);
+            const newId = uid();
             setStrokes((prev) => [
               ...prev,
-              { id: uid(), kind: "highlight", color, opacity: HL_OPACITY, anchor: { type: "wordRange", lineId: d.lineId, startIndex: lo, endIndex: hi } },
+              { id: newId, kind: "highlight", color, opacity: HL_OPACITY, anchor: { type: "wordRange", lineId: d.lineId, startIndex: lo, endIndex: hi } },
             ]);
             scheduleSave();
+            noteTouchCommit(newId);
           }
         } else if (tool === "pen" && current && current.length > 0) {
           const svg = svgRef.current;
@@ -542,11 +590,13 @@ export default function MarkupOverlay({
             const box = anchorBox(anchor, origin);
             if (box && box.w > 0 && box.h > 0) {
               const norm: Pt[] = current.map(([x, y, p]) => [(x - box.x) / box.w, (y - box.y) / box.h, p ?? 0.5]);
+              const newId = uid();
               setStrokes((prev) => [
                 ...prev,
-                { id: uid(), kind: "stroke", tool: "pen", color, width, opacity: 1, anchor, points: norm, baseH: box.h },
+                { id: newId, kind: "stroke", tool: "pen", color, width, opacity: 1, anchor, points: norm, baseH: box.h },
               ]);
               scheduleSave();
+              noteTouchCommit(newId);
             }
           }
         }
@@ -555,7 +605,9 @@ export default function MarkupOverlay({
       setHlPreview([]);
       hlDraftRef.current = null;
       drawingId.current = null;
+      currentInput.current = null;
     }
+    ptrType.current.delete(e.pointerId);
     if (pointers.current.size === 0) aborted.current = false;
   };
 
@@ -655,6 +707,12 @@ export default function MarkupOverlay({
             </TBtn>
             <TBtn active={tool === "eraser"} onClick={() => setTool("eraser")} label="Eraser">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 20H7L3 16a2 2 0 0 1 0-3l9-9a2 2 0 0 1 3 0l5 5a2 2 0 0 1 0 3l-8 8" /></svg>
+            </TBtn>
+
+            <span className="mx-0.5 h-6 w-px bg-slate-200 dark:bg-slate-700 shrink-0" />
+
+            <TBtn active={pencilOnly} onClick={() => setPencilOnly((o) => !o)} label={pencilOnly ? "Pencil only — touch ignored" : "Pencil only (palm rejection)"}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 11V6a2 2 0 0 0-4 0v5M14 10V4a2 2 0 0 0-4 0v6M10 10.5V6a2 2 0 0 0-4 0v8a6 6 0 0 0 6 6h2a6 6 0 0 0 6-6v-2a2 2 0 0 0-4 0" /></svg>
             </TBtn>
 
             <span className="mx-0.5 h-6 w-px bg-slate-200 dark:bg-slate-700 shrink-0" />
