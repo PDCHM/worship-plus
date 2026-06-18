@@ -89,12 +89,6 @@ function bboxOf(pts: Pt[]): BBox {
   return { minX, minY, maxX, maxY };
 }
 
-// bbox fully inside box (small tolerance for sub-pixel rounding).
-function rectContains(box: Box, b: BBox): boolean {
-  const p = 1;
-  return b.minX >= box.x - p && b.minY >= box.y - p && b.maxX <= box.x + box.w + p && b.maxY <= box.y + box.h + p;
-}
-
 function rectIntersect(box: Box, b: BBox): boolean {
   return !(b.minX > box.x + box.w || b.maxX < box.x || b.minY > box.y + box.h || b.maxY < box.y);
 }
@@ -151,6 +145,7 @@ export default function MarkupOverlay({
   const userIdRef = useRef(userId);
   userIdRef.current = userId;
   const saveTimer = useRef<number | null>(null);
+  const reprojectRaf = useRef<number | null>(null);
 
   const pointers = useRef<Set<number>>(new Set());
   const drawingId = useRef<number | null>(null);
@@ -189,6 +184,19 @@ export default function MarkupOverlay({
     }
     setPaths(next);
   }, []);
+
+  // Orientation/viewport changes can fire before layout reflows, so a direct
+  // re-measure would read stale boxes. Defer to after the next frame (two rAFs)
+  // so we measure in the settled, post-reflow coordinate space.
+  const deferReproject = useCallback(() => {
+    if (reprojectRaf.current) cancelAnimationFrame(reprojectRaf.current);
+    reprojectRaf.current = requestAnimationFrame(() => {
+      reprojectRaf.current = requestAnimationFrame(() => {
+        reprojectRaf.current = null;
+        reproject();
+      });
+    });
+  }, [reproject]);
 
   // ── Persistence (slice 4): one song_annotations row per user per song ───────
   // saveNow reads everything from refs so it stays referentially stable (empty
@@ -260,17 +268,20 @@ export default function MarkupOverlay({
   // re-sizing, device rotation).
   useEffect(() => {
     const body = svgRef.current?.parentElement ?? null;
+    // ResizeObserver fires post-reflow, so it can reproject directly; window
+    // resize/orientation are deferred a frame so layout has settled first.
     const ro = typeof ResizeObserver !== "undefined" && body ? new ResizeObserver(() => reproject()) : null;
     if (ro && body) ro.observe(body);
-    const onWin = () => reproject();
+    const onWin = () => deferReproject();
     window.addEventListener("resize", onWin);
     window.addEventListener("orientationchange", onWin);
     return () => {
       ro?.disconnect();
       window.removeEventListener("resize", onWin);
       window.removeEventListener("orientationchange", onWin);
+      if (reprojectRaf.current) cancelAnimationFrame(reprojectRaf.current);
     };
-  }, [reproject]);
+  }, [reproject, deferReproject]);
 
   // Leaving markup mode mid-stroke shouldn't strand an in-progress path.
   useEffect(() => {
@@ -291,46 +302,54 @@ export default function MarkupOverlay({
     const cy = (bbox.minY + bbox.maxY) / 2;
     const bboxW = bbox.maxX - bbox.minX;
 
-    // ── Word/chord tier — a mark localized to one word or chord pins to it.
-    //    Most specific (smallest) element under the centroid wins. ────────────
     const collect = (attr: string, type: "word" | "chord") =>
       Array.from(document.querySelectorAll<HTMLElement>(`[${attr}]`)).map((el) => ({
         type,
         id: el.getAttribute(attr)!,
         box: boxOf(el, origin),
       }));
-    const words = collect("data-word-id", "word");
-    const chords = collect("data-chord-id", "chord");
-    const wordsHit = words.filter((w) => rectIntersect(w.box, bbox));
-    if (wordsHit.length <= 1) {
-      // Not spanning multiple words → eligible for word/chord anchoring.
-      const local = [...chords, ...words].filter(
-        (t) => pointInBox(cx, cy, t.box, LOCALIZE_PAD) && bboxW <= t.box.w * LOCALIZE_W,
-      );
-      if (local.length) {
-        local.sort((a, b) => a.box.w * a.box.h - b.box.w * b.box.h); // smallest = most specific
-        return { type: local[0].type, id: local[0].id };
-      }
+
+    // ── Word/chord tier — decided by the CENTROID + HORIZONTAL extent only.
+    //    A circle/underline naturally spills up into the chord row or just below
+    //    the word; that vertical spill must NOT escalate the anchor. Pick the
+    //    smallest word/chord whose box holds the centroid, as long as the stroke
+    //    is no wider than ~1.8× that element (i.e. confined to ~one word). ──────
+    const underCentroid = [...collect("data-chord-id", "chord"), ...collect("data-word-id", "word")]
+      .filter((t) => pointInBox(cx, cy, t.box, LOCALIZE_PAD))
+      .sort((a, b) => a.box.w * a.box.h - b.box.w * b.box.h); // smallest = most specific
+    if (underCentroid.length && bboxW <= underCentroid[0].box.w * LOCALIZE_W) {
+      return { type: underCentroid[0].type, id: underCentroid[0].id };
     }
 
-    // ── Slice-3 tier — line / section / body. ──
+    // ── Line / section / body tier — by how many lines the stroke genuinely
+    //    COVERS (a line counts only when its vertical CENTER lies within the
+    //    stroke's vertical span), so a tall narrow loop stays a line rather than
+    //    escalating to a section. Section boxes change width on a column-count
+    //    change, so we only anchor to one for a true multi-line gesture. ────────
     const lines = Array.from(document.querySelectorAll<HTMLElement>("[data-line-id]")).map((el) => ({
       id: el.getAttribute("data-line-id")!,
       sectionId: el.closest("[data-section-id]")?.getAttribute("data-section-id") ?? null,
       box: boxOf(el, origin),
     }));
-    // 1) bbox sits within a single line.
-    const containing = lines.filter((l) => rectContains(l.box, bbox));
-    if (containing.length >= 1) return { type: "line", id: containing[0].id };
-    // 2) bbox overlaps lines.
-    const hit = lines.filter((l) => rectIntersect(l.box, bbox));
-    if (hit.length === 1) return { type: "line", id: hit[0].id };
-    if (hit.length >= 2) {
-      const secs = Array.from(new Set(hit.map((l) => l.sectionId).filter(Boolean))) as string[];
-      if (secs.length === 1) return { type: "section", id: secs[0] };
-      return { type: "body" };
+    const covered = lines.filter((l) => {
+      const c = l.box.y + l.box.h / 2;
+      return c >= bbox.minY && c <= bbox.maxY;
+    });
+    if (covered.length === 1) return { type: "line", id: covered[0].id };
+    if (covered.length >= 2) {
+      const secs = Array.from(new Set(covered.map((l) => l.sectionId).filter(Boolean))) as string[];
+      return secs.length === 1 ? { type: "section", id: secs[0] } : { type: "body" };
     }
-    // 3) no line overlap (drawn in a gap/margin) → section if exactly one, else body.
+    // No line center inside the vertical span (small mark above a line's center,
+    // or in a gap) → nearest line by centroid if the stroke touches it, else
+    // section/body by overlap.
+    let nearest: (typeof lines)[number] | null = null;
+    let bestDist = Infinity;
+    for (const l of lines) {
+      const d = Math.abs(l.box.y + l.box.h / 2 - cy);
+      if (d < bestDist) { bestDist = d; nearest = l; }
+    }
+    if (nearest && rectIntersect(nearest.box, bbox)) return { type: "line", id: nearest.id };
     const secHit = Array.from(document.querySelectorAll<HTMLElement>("[data-section-id]"))
       .map((el) => ({ id: el.getAttribute("data-section-id")!, box: boxOf(el, origin) }))
       .filter((s) => rectIntersect(s.box, bbox));
