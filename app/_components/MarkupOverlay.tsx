@@ -1,28 +1,47 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-// Slice 2 — pixel-space drawing only. No anchoring, no Supabase, no reproject.
-// Strokes live in local state as raw overlay-pixel coordinates and are rendered
-// directly as SVG <path>s. The anchor engine (normalize-to-line/section,
-// reproject on transpose/font/zoom/resize) is a later slice.
+// Slice 3 — anchor + reproject engine. Strokes are stored relative to a content
+// anchor (line → section → body fallback) as normalized [0,1] coordinates, so
+// they survive transpose, capo, font/zoom, layout (scroll/fit/columns), resize,
+// orientation, and device. Still no persistence (slice 4) — strokes live in
+// component state and reset on leaving the view. See docs/markup-spec.md §2.
 
 type Tool = "pen" | "highlighter" | "eraser";
 type Pt = [number, number];
+type Anchor = { type: "line" | "section" | "body"; id?: string };
+type Box = { x: number; y: number; w: number; h: number };
+type BBox = { minX: number; minY: number; maxX: number; maxY: number };
+
+// Stored stroke — points are NORMALIZED [0,1] relative to the anchor element's box.
 type Stroke = {
   id: string;
   tool: "pen" | "highlighter";
   color: string;
   width: number;
   opacity: number;
+  anchor: Anchor;
   points: Pt[];
+};
+
+// Projected stroke — pixel-space path + points for the current layout (rebuilt on
+// every reproject). Drives both rendering and eraser hit-testing.
+type Projected = {
+  id: string;
+  d: string;
+  pts: Pt[];
+  tool: "pen" | "highlighter";
+  color: string;
+  width: number;
+  opacity: number;
 };
 
 const COLORS = ["#111827", "#EF4444", "#F97316", "#EAB308", "#22C55E", "#3B82F6", "#7C3AED", "#EC4899"];
 const WIDTHS = [3, 5, 8];
 const HL_OPACITY = 0.35;
-const HL_WIDTH_MULT = 4; // highlighter strokes are noticeably wider than the pen
-const ERASE_PAD = 8; // px slack added to a stroke's half-width for hit-testing
+const HL_WIDTH_MULT = 4;
+const ERASE_PAD = 8;
 
 function uid(): string {
   return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
@@ -30,9 +49,6 @@ function uid(): string {
     : Math.random().toString(36).slice(2);
 }
 
-// Midpoint-quadratic smoothing: each interior point becomes a quadratic control
-// point toward the midpoint of the next segment. Cheap and visibly smoother than
-// a raw polyline. A single point renders as a tiny dot.
 function toPath(points: Pt[]): string {
   if (points.length === 0) return "";
   if (points.length === 1) {
@@ -56,26 +72,116 @@ function dist2(ax: number, ay: number, bx: number, by: number): number {
   return dx * dx + dy * dy;
 }
 
-export default function MarkupOverlay({ enabled, onDone }: { enabled: boolean; onDone: () => void }) {
+function bboxOf(pts: Pt[]): BBox {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const [x, y] of pts) {
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+// bbox fully inside box (small tolerance for sub-pixel rounding).
+function rectContains(box: Box, b: BBox): boolean {
+  const p = 1;
+  return b.minX >= box.x - p && b.minY >= box.y - p && b.maxX <= box.x + box.w + p && b.maxY <= box.y + box.h + p;
+}
+
+function rectIntersect(box: Box, b: BBox): boolean {
+  return !(b.minX > box.x + box.w || b.maxX < box.x || b.minY > box.y + box.h || b.maxY < box.y);
+}
+
+// reprojectKey changes whenever a layout-affecting input changes (transpose,
+// capo, font/zoom, scroll/fit, column count) so the overlay re-measures and
+// remaps every stroke.
+export default function MarkupOverlay({
+  enabled,
+  onDone,
+  reprojectKey,
+}: {
+  enabled: boolean;
+  onDone: () => void;
+  reprojectKey: string;
+}) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
+  const [paths, setPaths] = useState<Projected[]>([]);
   const [current, setCurrent] = useState<Pt[] | null>(null);
   const [tool, setTool] = useState<Tool>("pen");
   const [color, setColor] = useState("#7C3AED");
   const [width, setWidth] = useState(WIDTHS[0]);
-  // Color/width collapse into single buttons with popovers so the toolbar fits
-  // any phone width (the 8 swatches + 3 widths used to overflow off the edge).
   const [colorOpen, setColorOpen] = useState(false);
   const [widthOpen, setWidthOpen] = useState(false);
 
-  // Multi-touch: a single pointer draws; a second pointer aborts the stroke so
-  // the browser's pinch-zoom (allowed via touch-action) shows through cleanly.
+  // Latest values for use inside event listeners / reproject (which are stable).
+  const strokesRef = useRef(strokes);
+  strokesRef.current = strokes;
+  const pathsRef = useRef(paths);
+  pathsRef.current = paths;
+
   const pointers = useRef<Set<number>>(new Set());
   const drawingId = useRef<number | null>(null);
   const aborted = useRef(false);
 
-  // Leaving markup mode mid-stroke shouldn't strand an in-progress path. Strokes
-  // themselves stay (they remain visible when the overlay is pass-through).
+  // ── Anchor measurement (all boxes relative to the overlay's own origin so
+  //    capture and reproject share one coordinate space) ──────────────────────
+  const anchorElement = (a: Anchor): Element | null => {
+    if (a.type === "body") return svgRef.current?.parentElement ?? null;
+    const sel = a.type === "line" ? `[data-line-id="${a.id}"]` : `[data-section-id="${a.id}"]`;
+    return a.id ? document.querySelector(sel) : null;
+  };
+
+  const boxOf = (el: Element, origin: DOMRect): Box => {
+    const r = el.getBoundingClientRect();
+    return { x: r.left - origin.left, y: r.top - origin.top, w: r.width, h: r.height };
+  };
+
+  const anchorBox = (a: Anchor, origin: DOMRect): Box | null => {
+    const el = anchorElement(a);
+    return el ? boxOf(el, origin) : null;
+  };
+
+  // ── Reproject: rebuild every stroke's pixel path from its normalized points
+  //    and its anchor's current box. Drops strokes whose anchor is gone. ───────
+  const reproject = useCallback(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const origin = svg.getBoundingClientRect();
+    const next: Projected[] = [];
+    for (const s of strokesRef.current) {
+      const box = anchorBox(s.anchor, origin);
+      if (!box || box.w === 0 || box.h === 0) continue; // anchor missing/unmeasurable → skip
+      const pts: Pt[] = s.points.map(([nx, ny]) => [box.x + nx * box.w, box.y + ny * box.h]);
+      next.push({ id: s.id, d: toPath(pts), pts, tool: s.tool, color: s.color, width: s.width, opacity: s.opacity });
+    }
+    setPaths(next);
+  }, []);
+
+  // Reproject after layout-affecting changes + whenever the stroke set changes.
+  // useLayoutEffect measures post-reflow, pre-paint (no flash).
+  useLayoutEffect(() => {
+    reproject();
+  }, [reprojectKey, strokes, reproject]);
+
+  // Reproject on song-body resize + viewport changes (covers async reflow, fit
+  // re-sizing, device rotation).
+  useEffect(() => {
+    const body = svgRef.current?.parentElement ?? null;
+    const ro = typeof ResizeObserver !== "undefined" && body ? new ResizeObserver(() => reproject()) : null;
+    if (ro && body) ro.observe(body);
+    const onWin = () => reproject();
+    window.addEventListener("resize", onWin);
+    window.addEventListener("orientationchange", onWin);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", onWin);
+      window.removeEventListener("orientationchange", onWin);
+    };
+  }, [reproject]);
+
+  // Leaving markup mode mid-stroke shouldn't strand an in-progress path.
   useEffect(() => {
     if (!enabled) {
       setCurrent(null);
@@ -87,19 +193,46 @@ export default function MarkupOverlay({ enabled, onDone }: { enabled: boolean; o
     }
   }, [enabled]);
 
+  // ── Anchor resolution on commit (line → section → body) ────────────────────
+  const resolveAnchor = (pts: Pt[], origin: DOMRect): Anchor => {
+    const bbox = bboxOf(pts);
+    const lines = Array.from(document.querySelectorAll<HTMLElement>("[data-line-id]")).map((el) => ({
+      id: el.getAttribute("data-line-id")!,
+      sectionId: el.closest("[data-section-id]")?.getAttribute("data-section-id") ?? null,
+      box: boxOf(el, origin),
+    }));
+    // 1) bbox sits within a single line.
+    const containing = lines.filter((l) => rectContains(l.box, bbox));
+    if (containing.length >= 1) return { type: "line", id: containing[0].id };
+    // 2) bbox overlaps lines.
+    const hit = lines.filter((l) => rectIntersect(l.box, bbox));
+    if (hit.length === 1) return { type: "line", id: hit[0].id };
+    if (hit.length >= 2) {
+      const secs = Array.from(new Set(hit.map((l) => l.sectionId).filter(Boolean))) as string[];
+      if (secs.length === 1) return { type: "section", id: secs[0] };
+      return { type: "body" };
+    }
+    // 3) no line overlap (drawn in a gap/margin) → section if exactly one, else body.
+    const secHit = Array.from(document.querySelectorAll<HTMLElement>("[data-section-id]"))
+      .map((el) => ({ id: el.getAttribute("data-section-id")!, box: boxOf(el, origin) }))
+      .filter((s) => rectIntersect(s.box, bbox));
+    if (secHit.length === 1) return { type: "section", id: secHit[0].id };
+    return { type: "body" };
+  };
+
   const localPoint = (e: React.PointerEvent): Pt => {
     const r = svgRef.current!.getBoundingClientRect();
     return [e.clientX - r.left, e.clientY - r.top];
   };
 
   const eraseAt = (p: Pt) => {
-    setStrokes((prev) =>
-      prev.filter((s) => {
-        const thr = s.width / 2 + ERASE_PAD;
-        const t2 = thr * thr;
-        return !s.points.some(([x, y]) => dist2(x, y, p[0], p[1]) <= t2);
-      }),
-    );
+    const remove = new Set<string>();
+    for (const pr of pathsRef.current) {
+      const thr = pr.width / 2 + ERASE_PAD;
+      const t2 = thr * thr;
+      if (pr.pts.some(([x, y]) => dist2(x, y, p[0], p[1]) <= t2)) remove.add(pr.id);
+    }
+    if (remove.size) setStrokes((prev) => prev.filter((s) => !remove.has(s.id)));
   };
 
   const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
@@ -137,19 +270,28 @@ export default function MarkupOverlay({ enabled, onDone }: { enabled: boolean; o
     pointers.current.delete(e.pointerId);
     if (drawingId.current === e.pointerId) {
       if (!aborted.current && tool !== "eraser" && current && current.length > 0) {
-        const isHl = tool === "highlighter";
-        const committed = current;
-        setStrokes((prev) => [
-          ...prev,
-          {
-            id: uid(),
-            tool: isHl ? "highlighter" : "pen",
-            color,
-            width: isHl ? width * HL_WIDTH_MULT : width,
-            opacity: isHl ? HL_OPACITY : 1,
-            points: committed,
-          },
-        ]);
+        const svg = svgRef.current;
+        if (svg) {
+          const origin = svg.getBoundingClientRect();
+          const anchor = resolveAnchor(current, origin);
+          const box = anchorBox(anchor, origin);
+          if (box && box.w > 0 && box.h > 0) {
+            const norm: Pt[] = current.map(([x, y]) => [(x - box.x) / box.w, (y - box.y) / box.h]);
+            const isHl = tool === "highlighter";
+            setStrokes((prev) => [
+              ...prev,
+              {
+                id: uid(),
+                tool: isHl ? "highlighter" : "pen",
+                color,
+                width: isHl ? width * HL_WIDTH_MULT : width,
+                opacity: isHl ? HL_OPACITY : 1,
+                anchor,
+                points: norm,
+              },
+            ]);
+          }
+        }
       }
       setCurrent(null);
       drawingId.current = null;
@@ -159,20 +301,6 @@ export default function MarkupOverlay({ enabled, onDone }: { enabled: boolean; o
 
   const undo = () => setStrokes((p) => p.slice(0, -1));
   const clear = () => setStrokes([]);
-
-  const renderStroke = (s: Pick<Stroke, "tool" | "color" | "width" | "opacity">, d: string, key?: string) => (
-    <path
-      key={key}
-      d={d}
-      fill="none"
-      stroke={s.color}
-      strokeWidth={s.width}
-      strokeOpacity={s.opacity}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      style={s.tool === "highlighter" ? { mixBlendMode: "multiply" } : undefined}
-    />
-  );
 
   return (
     <>
@@ -190,17 +318,31 @@ export default function MarkupOverlay({ enabled, onDone }: { enabled: boolean; o
         onPointerUp={finish}
         onPointerCancel={finish}
       >
-        {strokes.map((s) => renderStroke(s, toPath(s.points), s.id))}
-        {current && tool !== "eraser" &&
-          renderStroke(
-            {
-              tool: tool === "highlighter" ? "highlighter" : "pen",
-              color,
-              width: tool === "highlighter" ? width * HL_WIDTH_MULT : width,
-              opacity: tool === "highlighter" ? HL_OPACITY : 1,
-            },
-            toPath(current),
-          )}
+        {paths.map((pr) => (
+          <path
+            key={pr.id}
+            d={pr.d}
+            fill="none"
+            stroke={pr.color}
+            strokeWidth={pr.width}
+            strokeOpacity={pr.opacity}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={pr.tool === "highlighter" ? { mixBlendMode: "multiply" } : undefined}
+          />
+        ))}
+        {current && tool !== "eraser" && (
+          <path
+            d={toPath(current)}
+            fill="none"
+            stroke={color}
+            strokeWidth={tool === "highlighter" ? width * HL_WIDTH_MULT : width}
+            strokeOpacity={tool === "highlighter" ? HL_OPACITY : 1}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={tool === "highlighter" ? { mixBlendMode: "multiply" } : undefined}
+          />
+        )}
       </svg>
 
       {enabled && (

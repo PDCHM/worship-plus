@@ -2474,7 +2474,13 @@ export default function SongEditor({
           className={"relative " + (effColumnView ? "" : "space-y-8 min-w-fit")}
           style={sectionsContainerStyle}
         >
-          {readOnly && <MarkupOverlay enabled={markupMode} onDone={() => setMarkupMode(false)} />}
+          {readOnly && (
+            <MarkupOverlay
+              enabled={markupMode}
+              onDone={() => setMarkupMode(false)}
+              reprojectKey={`${zoomOffset}|${Math.round(fitFont)}|${playLayout}|${viewMode}|${fitColumns}|${effColumnView}|${song.key}|${song.capo ?? "-"}`}
+            />
+          )}
           {song.sections.map((section, sIdx) => {
             const colorKey = getSectionColorKey(section.label);
             const c = colors[colorKey];
