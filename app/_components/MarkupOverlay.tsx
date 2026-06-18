@@ -531,6 +531,12 @@ export default function MarkupOverlay({
     setEditingNote({ id: null, anchor, offset, x: p[0], y: p[1], text: "" });
   };
 
+  const deleteNote = () => {
+    const en = editingNoteRef.current;
+    setEditingNote(null);
+    if (en?.id) { setStrokes((prev) => prev.filter((s) => s.id !== en.id)); scheduleSave(); }
+  };
+
   const commitNote = () => {
     const en = editingNoteRef.current;
     if (!en) return;
@@ -560,10 +566,12 @@ export default function MarkupOverlay({
     setHlPreview(computeHighlightRects(nd.lineId, nd.startIndex, nd.endIndex, origin));
   };
 
-  // Touch never draws once a pen is active for the session, or whenever the
-  // Pencil-only override is on. (Touch still reaches the browser for scroll and
-  // two-finger pinch-zoom via touch-action.)
-  const ignoreTouch = (e: React.PointerEvent) => (penSeen.current || pencilOnly) && e.pointerType === "touch";
+  // Touch never DRAWS once a pen is active / Pencil-only is on. This applies only
+  // to the freehand drawing tools — the Note and Eraser tools are discrete taps,
+  // so finger/stylus/mouse must all work for select/edit/delete regardless of
+  // palm rejection. (Touch still reaches the browser for scroll/pinch-zoom.)
+  const ignoreTouch = (e: React.PointerEvent) =>
+    (tool === "pen" || tool === "highlight") && (penSeen.current || pencilOnly) && e.pointerType === "touch";
 
   // When a pen lands: discard any in-progress touch stroke, evict touch pointers
   // (so they don't trip the multi-touch guard), and retract a touch stroke that
@@ -780,20 +788,48 @@ export default function MarkupOverlay({
       )}
 
       {enabled && editingNote && (
-        <input
-          key={editingNote.id ?? "new-note"}
-          autoFocus
-          value={editingNote.text}
-          placeholder="Note…"
-          onChange={(e) => setEditingNote((n) => (n ? { ...n, text: e.target.value } : n))}
-          onBlur={commitNote}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") { e.preventDefault(); commitNote(); }
-            else if (e.key === "Escape") { e.preventDefault(); setEditingNote(null); }
-          }}
-          className="absolute z-30 -translate-y-1/2 w-44 max-w-[60vw] px-2 py-1 rounded-lg text-xs font-medium bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border-2 border-indigo-500 shadow-lg outline-none"
-          style={{ left: editingNote.x, top: editingNote.y, borderLeftColor: color }}
-        />
+        <div
+          className="absolute z-30 -translate-y-1/2 flex items-center gap-1 p-1 rounded-lg bg-white dark:bg-slate-900 border-2 border-indigo-500 shadow-lg max-w-[calc(100vw-16px)]"
+          style={{ left: editingNote.x, top: editingNote.y }}
+        >
+          <input
+            key={editingNote.id ?? "new-note"}
+            autoFocus
+            value={editingNote.text}
+            placeholder="Note…"
+            onChange={(e) => setEditingNote((n) => (n ? { ...n, text: e.target.value } : n))}
+            onBlur={commitNote}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); commitNote(); }
+              else if (e.key === "Escape") { e.preventDefault(); setEditingNote(null); }
+            }}
+            className="w-40 max-w-[50vw] px-2 py-1 text-xs font-medium bg-transparent text-slate-900 dark:text-slate-100 outline-none"
+          />
+          {editingNote.id && (
+            // onPointerDown preventDefault keeps the input focused so its onBlur
+            // doesn't fire and pre-empt this action.
+            <button
+              type="button"
+              aria-label="Delete note"
+              title="Delete note"
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={deleteNote}
+              className="w-8 h-8 shrink-0 rounded-md flex items-center justify-center text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+            </button>
+          )}
+          <button
+            type="button"
+            aria-label="Done"
+            title="Done"
+            onPointerDown={(e) => e.preventDefault()}
+            onClick={commitNote}
+            className="w-8 h-8 shrink-0 rounded-md flex items-center justify-center bg-indigo-600 hover:bg-indigo-700 text-white transition-colors"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+          </button>
+        </div>
       )}
 
       {enabled && (
