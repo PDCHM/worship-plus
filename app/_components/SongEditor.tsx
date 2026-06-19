@@ -805,6 +805,11 @@ export default function SongEditor({
   // Set true while a chord is actually dragged so the trailing click doesn't
   // open the chord editor.
   const chordDraggedRef = useRef(false);
+  // Direct-manipulation chord drag: a ghost follows the pointer and a caret marks
+  // the word it'll snap to; the actual re-anchor happens once, on release.
+  const [dragGhost, setDragGhost] = useState<{ x: number; y: number; text: string } | null>(null);
+  const [dragCaret, setDragCaret] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const dragLastRef = useRef<{ wordIndex: number; offset: number } | null>(null);
   const [clipboard, setClipboard] = useState<Section | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     chordId: string;
@@ -1682,12 +1687,13 @@ export default function SongEditor({
     );
   };
 
-  // Drag a chord; it snaps to whichever word-unit the pointer is nearest
-  // (hit-testing the rendered units by their on-screen rects). On lyric lines
-  // it re-anchors to that word; on chord-only lines it reorders the chords.
-  // Works identically in 1/2/3-column layouts.
+  // Drag a chord with DIRECT MANIPULATION: a ghost rides under the pointer 1:1
+  // (no mid-drag snapping) and a caret highlights the word it WILL land on. The
+  // actual re-anchor happens once — on release (or a mid-drag pointercancel) — to
+  // the nearest word + the sub-word offset under the drop point. The user drives
+  // the landing instead of the chord jumping between words. Works in 1/2/3 cols.
   const handleChordDragStart =
-    (lineId: string, chordId: string, chordOnly: boolean) =>
+    (lineId: string, chordId: string, chordOnly: boolean, chordText: string) =>
     (e: React.PointerEvent) => {
       if (readOnly) return;
       if (editingChord === chordId) return;
@@ -1697,17 +1703,15 @@ export default function SongEditor({
       chordDraggedRef.current = false;
       let moved = false;
       const pointerId = e.pointerId;
-      // Capture IMMEDIATELY on the STABLE sections container (not the glyph —
-      // whose DOM node remounts when the chord re-anchors to another word, which
-      // would drop a glyph-level capture on the very cross-word move we need).
-      // Doing it on pointerdown (not after the move threshold) closes the window
-      // where only the browser's implicit capture held the gesture — Samsung/
-      // Android drop that once the finger leaves the tiny glyph, which is the
-      // "sometimes works" flake. Also hold touch-action so a leftward drag isn't
-      // claimed by scroll / the Android edge back-swipe.
+      // Capture IMMEDIATELY on the STABLE sections container (not the glyph, whose
+      // DOM node remounts on re-anchor) so finger/S-Pen catch + hold the gesture
+      // every time; hold touch-action so a leftward drag isn't claimed by scroll
+      // or the Android edge back-swipe.
       const captureEl = sectionsRef.current;
       try { captureEl?.setPointerCapture(pointerId); } catch {}
       if (captureEl) captureEl.style.touchAction = "none";
+      dragLastRef.current = null;
+
       const onMove = (ev: PointerEvent) => {
         if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) > 4) {
           moved = true;
@@ -1716,6 +1720,9 @@ export default function SongEditor({
         }
         if (!moved) return;
         ev.preventDefault();
+        // Ghost rides with the pointer — no data change yet.
+        setDragGhost({ x: ev.clientX, y: ev.clientY, text: chordText });
+        // Preview the landing: nearest word-unit on this line to the pointer.
         const units = Array.from(
           document.querySelectorAll<HTMLElement>(`[data-wu-line="${lineId}"]`),
         );
@@ -1726,7 +1733,7 @@ export default function SongEditor({
           const r = el.getBoundingClientRect();
           const cx = r.left + r.width / 2;
           const cy = r.top + r.height / 2;
-          // Weight vertical distance so dragging prefers words on the same row.
+          // Weight vertical distance so it prefers words on the same row.
           const d = Math.abs(ev.clientX - cx) + Math.abs(ev.clientY - cy) * 3;
           if (d < bestDist) {
             bestDist = d;
@@ -1734,34 +1741,40 @@ export default function SongEditor({
             if (!Number.isNaN(wi)) { bestIdx = wi; bestEl = el; }
           }
         }
-        if (bestIdx != null) {
-          if (chordOnly) {
-            reorderChordToSlot(lineId, chordId, bestIdx);
-          } else {
-            // Sub-word offset from where in the target word the pointer dropped.
-            const wordEl = bestEl?.querySelector<HTMLElement>("[data-word-text]");
-            const offset = wordEl
-              ? offsetWithinWord(ev.clientX, wordEl, (wordEl.textContent ?? "").length)
-              : 0;
-            setChordWord(lineId, chordId, bestIdx, offset);
-          }
+        if (bestIdx != null && bestEl) {
+          const wordEl = bestEl.querySelector<HTMLElement>("[data-word-text]");
+          const caretEl = wordEl ?? bestEl;
+          const cr = caretEl.getBoundingClientRect();
+          setDragCaret({ x: cr.left, y: cr.top, w: cr.width, h: cr.height });
+          // Sub-word offset under the pointer, clamped within offsetWithinWord.
+          const offset = !chordOnly && wordEl
+            ? offsetWithinWord(ev.clientX, wordEl, (wordEl.textContent ?? "").length)
+            : 0;
+          dragLastRef.current = { wordIndex: bestIdx, offset };
         }
       };
-      // Shared by pointerup AND pointercancel: each onMove already committed the
-      // chord to its last word/offset via setChordWord, so a mid-drag cancel
-      // (e.g. an Android back-swipe slipping through) keeps the last position
-      // rather than discarding it.
-      const onUp = () => {
+
+      // Shared by pointerup AND pointercancel — commit the LAST previewed landing
+      // (so a back-swipe slipping through still lands the chord, never discards).
+      const finishDrag = () => {
         document.removeEventListener("pointermove", onMove);
-        document.removeEventListener("pointerup", onUp);
-        document.removeEventListener("pointercancel", onUp);
+        document.removeEventListener("pointerup", finishDrag);
+        document.removeEventListener("pointercancel", finishDrag);
         try { captureEl?.releasePointerCapture(pointerId); } catch {}
         if (captureEl) captureEl.style.touchAction = "";
+        const landing = dragLastRef.current;
+        if (moved && landing) {
+          if (chordOnly) reorderChordToSlot(lineId, chordId, landing.wordIndex);
+          else setChordWord(lineId, chordId, landing.wordIndex, landing.offset);
+        }
+        dragLastRef.current = null;
         setDraggingId(null);
+        setDragGhost(null);
+        setDragCaret(null);
       };
       document.addEventListener("pointermove", onMove, { passive: false });
-      document.addEventListener("pointerup", onUp);
-      document.addEventListener("pointercancel", onUp);
+      document.addEventListener("pointerup", finishDrag);
+      document.addEventListener("pointercancel", finishDrag);
     };
 
   const deleteChord = (chordId: string) => {
@@ -2685,7 +2698,7 @@ export default function SongEditor({
                         onPointerDown={
                           readOnly
                             ? undefined
-                            : handleChordDragStart(line.id, ch.id, chordOnly)
+                            : handleChordDragStart(line.id, ch.id, chordOnly, ch.chord)
                         }
                         onClick={
                           readOnly
@@ -2720,9 +2733,10 @@ export default function SongEditor({
                               // shift to keep the glyph visually put (easier leftward
                               // re-grab). Chord-only lines: chords are inline, so no
                               // negative margin (would collapse/overlap neighbours).
-                              (hasWords ? "px-2 py-1 -mx-2 " : "px-1.5 py-1 ") +
+                              (hasWords ? "px-3 py-2.5 -mx-3 " : "px-2.5 py-2 ") +
                               (draggingId === ch.id
-                                ? "cursor-grabbing bg-indigo-100 dark:bg-indigo-900/70"
+                                // Dim the original in place while its ghost rides the pointer.
+                                ? "cursor-grabbing opacity-30"
                                 : "cursor-grab hover:bg-indigo-50 dark:hover:bg-indigo-950/60")
                         }`}
                         style={{
@@ -3225,6 +3239,25 @@ export default function SongEditor({
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </button>
       </div>
+
+      {/* Chord drag: live caret on the landing word + a ghost under the pointer. */}
+      {dragCaret && (
+        <div
+          aria-hidden
+          className="fixed z-40 pointer-events-none rounded bg-indigo-400/25 ring-1 ring-indigo-400/60 print:hidden"
+          style={{ left: dragCaret.x, top: dragCaret.y, width: dragCaret.w, height: dragCaret.h }}
+        />
+      )}
+      {dragGhost && (
+        <div
+          aria-hidden
+          className="fixed z-50 pointer-events-none font-mono font-bold px-1 rounded-md bg-indigo-600 text-white shadow-lg shadow-indigo-600/40 whitespace-nowrap print:hidden"
+          style={{ left: dragGhost.x, top: dragGhost.y, fontSize: chordFontSize, transform: "translate(-50%, -130%)" }}
+        >
+          {dragGhost.text}
+        </div>
+      )}
+
       {quickActionsOpen && (
         <QuickActionsPanel
           song={song}
