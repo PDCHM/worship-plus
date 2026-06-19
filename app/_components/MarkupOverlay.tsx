@@ -617,23 +617,31 @@ export default function MarkupOverlay({
     currentInput.current = e.pointerType;
     const origin = svgRef.current!.getBoundingClientRect();
     const p = localPoint(e);
+    // iPad Safari otherwise treats a pen/finger drag as a page scroll. Capture
+    // the pointer on the overlay and preventDefault so the draw can't scroll or
+    // shift the page (with touch-action:none on the SVG). Applies to pen too,
+    // not just touch. Skipped for the Note tool — a discrete tap → text editor.
+    if (tool !== "note") {
+      try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch {}
+      e.preventDefault();
+    }
     if (tool === "eraser") { eraseAt(p); return; }
     if (tool === "highlight") {
       hlDraftRef.current = null;
       setHlPreview([]);
       updateHighlightDraft(p, origin);
-      svgRef.current?.setPointerCapture?.(e.pointerId);
       return;
     }
     if (tool === "note") { handleNoteTap(p, origin); return; }
     setCurrent([[p[0], p[1], e.pressure || 0.5]]);
-    svgRef.current?.setPointerCapture?.(e.pointerId);
   };
 
   const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
     if (!enabled || aborted.current) return;
     if (ignoreTouch(e)) return;
     if (drawingId.current !== e.pointerId || pointers.current.size > 1) return;
+    if (tool === "note") return;
+    e.preventDefault(); // keep the in-progress draw from scrolling the page
     const origin = svgRef.current!.getBoundingClientRect();
     const p = localPoint(e);
     if (tool === "eraser") { eraseAt(p); return; }
@@ -644,6 +652,7 @@ export default function MarkupOverlay({
 
   const finish = (e: React.PointerEvent<SVGSVGElement>) => {
     pointers.current.delete(e.pointerId);
+    try { svgRef.current?.releasePointerCapture?.(e.pointerId); } catch {}
     if (drawingId.current === e.pointerId) {
       const wasTouch = currentInput.current === "touch";
       const noteTouchCommit = (newId: string) => {
@@ -706,7 +715,10 @@ export default function MarkupOverlay({
         style={{
           zIndex: 10,
           pointerEvents: enabled ? "auto" : "none",
-          touchAction: enabled ? "pinch-zoom" : "auto",
+          // `none` (not pinch-zoom) so a pen/finger draw can't scroll or zoom the
+          // page on iPad Safari. Trades two-finger-zoom-while-drawing (a deferred
+          // item) for reliable drawing.
+          touchAction: enabled ? "none" : "auto",
           cursor: enabled ? "crosshair" : "default",
         }}
         onPointerDown={onPointerDown}
