@@ -1641,7 +1641,10 @@ export default function SongEditor({
   const offsetWithinWord = (clientX: number, el: HTMLElement, wordLen: number): number => {
     const r = el.getBoundingClientRect();
     if (!r.width || wordLen <= 0) return 0;
-    return Math.max(0, Math.round((clientX - r.left) / (r.width / wordLen)));
+    // Clamp to [0, wordLen]: keeps sub-word precision (a chord can sit on any
+    // syllable) but never lets it render past the word's right edge — that drift
+    // pushed the grab target rightward and made dragging a chord back left hard.
+    return Math.max(0, Math.min(wordLen, Math.round((clientX - r.left) / (r.width / wordLen))));
   };
 
   // Attach a chord to a specific word + sub-word offset, keeping the legacy char
@@ -1705,8 +1708,12 @@ export default function SongEditor({
           // implicit pointer capture on remount and fires pointercancel,
           // killing the drag after the first cross-word move (mouse is immune).
           try { sectionsRef.current?.setPointerCapture(pointerId); } catch {}
+          // Hold the song body's touch-action for the drag so a horizontal
+          // (esp. leftward) drag can't be claimed by scroll / Android back-swipe.
+          if (sectionsRef.current) sectionsRef.current.style.touchAction = "none";
         }
         if (!moved) return;
+        ev.preventDefault();
         const units = Array.from(
           document.querySelectorAll<HTMLElement>(`[data-wu-line="${lineId}"]`),
         );
@@ -1743,9 +1750,10 @@ export default function SongEditor({
         document.removeEventListener("pointerup", onUp);
         document.removeEventListener("pointercancel", onUp);
         try { sectionsRef.current?.releasePointerCapture(pointerId); } catch {}
+        if (sectionsRef.current) sectionsRef.current.style.touchAction = "";
         setDraggingId(null);
       };
-      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointermove", onMove, { passive: false });
       document.addEventListener("pointerup", onUp);
       document.addEventListener("pointercancel", onUp);
     };
@@ -2698,12 +2706,18 @@ export default function SongEditor({
                                 });
                               }
                         }
-                        className={`font-mono font-bold leading-none select-none px-0.5 rounded transition-colors ${
+                        className={`font-mono font-bold leading-none select-none rounded transition-colors ${
                           readOnly
-                            ? "cursor-default"
-                            : draggingId === ch.id
-                              ? "cursor-grabbing bg-indigo-100 dark:bg-indigo-900/70"
-                              : "cursor-grab hover:bg-indigo-50 dark:hover:bg-indigo-950/60"
+                            ? "px-0.5 cursor-default"
+                            : // Generous hit-target. Word lines: chord is absolutely
+                              // positioned, so -mx cancels the horizontal padding's
+                              // shift to keep the glyph visually put (easier leftward
+                              // re-grab). Chord-only lines: chords are inline, so no
+                              // negative margin (would collapse/overlap neighbours).
+                              (hasWords ? "px-2 py-1 -mx-2 " : "px-1.5 py-1 ") +
+                              (draggingId === ch.id
+                                ? "cursor-grabbing bg-indigo-100 dark:bg-indigo-900/70"
+                                : "cursor-grab hover:bg-indigo-50 dark:hover:bg-indigo-950/60")
                         }`}
                         style={{
                           fontSize: chordFontSize,
