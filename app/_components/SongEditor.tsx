@@ -1697,20 +1697,22 @@ export default function SongEditor({
       chordDraggedRef.current = false;
       let moved = false;
       const pointerId = e.pointerId;
+      // Capture IMMEDIATELY on the STABLE sections container (not the glyph —
+      // whose DOM node remounts when the chord re-anchors to another word, which
+      // would drop a glyph-level capture on the very cross-word move we need).
+      // Doing it on pointerdown (not after the move threshold) closes the window
+      // where only the browser's implicit capture held the gesture — Samsung/
+      // Android drop that once the finger leaves the tiny glyph, which is the
+      // "sometimes works" flake. Also hold touch-action so a leftward drag isn't
+      // claimed by scroll / the Android edge back-swipe.
+      const captureEl = sectionsRef.current;
+      try { captureEl?.setPointerCapture(pointerId); } catch {}
+      if (captureEl) captureEl.style.touchAction = "none";
       const onMove = (ev: PointerEvent) => {
         if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) > 4) {
           moved = true;
           chordDraggedRef.current = true;
           setDraggingId(chordId);
-          // Capture the pointer on a STABLE element (the sections container) so
-          // the gesture survives the dragged chord's DOM node remounting when it
-          // re-anchors to a different word. Without this, touch loses its
-          // implicit pointer capture on remount and fires pointercancel,
-          // killing the drag after the first cross-word move (mouse is immune).
-          try { sectionsRef.current?.setPointerCapture(pointerId); } catch {}
-          // Hold the song body's touch-action for the drag so a horizontal
-          // (esp. leftward) drag can't be claimed by scroll / Android back-swipe.
-          if (sectionsRef.current) sectionsRef.current.style.touchAction = "none";
         }
         if (!moved) return;
         ev.preventDefault();
@@ -1745,12 +1747,16 @@ export default function SongEditor({
           }
         }
       };
+      // Shared by pointerup AND pointercancel: each onMove already committed the
+      // chord to its last word/offset via setChordWord, so a mid-drag cancel
+      // (e.g. an Android back-swipe slipping through) keeps the last position
+      // rather than discarding it.
       const onUp = () => {
         document.removeEventListener("pointermove", onMove);
         document.removeEventListener("pointerup", onUp);
         document.removeEventListener("pointercancel", onUp);
-        try { sectionsRef.current?.releasePointerCapture(pointerId); } catch {}
-        if (sectionsRef.current) sectionsRef.current.style.touchAction = "";
+        try { captureEl?.releasePointerCapture(pointerId); } catch {}
+        if (captureEl) captureEl.style.touchAction = "";
         setDraggingId(null);
       };
       document.addEventListener("pointermove", onMove, { passive: false });
@@ -2469,7 +2475,7 @@ export default function SongEditor({
 
       <div
         ref={fitWrapRef}
-        className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-4 sm:p-6 md:p-8 overflow-x-auto print:border-0 print:shadow-none print:p-0"
+        className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-4 sm:p-6 md:p-8 overflow-x-auto overscroll-x-none print:border-0 print:shadow-none print:p-0"
         // Fit mode turns this card into the scroll viewport: fixed height with
         // vertical overflow, so the song scrolls inside it only when it can't be
         // shrunk to fit. Scroll mode keeps the card's natural auto height.
