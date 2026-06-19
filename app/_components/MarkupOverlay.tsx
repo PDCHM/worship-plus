@@ -171,6 +171,7 @@ export default function MarkupOverlay({
   userId: string | null;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const surfaceRef = useRef<HTMLDivElement>(null);
   const [strokes, setStrokes] = useState<Item[]>([]); // the song_annotations.strokes array (mixed kinds)
   const [paths, setPaths] = useState<ProjStroke[]>([]);
   const [highlights, setHighlights] = useState<ProjHighlight[]>([]);
@@ -418,6 +419,17 @@ export default function MarkupOverlay({
     }
   }, [enabled]);
 
+  // iOS Safari scrolls/momentum-scrolls from TOUCH events — which touch-action on
+  // <svg> and pointer-event preventDefault do NOT stop. While markup is ON, block
+  // page touch-scroll outright with a non-passive touchmove preventDefault. This
+  // is what actually stops the page shifting under a pen/finger draw on iPad.
+  useEffect(() => {
+    if (!enabled) return;
+    const block = (ev: TouchEvent) => ev.preventDefault();
+    document.addEventListener("touchmove", block, { passive: false });
+    return () => document.removeEventListener("touchmove", block);
+  }, [enabled]);
+
   // ── Freehand-stroke anchor resolution (pen) — slice 5. ─────────────────────
   const resolveAnchor = (pts: Pt[], origin: DOMRect): Anchor => {
     const bbox = bboxOf(pts);
@@ -594,7 +606,7 @@ export default function MarkupOverlay({
     lastTouchCommitId.current = null;
   };
 
-  const onPointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!enabled) return;
     ptrType.current.set(e.pointerId, e.pointerType);
     if (e.pointerType === "pen") {
@@ -622,7 +634,7 @@ export default function MarkupOverlay({
     // shift the page (with touch-action:none on the SVG). Applies to pen too,
     // not just touch. Skipped for the Note tool — a discrete tap → text editor.
     if (tool !== "note") {
-      try { svgRef.current?.setPointerCapture?.(e.pointerId); } catch {}
+      try { surfaceRef.current?.setPointerCapture?.(e.pointerId); } catch {}
       e.preventDefault();
     }
     if (tool === "eraser") { eraseAt(p); return; }
@@ -636,7 +648,7 @@ export default function MarkupOverlay({
     setCurrent([[p[0], p[1], e.pressure || 0.5]]);
   };
 
-  const onPointerMove = (e: React.PointerEvent<SVGSVGElement>) => {
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!enabled || aborted.current) return;
     if (ignoreTouch(e)) return;
     if (drawingId.current !== e.pointerId || pointers.current.size > 1) return;
@@ -650,9 +662,9 @@ export default function MarkupOverlay({
     setCurrent((c) => (c ? [...c, pp] : [pp]));
   };
 
-  const finish = (e: React.PointerEvent<SVGSVGElement>) => {
+  const finish = (e: React.PointerEvent<HTMLDivElement>) => {
     pointers.current.delete(e.pointerId);
-    try { svgRef.current?.releasePointerCapture?.(e.pointerId); } catch {}
+    try { surfaceRef.current?.releasePointerCapture?.(e.pointerId); } catch {}
     if (drawingId.current === e.pointerId) {
       const wasTouch = currentInput.current === "touch";
       const noteTouchCommit = (newId: string) => {
@@ -709,15 +721,17 @@ export default function MarkupOverlay({
 
   return (
     <>
-      <svg
-        ref={svgRef}
-        className="absolute inset-0 h-full w-full print:hidden"
+      {/* The interaction surface is an HTML div — iOS Safari doesn't reliably
+          honor touch-action on <svg>. The div carries the pointer handlers,
+          pointer-capture, and touch-action:none; the SVG inside is render-only
+          (pointer-events none). Combined with the non-passive touchmove block
+          below, this keeps a pen/finger draw from scrolling the page on iPad. */}
+      <div
+        ref={surfaceRef}
+        className="absolute inset-0 print:hidden"
         style={{
           zIndex: 10,
           pointerEvents: enabled ? "auto" : "none",
-          // `none` (not pinch-zoom) so a pen/finger draw can't scroll or zoom the
-          // page on iPad Safari. Trades two-finger-zoom-while-drawing (a deferred
-          // item) for reliable drawing.
           touchAction: enabled ? "none" : "auto",
           cursor: enabled ? "crosshair" : "default",
         }}
@@ -725,6 +739,11 @@ export default function MarkupOverlay({
         onPointerMove={onPointerMove}
         onPointerUp={finish}
         onPointerCancel={finish}
+      >
+      <svg
+        ref={svgRef}
+        className="absolute inset-0 h-full w-full"
+        style={{ pointerEvents: "none" }}
       >
         {/* Highlights first (under freehand ink); multiply blend = highlighter look. */}
         {highlights.map((h) =>
@@ -778,6 +797,7 @@ export default function MarkupOverlay({
           <path d={penPath(current, width * PEN_SIZE_MULT, false)} fill={color} fillOpacity={1} />
         )}
       </svg>
+      </div>
 
       {/* Notes layer — HTML labels above the ink (pointer-events none so the SVG
           still gets taps; tap-to-edit is resolved by hit-testing in the handler).
