@@ -206,8 +206,14 @@ export default function MarkupOverlay({
   const pointers = useRef<Set<number>>(new Set());
   const drawingId = useRef<number | null>(null);
   // The pointer we've pointer-captured for an in-progress draw. Released early if
-  // a second finger lands (so the browser can run native two-finger scrolling).
+  // a scroll gesture begins (a second finger lands) so the stroke can be abandoned.
   const capturedId = useRef<number | null>(null);
+  // Manual scroll state. touch-action on the surface is `none` (so a single touch
+  // is always captured for drawing, never natively scrolled); scrolling gestures
+  // are panned in JS instead. scrollAnchor = the gesture's last reference point;
+  // scrollTarget = the scrollable ancestor (or window) we pan.
+  const scrollAnchor = useRef<{ x: number; y: number; count: number } | null>(null);
+  const scrollTarget = useRef<HTMLElement | Window | null>(null);
   const aborted = useRef(false);
   const hlDraftRef = useRef<{ lineId: string; startIndex: number; endIndex: number } | null>(null);
   // Palm rejection. penSeen is sticky for the markup session (set on the first
@@ -411,6 +417,8 @@ export default function MarkupOverlay({
       hlDraftRef.current = null;
       drawingId.current = null;
       capturedId.current = null;
+      scrollAnchor.current = null;
+      scrollTarget.current = null;
       aborted.current = false;
       pointers.current.clear();
       ptrType.current.clear();
@@ -423,31 +431,74 @@ export default function MarkupOverlay({
     }
   }, [enabled]);
 
-  // Input-aware scroll gate (markup ON). The page must still scroll WITHOUT
-  // exiting markup — but only for non-drawing gestures. iOS Safari scrolls from
-  // raw TOUCH events that touch-action and pointer-level preventDefault don't
-  // stop, so the reliable lever is a non-passive touchmove that preventDefaults
-  // ONLY when the gesture is a draw; everything else falls through to native
-  // scroll (touch-action on the surface is left permissive to allow it).
-  //   • pen/stylus touching       → draw, block scroll
-  //     - iPad: Touch.touchType === "stylus"
+  // Input-aware scroll (markup ON). The surface has touch-action:none, so the page
+  // NEVER scrolls natively while a touch is on the chart — a single finger / 'touch'
+  // digitizer (Xiaomi, capacitive stylus) is always captured for DRAWING instead of
+  // being eaten by native pan. Scrolling is therefore done MANUALLY here, and only
+  // for non-drawing gestures:
+  //   • a recognized digitizer pen is touching → that pointer DRAWS, a finger SCROLLS
+  //     - iPad Pencil: Touch.touchType === "stylus"
   //     - Android S-Pen: its touch events carry no touchType, so trust the live
   //       pointer-draw state (onPointerDown set currentInput "pen")
-  //   • single finger, no pen seen → draw (finger-only mode), block scroll
-  //   • two+ touches, or a finger once a pen is in use → scroll, do NOT block
+  //   • no pen: 1 touch DRAWS; 2+ touches SCROLL (pan by the two-finger midpoint)
+  // Every move is preventDefault'd (touch-action is unreliable on iOS Safari); the
+  // scroll gesture is then panned onto the nearest scrollable ancestor (or window).
   useEffect(() => {
     if (!enabled) return;
-    const isDrawingGesture = (ev: TouchEvent): boolean => {
+    const isDrawingGesture = (touches: Touch[]): boolean => {
       if (drawingId.current !== null && currentInput.current === "pen" && !aborted.current) return true;
-      const touches = Array.from(ev.touches);
       if (touches.some((t) => (t as Touch & { touchType?: string }).touchType === "stylus")) return true;
-      if (touches.length >= 2) return false;
-      if (penSeen.current || pencilOnly) return false;
-      return true;
+      if (touches.length >= 2) return false;            // two-finger → scroll
+      if (penSeen.current || pencilOnly) return false;  // pen present → finger scrolls
+      return true;                                       // finger-only single touch → draw
     };
-    const onMove = (ev: TouchEvent) => { if (isDrawingGesture(ev)) ev.preventDefault(); };
+    const findScrollParent = (el: Element | null): HTMLElement | Window => {
+      let node = el?.parentElement ?? null;
+      while (node) {
+        const st = getComputedStyle(node);
+        if (/(auto|scroll)/.test(st.overflowY) && node.scrollHeight > node.clientHeight) return node;
+        if (/(auto|scroll)/.test(st.overflowX) && node.scrollWidth > node.clientWidth) return node;
+        node = node.parentElement;
+      }
+      return window;
+    };
+    const refPoint = (touches: Touch[]) =>
+      touches.length >= 2
+        ? { x: (touches[0].clientX + touches[1].clientX) / 2, y: (touches[0].clientY + touches[1].clientY) / 2 }
+        : { x: touches[0].clientX, y: touches[0].clientY };
+    const onStart = () => { scrollAnchor.current = null; };
+    const onMove = (ev: TouchEvent) => {
+      ev.preventDefault();
+      const touches = Array.from(ev.touches);
+      if (touches.length === 0) return;
+      if (isDrawingGesture(touches)) { scrollAnchor.current = null; return; } // drawing → pointer handlers
+      // Scroll gesture — pan manually.
+      const ref = refPoint(touches);
+      const a = scrollAnchor.current;
+      if (!a || a.count !== touches.length) {
+        // Establish (or re-establish, when the finger count changes) the baseline.
+        scrollAnchor.current = { x: ref.x, y: ref.y, count: touches.length };
+        scrollTarget.current = findScrollParent(surfaceRef.current);
+        return;
+      }
+      const dx = ref.x - a.x;
+      const dy = ref.y - a.y;
+      const target = scrollTarget.current ?? window;
+      if (target === window) window.scrollBy(-dx, -dy);
+      else { (target as HTMLElement).scrollTop -= dy; (target as HTMLElement).scrollLeft -= dx; }
+      scrollAnchor.current = { x: ref.x, y: ref.y, count: touches.length };
+    };
+    const onEnd = (ev: TouchEvent) => { if (ev.touches.length === 0) scrollAnchor.current = null; };
+    document.addEventListener("touchstart", onStart, { passive: true });
     document.addEventListener("touchmove", onMove, { passive: false });
-    return () => document.removeEventListener("touchmove", onMove);
+    document.addEventListener("touchend", onEnd, { passive: true });
+    document.addEventListener("touchcancel", onEnd, { passive: true });
+    return () => {
+      document.removeEventListener("touchstart", onStart);
+      document.removeEventListener("touchmove", onMove);
+      document.removeEventListener("touchend", onEnd);
+      document.removeEventListener("touchcancel", onEnd);
+    };
   }, [enabled, pencilOnly]);
 
   // ── Freehand-stroke anchor resolution (pen) — slice 5. ─────────────────────
@@ -638,8 +689,8 @@ export default function MarkupOverlay({
     pointers.current.add(e.pointerId);
     if (pointers.current.size > 1) {
       // Second touch → a scroll/pan gesture (Procreate pattern), not a draw.
-      // Abort the in-progress stroke and release the captured first pointer so the
-      // browser runs native two-finger scrolling; the touchmove gate lets it pass.
+      // Abort the in-progress stroke and release the captured first pointer; the
+      // touch gate then pans the page manually from the two-finger midpoint.
       aborted.current = true;
       setCurrent(null);
       setHlPreview([]);
@@ -813,15 +864,15 @@ export default function MarkupOverlay({
 
       {/* Interaction surface — mounted ONLY while markup is ON. This HTML div
           carries the pointer handlers and pointer-capture for drawing. touch-action
-          is LEFT PERMISSIVE (pan-x pan-y) so non-drawing gestures can scroll the
-          page natively without leaving markup; a draw is kept from scrolling by
-          pointer-capture + preventDefault plus the input-aware touchmove gate above.
-          Absent from the DOM when markup is OFF, so it can't swallow wheel scroll. */}
+          is `none`: a single touch is ALWAYS captured for drawing and never eaten by
+          native pan (the fix for capacitive 'touch' digitizers like Xiaomi). Scrolling
+          without leaving markup is done manually in the touch gate above. Absent from
+          the DOM when markup is OFF, so it can't swallow desktop wheel scroll. */}
       {enabled && (
         <div
           ref={surfaceRef}
           className="absolute inset-0 print:hidden"
-          style={{ zIndex: 10, touchAction: "pan-x pan-y", cursor: "crosshair" }}
+          style={{ zIndex: 10, touchAction: "none", cursor: "crosshair" }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={finish}
