@@ -1021,7 +1021,7 @@ const KEY_COLORS: Record<string, { bg: string; fg: string }> = {
   "F#": { bg: "#EAF3DE", fg: "#27500A" },
 };
 
-function SongRow({
+export function SongRow({
   song,
   index,
   onOpen,

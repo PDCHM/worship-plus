@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Song } from "@/lib/song";
 import ConfirmDialog from "@/app/_components/ConfirmDialog";
+import { SongRow } from "@/app/_components/Library";
 
 type DeleteConfirm = { title: string; message: string; onConfirm: () => void } | null;
 
@@ -49,8 +50,13 @@ export type FoldersViewProps = {
   onDelete: (id: string) => void;
   onAddSong: (folderId: string, songId: string) => Promise<void>;
   onRemoveSong: (folderId: string, songId: string) => void;
+  onToggleFavorite: (songId: string) => void;
   onCommitOrder: (folderId: string, orderedSongIds: string[]) => Promise<void>;
   onOpenSong: (id: string, opts?: { setlistId?: string }) => void;
+  // Shared per-user grid/list preference (same value the Library/All Songs toggle
+  // uses), so an opened folder can switch between card grid and compact list.
+  libraryView: "grid" | "list";
+  onLibraryViewChange: (v: "grid" | "list") => void;
   onUpdateDate: (id: string, date: string | null) => Promise<void>;
   onExportSetlist: (folderId: string) => void;
   setlistEvents: SetlistEvent[];
@@ -389,9 +395,33 @@ function Overview({
 
 /* ─── FolderDetail ────────────────────────────────────────────────────────── */
 
+// Grid/list toggle — same control (and look) as the All Folders overview and the
+// All Songs library, so an opened folder can switch its song layout.
+function ViewToggle({ value, onChange }: { value: "grid" | "list"; onChange: (v: "grid" | "list") => void }) {
+  return (
+    <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden" role="group" aria-label="View mode">
+      <button type="button" onClick={() => onChange("grid")} aria-pressed={value === "grid"} aria-label="Grid view" title="Grid view"
+        className={"w-9 h-9 flex items-center justify-center transition-colors " + (value === "grid" ? "bg-indigo-600 text-white" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>
+          <rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>
+        </svg>
+      </button>
+      <button type="button" onClick={() => onChange("list")} aria-pressed={value === "list"} aria-label="List view" title="List view"
+        className={"w-9 h-9 flex items-center justify-center transition-colors " + (value === "list" ? "bg-indigo-600 text-white" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
+          <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+        </svg>
+      </button>
+    </div>
+  );
+}
+
 function FolderDetail({
   folder, currentSongs, songs, onNavigate, onRename, onDelete,
-  onAddSong, onRemoveSong, onOpenSong, showToast,
+  onAddSong, onRemoveSong, onToggleFavorite, onOpenSong, showToast,
+  libraryView, onLibraryViewChange,
 }: { folder: Folder; currentSongs: Song[] } & FoldersViewProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [confirmDel, setConfirmDel] = useState<DeleteConfirm>(null);
@@ -413,13 +443,16 @@ function FolderDetail({
         <p className="text-sm text-slate-500 dark:text-slate-400">
           {currentSongs.length} {currentSongs.length === 1 ? "song" : "songs"}
         </p>
-        <button
-          type="button"
-          onClick={() => setAddOpen(true)}
-          className="h-8 px-3 rounded-lg text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5"
-        >
-          <PlusIconSm /> Add Songs
-        </button>
+        <div className="flex items-center gap-2">
+          <ViewToggle value={libraryView} onChange={onLibraryViewChange} />
+          <button
+            type="button"
+            onClick={() => setAddOpen(true)}
+            className="h-8 px-3 rounded-lg text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5"
+          >
+            <PlusIconSm /> Add Songs
+          </button>
+        </div>
       </div>
       {currentSongs.length === 0 ? (
         <div className="py-14 text-center text-sm text-slate-400 dark:text-slate-500">
@@ -431,6 +464,38 @@ function FolderDetail({
           >
             Add some
           </button>
+        </div>
+      ) : libraryView === "list" ? (
+        // Compact list — reuses the SAME SongRow component as All Songs.
+        <div className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-white dark:bg-slate-900">
+          <div className="grid items-center gap-2 sm:gap-3 px-4 py-2 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 grid-cols-[1fr_64px_44px_32px_32px] sm:grid-cols-[1fr_140px_56px_32px_32px] text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            <span>Song</span>
+            <span>Artist</span>
+            <span className="text-center">Key</span>
+            <span />
+            <span />
+          </div>
+          {currentSongs.map((song, idx) => (
+            <SongRow
+              key={song.id}
+              song={song}
+              index={idx}
+              onOpen={() => onOpenSong(song.id)}
+              onToggleFavorite={() => onToggleFavorite(song.id)}
+              onMenu={(e) => {
+                e.stopPropagation();
+                setConfirmDel({
+                  title: "Remove from folder?",
+                  message: `Remove "${song.title}" from "${folder.name}"?`,
+                  onConfirm: () => { onRemoveSong(folder.id, song.id); showToast("Removed from folder"); },
+                });
+              }}
+              selectMode={false}
+              selected={false}
+              onToggleSelect={() => {}}
+              onEnterSelect={() => {}}
+            />
+          ))}
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">

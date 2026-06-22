@@ -2178,8 +2178,11 @@ export default function Home() {
               onDelete={deleteFolder}
               onAddSong={addSongToFolder}
               onRemoveSong={removeSongFromFolder}
+              onToggleFavorite={toggleFavorite}
               onCommitOrder={commitSetlistOrder}
               onOpenSong={openSong}
+              libraryView={libraryView}
+              onLibraryViewChange={setLibraryView}
               onUpdateDate={updateFolderDate}
               onExportSetlist={setExportSetlistId}
               setlistEvents={setlistEvents}
