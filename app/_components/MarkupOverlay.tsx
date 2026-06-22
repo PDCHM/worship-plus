@@ -205,6 +205,9 @@ export default function MarkupOverlay({
 
   const pointers = useRef<Set<number>>(new Set());
   const drawingId = useRef<number | null>(null);
+  // The pointer we've pointer-captured for an in-progress draw. Released early if
+  // a second finger lands (so the browser can run native two-finger scrolling).
+  const capturedId = useRef<number | null>(null);
   const aborted = useRef(false);
   const hlDraftRef = useRef<{ lineId: string; startIndex: number; endIndex: number } | null>(null);
   // Palm rejection. penSeen is sticky for the markup session (set on the first
@@ -407,6 +410,7 @@ export default function MarkupOverlay({
       setHlPreview([]);
       hlDraftRef.current = null;
       drawingId.current = null;
+      capturedId.current = null;
       aborted.current = false;
       pointers.current.clear();
       ptrType.current.clear();
@@ -419,16 +423,32 @@ export default function MarkupOverlay({
     }
   }, [enabled]);
 
-  // iOS Safari scrolls/momentum-scrolls from TOUCH events — which touch-action on
-  // <svg> and pointer-event preventDefault do NOT stop. While markup is ON, block
-  // page touch-scroll outright with a non-passive touchmove preventDefault. This
-  // is what actually stops the page shifting under a pen/finger draw on iPad.
+  // Input-aware scroll gate (markup ON). The page must still scroll WITHOUT
+  // exiting markup — but only for non-drawing gestures. iOS Safari scrolls from
+  // raw TOUCH events that touch-action and pointer-level preventDefault don't
+  // stop, so the reliable lever is a non-passive touchmove that preventDefaults
+  // ONLY when the gesture is a draw; everything else falls through to native
+  // scroll (touch-action on the surface is left permissive to allow it).
+  //   • pen/stylus touching       → draw, block scroll
+  //     - iPad: Touch.touchType === "stylus"
+  //     - Android S-Pen: its touch events carry no touchType, so trust the live
+  //       pointer-draw state (onPointerDown set currentInput "pen")
+  //   • single finger, no pen seen → draw (finger-only mode), block scroll
+  //   • two+ touches, or a finger once a pen is in use → scroll, do NOT block
   useEffect(() => {
     if (!enabled) return;
-    const block = (ev: TouchEvent) => ev.preventDefault();
-    document.addEventListener("touchmove", block, { passive: false });
-    return () => document.removeEventListener("touchmove", block);
-  }, [enabled]);
+    const isDrawingGesture = (ev: TouchEvent): boolean => {
+      if (drawingId.current !== null && currentInput.current === "pen" && !aborted.current) return true;
+      const touches = Array.from(ev.touches);
+      if (touches.some((t) => (t as Touch & { touchType?: string }).touchType === "stylus")) return true;
+      if (touches.length >= 2) return false;
+      if (penSeen.current || pencilOnly) return false;
+      return true;
+    };
+    const onMove = (ev: TouchEvent) => { if (isDrawingGesture(ev)) ev.preventDefault(); };
+    document.addEventListener("touchmove", onMove, { passive: false });
+    return () => document.removeEventListener("touchmove", onMove);
+  }, [enabled, pencilOnly]);
 
   // ── Freehand-stroke anchor resolution (pen) — slice 5. ─────────────────────
   const resolveAnchor = (pts: Pt[], origin: DOMRect): Anchor => {
@@ -617,11 +637,18 @@ export default function MarkupOverlay({
     if (ignoreTouch(e)) return;
     pointers.current.add(e.pointerId);
     if (pointers.current.size > 1) {
+      // Second touch → a scroll/pan gesture (Procreate pattern), not a draw.
+      // Abort the in-progress stroke and release the captured first pointer so the
+      // browser runs native two-finger scrolling; the touchmove gate lets it pass.
       aborted.current = true;
       setCurrent(null);
       setHlPreview([]);
       hlDraftRef.current = null;
       drawingId.current = null;
+      if (capturedId.current !== null) {
+        try { surfaceRef.current?.releasePointerCapture?.(capturedId.current); } catch {}
+        capturedId.current = null;
+      }
       return;
     }
     aborted.current = false;
@@ -629,12 +656,12 @@ export default function MarkupOverlay({
     currentInput.current = e.pointerType;
     const origin = svgRef.current!.getBoundingClientRect();
     const p = localPoint(e);
-    // iPad Safari otherwise treats a pen/finger drag as a page scroll. Capture
-    // the pointer on the overlay and preventDefault so the draw can't scroll or
-    // shift the page (with touch-action:none on the SVG). Applies to pen too,
-    // not just touch. Skipped for the Note tool — a discrete tap → text editor.
+    // This is a drawing pointer (scrolling inputs returned above): capture it and
+    // preventDefault so the draw doesn't scroll the page. touch-action is left
+    // permissive for native scroll, so suppressing the draw relies on this
+    // preventDefault + the touchmove gate. Skipped for Note — a discrete tap.
     if (tool !== "note") {
-      try { surfaceRef.current?.setPointerCapture?.(e.pointerId); } catch {}
+      try { surfaceRef.current?.setPointerCapture?.(e.pointerId); capturedId.current = e.pointerId; } catch {}
       e.preventDefault();
     }
     if (tool === "eraser") { eraseAt(p); return; }
@@ -664,6 +691,7 @@ export default function MarkupOverlay({
 
   const finish = (e: React.PointerEvent<HTMLDivElement>) => {
     pointers.current.delete(e.pointerId);
+    if (capturedId.current === e.pointerId) capturedId.current = null;
     try { surfaceRef.current?.releasePointerCapture?.(e.pointerId); } catch {}
     if (drawingId.current === e.pointerId) {
       const wasTouch = currentInput.current === "touch";
@@ -783,17 +811,17 @@ export default function MarkupOverlay({
         )}
       </svg>
 
-      {/* Interaction surface — mounted ONLY while markup is ON. iOS Safari doesn't
-          reliably honor touch-action on <svg>, so this HTML div carries the pointer
-          handlers, pointer-capture, and touch-action:none; together with the
-          non-passive touchmove block above it stops a pen/finger draw from scrolling
-          the page on iPad. Because it's absent from the DOM when markup is OFF, it
-          can't cover the chart or swallow desktop wheel/trackpad scroll. */}
+      {/* Interaction surface — mounted ONLY while markup is ON. This HTML div
+          carries the pointer handlers and pointer-capture for drawing. touch-action
+          is LEFT PERMISSIVE (pan-x pan-y) so non-drawing gestures can scroll the
+          page natively without leaving markup; a draw is kept from scrolling by
+          pointer-capture + preventDefault plus the input-aware touchmove gate above.
+          Absent from the DOM when markup is OFF, so it can't swallow wheel scroll. */}
       {enabled && (
         <div
           ref={surfaceRef}
           className="absolute inset-0 print:hidden"
-          style={{ zIndex: 10, touchAction: "none", cursor: "crosshair" }}
+          style={{ zIndex: 10, touchAction: "pan-x pan-y", cursor: "crosshair" }}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={finish}
