@@ -2487,7 +2487,15 @@ export default function SongEditor({
 
       <div
         ref={fitWrapRef}
-        className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-4 sm:p-6 md:p-8 overflow-x-auto overscroll-none print:border-0 print:shadow-none print:p-0"
+        // overscroll-x-none (NOT overscroll-none): `overflow-x-auto` makes this
+        // card a scroll container on BOTH axes (per CSS, overflow-y:visible is
+        // computed to auto when overflow-x is auto). In scroll mode the card is
+        // auto-height with no internal vertical scroll room, so wheel/touch must
+        // CHAIN up to the window. overscroll-behavior-y:none (what `overscroll-none`
+        // adds) tells Blink to swallow that scroll instead of chaining — which
+        // froze scrolling on Chrome/Android (WebKit/iOS chained anyway). Keep only
+        // the x-axis contained so horizontal scroll of wide charts doesn't bounce.
+        className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-4 sm:p-6 md:p-8 overflow-x-auto overscroll-x-none print:border-0 print:shadow-none print:p-0"
         // Fit mode turns this card into the scroll viewport: fixed height with
         // vertical overflow, so the song scrolls inside it only when it can't be
         // shrunk to fit. Scroll mode keeps the card's natural auto height.
