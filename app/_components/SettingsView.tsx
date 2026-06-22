@@ -3,7 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  CHART_FONT_FAMILY,
+  CHART_FONT_OPTIONS,
   DEFAULT_SETTINGS,
+  type ChartFont,
   type Settings,
 } from "@/lib/song";
 import { type Plan } from "@/lib/plans";
@@ -14,18 +17,16 @@ import SupportForm from "@/app/_components/SupportForm";
 type Props = {
   settings: Settings;
   onChange: (settings: Settings) => void;
+  // The chart font lives in section_styles (prefs.chartFont), shared with the
+  // Quick Actions "Font face" picker so both controls read/write the same value.
+  chartFont: ChartFont;
+  onChartFontChange: (font: ChartFont) => void;
   isDark: boolean;
   plan: Plan;
   onUpgrade: () => void;
 };
 
-const FONT_OPTIONS: { value: Settings["fontFamily"]; label: string; css: string }[] = [
-  { value: "system", label: "System", css: "ui-sans-serif, system-ui, sans-serif" },
-  { value: "mono",   label: "Mono",   css: "ui-monospace, Menlo, Consolas, monospace" },
-  { value: "serif",  label: "Serif",  css: "ui-serif, Georgia, serif" },
-];
-
-export default function SettingsView({ settings, onChange, plan, onUpgrade }: Props) {
+export default function SettingsView({ settings, onChange, chartFont, onChartFontChange, plan, onUpgrade }: Props) {
   const update = (patch: Partial<Settings>) =>
     onChange({ ...settings, ...patch });
 
@@ -62,21 +63,22 @@ export default function SettingsView({ settings, onChange, plan, onUpgrade }: Pr
           </div>
         </Row>
 
-        <Row label="Font style">
-          <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
-            {FONT_OPTIONS.map(({ value, label, css }) => (
+        <Row label="Chart font" hint="Monospace faces keep chords aligned over lyrics">
+          <div className="flex flex-wrap justify-end gap-1.5 max-w-[20rem]">
+            {CHART_FONT_OPTIONS.map(({ value, label }) => (
               <button
                 key={value}
                 type="button"
-                onClick={() => update({ fontFamily: value })}
-                className={`h-10 px-3.5 text-sm transition-colors flex items-center gap-2 ${
-                  (settings.fontFamily ?? "system") === value
-                    ? "bg-indigo-600 text-white font-medium"
-                    : "bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+                onClick={() => onChartFontChange(value)}
+                aria-pressed={chartFont === value}
+                style={{ fontFamily: CHART_FONT_FAMILY[value] }}
+                className={`h-10 px-3 text-sm rounded-lg border transition-colors ${
+                  chartFont === value
+                    ? "bg-indigo-600 border-indigo-600 text-white font-medium"
+                    : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
                 }`}
               >
-                <span style={{ fontFamily: css }} className="text-base leading-none">Aa</span>
-                <span className="text-xs">{label}</span>
+                {label}
               </button>
             ))}
           </div>

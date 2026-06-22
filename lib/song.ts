@@ -687,10 +687,11 @@ export const CHART_FONT_OPTIONS: { value: ChartFont; label: string }[] = [
   { value: "courierprime", label: "Courier Prime" },
 ];
 
-// The chart body's font-family. Sans-serif overrides the mono picker (alignment
-// is irrelevant there); otherwise the chosen monospace family applies.
+// The chart body's font-family — always the user's chosen monospace family
+// (prefs.chartFont), the single source of truth for the chart font. Kept
+// monospace so chords stay column-aligned over their syllables.
 export function resolveChartFontFamily(prefs: EditorPrefs): string {
-  return prefs.fontFamily === "sans" ? EDITOR_FONT_FAMILY.sans : CHART_FONT_FAMILY[prefs.chartFont];
+  return CHART_FONT_FAMILY[prefs.chartFont];
 }
 
 // ── Word-block model ───────────────────────────────────────────────────────

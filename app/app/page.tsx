@@ -2135,6 +2135,14 @@ export default function Home() {
             <SettingsView
               settings={settings}
               onChange={setSettings}
+              chartFont={sectionStyles.prefs.chartFont}
+              onChartFontChange={async (chartFont) => {
+                if (!user) return;
+                const next = { ...sectionStyles, prefs: { ...sectionStyles.prefs, chartFont } };
+                setSectionStyles(next);
+                const { error } = await supabase.from("profiles").update({ section_styles: next }).eq("id", user.id);
+                if (error) { logErr("save chart font", error); showToast("Could not save font: " + error.message); }
+              }}
               isDark={isDark}
               plan={(profile?.plan as Plan) ?? "free"}
               onUpgrade={() => setUpgradeModal({ reason: "Subscription" })}

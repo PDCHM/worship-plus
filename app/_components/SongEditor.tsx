@@ -173,7 +173,7 @@ function ChordInput({
         done.current = true;
         onCommit(e.target.value);
       }}
-      className="font-mono font-bold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-200 outline-none rounded px-1 py-0.5 ring-2 ring-indigo-500"
+      className="font-bold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-200 outline-none rounded px-1 py-0.5 ring-2 ring-indigo-500"
       style={{ fontSize }}
     />
   );
@@ -550,13 +550,6 @@ function SectionStylesPanel({
                       {v === "small" ? "S" : v === "medium" ? "M" : "L"}
                     </SegBtn>
                   ))}
-                </div>
-              </div>
-              <div>
-                <label className="text-xs text-slate-500 dark:text-slate-400 mb-1.5 block">Font family</label>
-                <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden w-full">
-                  <SegBtn active={settings.prefs.fontFamily === "mono"} onClick={() => updatePrefs({ fontFamily: "mono" })}>Monospace</SegBtn>
-                  <SegBtn active={settings.prefs.fontFamily === "sans"} onClick={() => updatePrefs({ fontFamily: "sans" })}>Sans-serif</SegBtn>
                 </div>
               </div>
               <div>
@@ -2731,7 +2724,7 @@ export default function SongEditor({
                                 });
                               }
                         }
-                        className={`font-mono font-bold leading-none select-none rounded transition-colors ${
+                        className={`font-bold leading-none select-none rounded transition-colors ${
                           readOnly
                             ? "px-0.5 cursor-default"
                             : // Generous hit-target. Word lines: chord is absolutely
@@ -2750,8 +2743,9 @@ export default function SongEditor({
                           color: chordColor,
                           touchAction: readOnly ? "auto" : "none",
                           fontVariantEmoji: "text",
-                          fontFamily:
-                            "var(--font-geist-mono), ui-monospace, 'SF Mono', Menlo, Consolas, monospace",
+                          // Follow the chart font picker (prefs.chartFont) — all
+                          // options are monospace, so chord alignment holds.
+                          fontFamily: lyricFontFamily,
                         }}
                       >
                         {ch.chord}
@@ -2936,7 +2930,7 @@ export default function SongEditor({
                                       <button
                                         type="button"
                                         onClick={() => startAddChord(line.id, addSlotIndex)}
-                                        className="font-mono font-semibold text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 rounded px-1 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 transition-colors"
+                                        className="font-semibold text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 rounded px-1 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 transition-colors"
                                         style={{ fontSize: chordFontSize }}
                                         title="Add a chord"
                                       >
@@ -3257,8 +3251,8 @@ export default function SongEditor({
       {dragGhost && (
         <div
           aria-hidden
-          className="fixed z-50 pointer-events-none font-mono font-bold px-1 rounded-md bg-indigo-600 text-white shadow-lg shadow-indigo-600/40 whitespace-nowrap print:hidden"
-          style={{ left: dragGhost.x, top: dragGhost.y, fontSize: chordFontSize, transform: "translate(-50%, -130%)" }}
+          className="fixed z-50 pointer-events-none font-bold px-1 rounded-md bg-indigo-600 text-white shadow-lg shadow-indigo-600/40 whitespace-nowrap print:hidden"
+          style={{ left: dragGhost.x, top: dragGhost.y, fontSize: chordFontSize, fontFamily: lyricFontFamily, transform: "translate(-50%, -130%)" }}
         >
           {dragGhost.text}
         </div>
