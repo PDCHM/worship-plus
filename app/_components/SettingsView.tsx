@@ -3,10 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  CHART_FONT_FAMILY,
-  CHART_FONT_OPTIONS,
   DEFAULT_SETTINGS,
-  type ChartFont,
   type Settings,
 } from "@/lib/song";
 import { type Plan } from "@/lib/plans";
@@ -17,16 +14,12 @@ import SupportForm from "@/app/_components/SupportForm";
 type Props = {
   settings: Settings;
   onChange: (settings: Settings) => void;
-  // The chart font lives in section_styles (prefs.chartFont), shared with the
-  // Quick Actions "Font face" picker so both controls read/write the same value.
-  chartFont: ChartFont;
-  onChartFontChange: (font: ChartFont) => void;
   isDark: boolean;
   plan: Plan;
   onUpgrade: () => void;
 };
 
-export default function SettingsView({ settings, onChange, chartFont, onChartFontChange, plan, onUpgrade }: Props) {
+export default function SettingsView({ settings, onChange, plan, onUpgrade }: Props) {
   const update = (patch: Partial<Settings>) =>
     onChange({ ...settings, ...patch });
 
@@ -44,62 +37,10 @@ export default function SettingsView({ settings, onChange, chartFont, onChartFon
       <SubscriptionSection plan={plan} onUpgrade={onUpgrade} />
 
       {/* ── Appearance ── */}
+      {/* Lyric font size, chart font, and show-chords live in the Quick Actions
+          panel instead — there the change previews live on the chart, which can't
+          happen from this page. */}
       <Section title="Appearance">
-        <Row label="Lyric font size" hint={`${settings.fontSize}px`}>
-          <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
-            <button
-              type="button"
-              onClick={() => update({ fontSize: Math.max(12, settings.fontSize - 1) })}
-              className="w-10 h-10 text-lg font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-l-lg transition-colors"
-              aria-label="Decrease font size"
-            >−</button>
-            <span className="min-w-[3rem] text-center font-mono text-sm">{settings.fontSize}</span>
-            <button
-              type="button"
-              onClick={() => update({ fontSize: Math.min(36, settings.fontSize + 1) })}
-              className="w-10 h-10 text-lg font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-r-lg transition-colors"
-              aria-label="Increase font size"
-            >+</button>
-          </div>
-        </Row>
-
-        <Row label="Chart font" hint="Monospace faces keep chords aligned over lyrics">
-          <div className="flex flex-wrap justify-end gap-1.5 max-w-[20rem]">
-            {CHART_FONT_OPTIONS.map(({ value, label }) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => onChartFontChange(value)}
-                aria-pressed={chartFont === value}
-                style={{ fontFamily: CHART_FONT_FAMILY[value] }}
-                className={`h-10 px-3 text-sm rounded-lg border transition-colors ${
-                  chartFont === value
-                    ? "bg-indigo-600 border-indigo-600 text-white font-medium"
-                    : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </Row>
-
-        <Row label="Show chords" hint="Toggle off for a lyrics-only view">
-          <button
-            type="button"
-            onClick={() => update({ showChords: !(settings.showChords ?? true) })}
-            role="switch"
-            aria-checked={settings.showChords ?? true}
-            className={`relative w-12 h-7 rounded-full transition-colors ${
-              (settings.showChords ?? true) ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
-            }`}
-          >
-            <span className={`absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-white shadow-md transition-transform ${
-              (settings.showChords ?? true) ? "translate-x-5" : "translate-x-0"
-            }`} />
-          </button>
-        </Row>
-
         <Row label="Dark mode">
           <button
             type="button"
