@@ -51,6 +51,11 @@ type View =
   | { kind: "groups"; teamId?: string };
 
 const SETTINGS_KEY = "wp-settings-v1";
+// Editor prefs + section styles (incl. prefs.chartFont, the single source of
+// truth for the chart font shared by Settings and Quick Actions). Cached locally
+// — mirroring SETTINGS_KEY — so it hydrates synchronously on reload instead of
+// flashing the default while the authoritative DB copy is fetched.
+const SECTION_STYLES_KEY = "wp-section-styles-v1";
 const LIBRARY_VIEW_KEY = "wp-library-view-v1";
 
 // On-demand loading: startup fetches only these metadata columns for the
@@ -352,6 +357,10 @@ export default function Home() {
   const [groupSongs, setGroupSongs] = useState<GroupSong[]>([]);
   const [groupsLoaded, setGroupsLoaded] = useState(false);
   const [sectionStyles, setSectionStyles] = useState<SectionStyles>(DEFAULT_SECTION_STYLES);
+  // Set once the user changes section styles (e.g. the chart font) this session,
+  // so the async startup profile fetch can't land late and clobber their choice
+  // back to the value the DB held at app-start.
+  const sectionStylesTouched = useRef(false);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [view, setView] = useState<View>(() => {
     if (typeof window === "undefined") return { kind: "library", filter: "all" };
@@ -629,7 +638,9 @@ export default function Home() {
           if (profileRow) {
             const p = profileRow as Profile;
             setProfile({ ...p, plan: (p.plan as Plan | undefined) ?? "free" });
-            setSectionStyles(mergeSectionStyles(p.section_styles));
+            // Authoritative cross-device copy — but don't overwrite a change the
+            // user already made this session while this fetch was in flight.
+            if (!sectionStylesTouched.current) setSectionStyles(mergeSectionStyles(p.section_styles));
           } else {
             setProfile({
               id: u.id,
@@ -855,6 +866,8 @@ export default function Home() {
           sectionColorsDark: { ...DEFAULT_SECTION_COLORS_DARK, ...(parsed.sectionColorsDark ?? {}) },
         });
       }
+      const savedStyles = localStorage.getItem(SECTION_STYLES_KEY);
+      if (savedStyles) setSectionStyles(mergeSectionStyles(JSON.parse(savedStyles)));
       const savedView = localStorage.getItem(LIBRARY_VIEW_KEY);
       if (savedView === "grid" || savedView === "list") setLibraryView(savedView);
     } catch {}
@@ -869,6 +882,15 @@ export default function Home() {
     if (!loaded) return;
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch {}
   }, [settings, loaded]);
+
+  // Keep the local cache of section styles fresh on every change (font picker,
+  // section colors, …). The DB write in onSectionStylesSave remains the
+  // cross-device source of truth; this just guarantees an instant, correct
+  // hydration on the next reload so the two font pickers never diverge.
+  useEffect(() => {
+    if (!loaded) return;
+    try { localStorage.setItem(SECTION_STYLES_KEY, JSON.stringify(sectionStyles)); } catch {}
+  }, [sectionStyles, loaded]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -2113,9 +2135,10 @@ export default function Home() {
               onMarkupModeChange={setEditorMarkup}
               bubbleAuthors={bubbleAuthors}
               sectionStyles={sectionStyles}
-              onSectionStylesChange={setSectionStyles}
+              onSectionStylesChange={(next) => { sectionStylesTouched.current = true; setSectionStyles(next); }}
               onSectionStylesSave={async (next) => {
                 if (!user) return;
+                sectionStylesTouched.current = true;
                 setSectionStyles(next);
                 const { error } = await supabase.from("profiles").update({ section_styles: next }).eq("id", user.id);
                 if (error) { logErr("save section styles", error); showToast("Could not save styles: " + error.message); }
@@ -2138,6 +2161,7 @@ export default function Home() {
               chartFont={sectionStyles.prefs.chartFont}
               onChartFontChange={async (chartFont) => {
                 if (!user) return;
+                sectionStylesTouched.current = true;
                 const next = { ...sectionStyles, prefs: { ...sectionStyles.prefs, chartFont } };
                 setSectionStyles(next);
                 const { error } = await supabase.from("profiles").update({ section_styles: next }).eq("id", user.id);
