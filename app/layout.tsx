@@ -1,5 +1,12 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import {
+  Geist,
+  Geist_Mono,
+  JetBrains_Mono,
+  Roboto_Mono,
+  IBM_Plex_Mono,
+  Courier_Prime,
+} from "next/font/google";
 import "./globals.css";
 import ServiceWorkerRegister from "./_components/ServiceWorkerRegister";
 
@@ -10,6 +17,31 @@ const geistSans = Geist({
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+// Monospace families offered by the chart font picker (Quick Actions). Self-hosted
+// by next/font (no layout shift, no external request); referenced via their CSS
+// vars in CHART_FONT_FAMILY (lib/song.ts). Non-variable faces need explicit weights.
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains-mono",
+  subsets: ["latin"],
+});
+
+const robotoMono = Roboto_Mono({
+  variable: "--font-roboto-mono",
+  subsets: ["latin"],
+});
+
+const ibmPlexMono = IBM_Plex_Mono({
+  variable: "--font-ibm-plex-mono",
+  weight: ["400", "500", "700"],
+  subsets: ["latin"],
+});
+
+const courierPrime = Courier_Prime({
+  variable: "--font-courier-prime",
+  weight: ["400", "700"],
   subsets: ["latin"],
 });
 
@@ -82,7 +114,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${jetbrainsMono.variable} ${robotoMono.variable} ${ibmPlexMono.variable} ${courierPrime.variable} h-full antialiased`}
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />

@@ -9,7 +9,6 @@ import MarkupOverlay from "@/app/_components/MarkupOverlay";
 import { LineBubbles, useSongBubbles } from "@/app/_components/SongBubbles";
 import {
   CHORD_FONT_CLAMP,
-  EDITOR_FONT_FAMILY,
   KEYS,
   LYRIC_FONT_CLAMP,
   LINE_SPACING,
@@ -28,6 +27,7 @@ import {
   mapLine,
   noteToIndex,
   parseBareSectionLabel,
+  resolveChartFontFamily,
   styleLabelFor,
   suggestedCapoForKey,
   tokenizeWords,
@@ -35,6 +35,7 @@ import {
   uid,
   vocalKeySuggestion,
   wordStartOffset,
+  type ChartFont,
   type Chord,
   type EditorPrefs,
   type Line,
@@ -966,7 +967,12 @@ export default function SongEditor({
   // purely visual spacing now — no chord-position math depends on it.
   const colGapPx = numCols === 3 ? 16 : 20;
   const prefs = sectionStyles.prefs;
-  const lyricFontFamily = EDITOR_FONT_FAMILY[prefs.fontFamily];
+  const lyricFontFamily = resolveChartFontFamily(prefs);
+  // Quick Actions chart-font picker. Persists per-user via section_styles, the
+  // same store as the rest of the editor prefs (zoom/font-size live here too).
+  const handleChartFontChange = (chartFont: ChartFont) => {
+    void onSectionStylesSave({ ...sectionStyles, prefs: { ...sectionStyles.prefs, chartFont } });
+  };
   const showChords = settings.showChords ?? true;
   const baseFontSize = LYRIC_FONT_SIZE_PX[prefs.lyricFontSize] + zoomOffset;
   // Ceiling for the fluid clamp() (the --lyric-font-size CSS var). The split-3
@@ -3264,6 +3270,8 @@ export default function SongEditor({
           settings={settings}
           zoomOffset={zoomOffset}
           effectiveFontSize={fitMode ? Math.round(fitFont) : lyricCeiling}
+          chartFont={prefs.chartFont}
+          onChartFontChange={handleChartFontChange}
           autoScrolling={autoScrolling}
           scrollSpeed={scrollSpeed}
           readOnly={readOnly}

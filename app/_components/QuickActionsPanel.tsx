@@ -1,13 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { KEYS, type Song, type Settings } from "@/lib/song";
+import { useEffect, useRef, useState } from "react";
+import {
+  CHART_FONT_FAMILY,
+  CHART_FONT_OPTIONS,
+  KEYS,
+  type ChartFont,
+  type Song,
+  type Settings,
+} from "@/lib/song";
 
 type Props = {
   song: Song;
   settings: Settings;
   zoomOffset: number;
   effectiveFontSize: number;
+  chartFont: ChartFont;
+  onChartFontChange: (font: ChartFont) => void;
   autoScrolling: boolean;
   scrollSpeed: number;
   // Performance layout toggle. Only meaningful in read-only mode; the control is
@@ -26,6 +35,7 @@ type Props = {
 
 export default function QuickActionsPanel({
   song, settings, zoomOffset, effectiveFontSize,
+  chartFont, onChartFontChange,
   autoScrolling, scrollSpeed,
   readOnly = false, playLayout = "scroll", onPlayLayoutChange,
   onTranspose, onCapoChange, onSettingsChange, onZoomChange,
@@ -108,6 +118,9 @@ export default function QuickActionsPanel({
             </StepBtn>
           </div>
         </QARow>
+        <QARow label="Font face">
+          <ChartFontPicker value={chartFont} onChange={onChartFontChange} />
+        </QARow>
         <QARow label="Chords">
           <button type="button" onClick={() => onSettingsChange({ ...settings, showChords: !showChords })}
             className={"relative w-10 h-6 rounded-full transition-colors " + (showChords ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-600")}>
@@ -170,6 +183,47 @@ function QARow({ label, children }: { label: string; children: React.ReactNode }
     <div className="flex items-center justify-between">
       <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">{label}</span>
       {children}
+    </div>
+  );
+}
+
+// Monospace family picker for the chart body. A custom dropdown (not a native
+// <select>) so each option renders in its own typeface — native option lists
+// ignore font-family on most platforms. Each label is shown in the font it sets.
+function ChartFontPicker({ value, onChange }: { value: ChartFont; onChange: (font: ChartFont) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const current = CHART_FONT_OPTIONS.find(o => o.value === value) ?? CHART_FONT_OPTIONS[0];
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button type="button" onClick={() => setOpen(o => !o)} aria-haspopup="listbox" aria-expanded={open}
+        className="h-7 w-36 px-2.5 rounded-lg flex items-center justify-between gap-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+        <span className="truncate text-xs" style={{ fontFamily: CHART_FONT_FAMILY[current.value] }}>{current.label}</span>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      {open && (
+        <ul role="listbox" className="absolute right-0 z-50 mt-1 w-40 max-h-64 overflow-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-xl py-1">
+          {CHART_FONT_OPTIONS.map(opt => (
+            <li key={opt.value} role="option" aria-selected={opt.value === value}>
+              <button type="button" onClick={() => { onChange(opt.value); setOpen(false); }}
+                className={"w-full text-left px-3 py-1.5 text-sm transition-colors " + (opt.value === value ? "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-semibold" : "text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800")}
+                style={{ fontFamily: CHART_FONT_FAMILY[opt.value] }}>
+                {opt.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

@@ -496,9 +496,14 @@ export type SectionStyleKey =
 
 export type SectionStyle = { chordColor: string; bold: boolean };
 
+// Which monospace family the chart body renders in. All options are monospace
+// so chord glyphs stay column-aligned over their syllables regardless of choice.
+export type ChartFont = "default" | "jetbrains" | "roboto" | "ibmplex" | "courierprime";
+
 export type EditorPrefs = {
   lyricFontSize: "small" | "medium" | "large";
   fontFamily: "mono" | "sans";
+  chartFont: ChartFont;
   chordFontSize: "small" | "medium" | "large";
   showChordDiagrams: boolean;
   lineSpacing: "compact" | "normal" | "relaxed";
@@ -540,6 +545,7 @@ export const DEFAULT_CANONICAL_STYLES: Record<SectionStyleKey, SectionStyle> = {
 export const DEFAULT_EDITOR_PREFS: EditorPrefs = {
   lyricFontSize: "medium",
   fontFamily: "mono",
+  chartFont: "default",
   chordFontSize: "medium",
   showChordDiagrams: false,
   lineSpacing: "normal",
@@ -610,6 +616,7 @@ function parsePrefs(v: unknown): EditorPrefs {
   const s = v as Partial<EditorPrefs>;
   if (s.lyricFontSize === "small" || s.lyricFontSize === "medium" || s.lyricFontSize === "large") out.lyricFontSize = s.lyricFontSize;
   if (s.fontFamily === "mono" || s.fontFamily === "sans") out.fontFamily = s.fontFamily;
+  if (s.chartFont === "default" || s.chartFont === "jetbrains" || s.chartFont === "roboto" || s.chartFont === "ibmplex" || s.chartFont === "courierprime") out.chartFont = s.chartFont;
   if (s.chordFontSize === "small" || s.chordFontSize === "medium" || s.chordFontSize === "large") out.chordFontSize = s.chordFontSize;
   if (typeof s.showChordDiagrams === "boolean") out.showChordDiagrams = s.showChordDiagrams;
   if (s.lineSpacing === "compact" || s.lineSpacing === "normal" || s.lineSpacing === "relaxed") out.lineSpacing = s.lineSpacing;
@@ -660,6 +667,31 @@ export const EDITOR_FONT_FAMILY: Record<EditorPrefs["fontFamily"], string> = {
   mono: "ui-monospace, Menlo, Consolas, 'Courier New', monospace",
   sans: "ui-sans-serif, system-ui, -apple-system, sans-serif",
 };
+
+// Monospace family options for the chart body. The non-default options are
+// self-hosted via next/font/google (see app/layout.tsx), exposed as CSS vars on
+// <html>; each keeps a generic monospace fallback so a failed load still aligns.
+export const CHART_FONT_FAMILY: Record<ChartFont, string> = {
+  default:      EDITOR_FONT_FAMILY.mono,
+  jetbrains:    "var(--font-jetbrains-mono), ui-monospace, monospace",
+  roboto:       "var(--font-roboto-mono), ui-monospace, monospace",
+  ibmplex:      "var(--font-ibm-plex-mono), ui-monospace, monospace",
+  courierprime: "var(--font-courier-prime), ui-monospace, monospace",
+};
+
+export const CHART_FONT_OPTIONS: { value: ChartFont; label: string }[] = [
+  { value: "default",      label: "System Mono" },
+  { value: "jetbrains",    label: "JetBrains Mono" },
+  { value: "roboto",       label: "Roboto Mono" },
+  { value: "ibmplex",      label: "IBM Plex Mono" },
+  { value: "courierprime", label: "Courier Prime" },
+];
+
+// The chart body's font-family. Sans-serif overrides the mono picker (alignment
+// is irrelevant there); otherwise the chosen monospace family applies.
+export function resolveChartFontFamily(prefs: EditorPrefs): string {
+  return prefs.fontFamily === "sans" ? EDITOR_FONT_FAMILY.sans : CHART_FONT_FAMILY[prefs.chartFont];
+}
 
 // ── Word-block model ───────────────────────────────────────────────────────
 // Chords attach to whole words. A word token is a maximal run of non-space
