@@ -721,28 +721,13 @@ export default function MarkupOverlay({
 
   return (
     <>
-      {/* The interaction surface is an HTML div — iOS Safari doesn't reliably
-          honor touch-action on <svg>. The div carries the pointer handlers,
-          pointer-capture, and touch-action:none; the SVG inside is render-only
-          (pointer-events none). Combined with the non-passive touchmove block
-          below, this keeps a pen/finger draw from scrolling the page on iPad. */}
-      <div
-        ref={surfaceRef}
-        className="absolute inset-0 print:hidden"
-        style={{
-          zIndex: 10,
-          pointerEvents: enabled ? "auto" : "none",
-          touchAction: enabled ? "none" : "auto",
-          cursor: enabled ? "crosshair" : "default",
-        }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={finish}
-        onPointerCancel={finish}
-      >
+      {/* Display layer — saved ink, always rendered so existing markup shows in
+          read-only view. Strictly non-interactive (pointer-events none) so it can
+          NEVER intercept the chart's scroll (desktop wheel/trackpad) or taps that
+          live beneath it. The interactive surface below is what handles drawing. */}
       <svg
         ref={svgRef}
-        className="absolute inset-0 h-full w-full"
+        className="absolute inset-0 h-full w-full print:hidden"
         style={{ pointerEvents: "none" }}
       >
         {/* Highlights first (under freehand ink); multiply blend = highlighter look. */}
@@ -797,7 +782,24 @@ export default function MarkupOverlay({
           <path d={penPath(current, width * PEN_SIZE_MULT, false)} fill={color} fillOpacity={1} />
         )}
       </svg>
-      </div>
+
+      {/* Interaction surface — mounted ONLY while markup is ON. iOS Safari doesn't
+          reliably honor touch-action on <svg>, so this HTML div carries the pointer
+          handlers, pointer-capture, and touch-action:none; together with the
+          non-passive touchmove block above it stops a pen/finger draw from scrolling
+          the page on iPad. Because it's absent from the DOM when markup is OFF, it
+          can't cover the chart or swallow desktop wheel/trackpad scroll. */}
+      {enabled && (
+        <div
+          ref={surfaceRef}
+          className="absolute inset-0 print:hidden"
+          style={{ zIndex: 10, touchAction: "none", cursor: "crosshair" }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={finish}
+          onPointerCancel={finish}
+        />
+      )}
 
       {/* Notes layer — HTML labels above the ink (pointer-events none so the SVG
           still gets taps; tap-to-edit is resolved by hit-testing in the handler).
