@@ -49,6 +49,10 @@ export type FoldersViewProps = {
   onRename: (id: string, name: string) => Promise<void>;
   onDelete: (id: string) => void;
   onAddSong: (folderId: string, songId: string) => Promise<void>;
+  // Launches the shared Add-Song sheet scoped to this folder/setlist (create,
+  // import, AI, search, or "Choose from library") — any resulting song is
+  // auto-linked to the folder. Handled in the page so it reuses AddSongSheet.
+  onAddSongs: (folderId: string) => void;
   onRemoveSong: (folderId: string, songId: string) => void;
   onToggleFavorite: (songId: string) => void;
   onCommitOrder: (folderId: string, orderedSongIds: string[]) => Promise<void>;
@@ -419,13 +423,11 @@ function ViewToggle({ value, onChange }: { value: "grid" | "list"; onChange: (v:
 }
 
 function FolderDetail({
-  folder, currentSongs, songs, onNavigate, onRename, onDelete,
-  onAddSong, onRemoveSong, onToggleFavorite, onOpenSong, showToast,
+  folder, currentSongs, onNavigate, onRename, onDelete,
+  onAddSongs, onRemoveSong, onToggleFavorite, onOpenSong, showToast,
   libraryView, onLibraryViewChange,
 }: { folder: Folder; currentSongs: Song[] } & FoldersViewProps) {
-  const [addOpen, setAddOpen] = useState(false);
   const [confirmDel, setConfirmDel] = useState<DeleteConfirm>(null);
-  const alreadyIn = new Set(currentSongs.map((s) => s.id));
 
   return (
     <div className="max-w-5xl w-full mx-auto px-4 sm:px-6 py-6">
@@ -447,7 +449,7 @@ function FolderDetail({
           <ViewToggle value={libraryView} onChange={onLibraryViewChange} />
           <button
             type="button"
-            onClick={() => setAddOpen(true)}
+            onClick={() => onAddSongs(folder.id)}
             className="h-8 px-3 rounded-lg text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5"
           >
             <PlusIconSm /> Add Songs
@@ -459,7 +461,7 @@ function FolderDetail({
           No songs yet.{" "}
           <button
             type="button"
-            onClick={() => setAddOpen(true)}
+            onClick={() => onAddSongs(folder.id)}
             className="text-indigo-600 dark:text-indigo-400 hover:underline"
           >
             Add some
@@ -509,15 +511,6 @@ function FolderDetail({
           ))}
         </div>
       )}
-      {addOpen && (
-        <AddSongsModal
-          allSongs={songs}
-          alreadyIn={alreadyIn}
-          folderId={folder.id}
-          onAdd={onAddSong}
-          onClose={() => setAddOpen(false)}
-        />
-      )}
       {confirmDel && (
         <ConfirmDialog
           title={confirmDel.title}
@@ -534,12 +527,11 @@ function FolderDetail({
 /* ─── SetlistDetail ───────────────────────────────────────────────────────── */
 
 function SetlistDetail({
-  folder, currentSongs, songs, folderSongs, onNavigate, onRename, onDelete,
-  onAddSong, onRemoveSong, onCommitOrder, onOpenSong, onUpdateDate, onExportSetlist,
+  folder, currentSongs, folderSongs, onNavigate, onRename, onDelete,
+  onAddSongs, onRemoveSong, onCommitOrder, onOpenSong, onUpdateDate, onExportSetlist,
   setlistEvents, onAddEvent, onDeleteEvent, canUseCalendar, onRequireUpgrade, showToast, teams, currentUserId, onMoveToTeam,
 }: { folder: Folder; currentSongs: Song[] } & FoldersViewProps) {
   const isOwner = folder.ownerId === currentUserId;
-  const [addOpen, setAddOpen] = useState(false);
   const [eventModal, setEventModal] = useState<{ type: "rehearsal" | "event" } | null>(null);
   const [confirmDel, setConfirmDel] = useState<DeleteConfirm>(null);
 
@@ -575,7 +567,6 @@ function SetlistDetail({
 
   const songById = new Map(currentSongs.map((s) => [s.id, s] as const));
   const orderedSongs = localOrder.map((id) => songById.get(id)).filter((s): s is Song => Boolean(s));
-  const alreadyIn = new Set(orderedSongs.map((s) => s.id));
 
   // Unified drag start for both pointer types:
   //  • Mouse/pen: drag begins only from the drag handle, after a 6px move.
@@ -762,7 +753,7 @@ function SetlistDetail({
         </p>
         <button
           type="button"
-          onClick={() => setAddOpen(true)}
+          onClick={() => onAddSongs(folder.id)}
           className="h-8 px-3 rounded-lg text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5"
         >
           <PlusIconSm /> Add Songs
@@ -773,7 +764,7 @@ function SetlistDetail({
           No songs yet.{" "}
           <button
             type="button"
-            onClick={() => setAddOpen(true)}
+            onClick={() => onAddSongs(folder.id)}
             className="text-indigo-600 dark:text-indigo-400 hover:underline"
           >
             Add some
@@ -827,15 +818,6 @@ function SetlistDetail({
             );
           })}
         </div>
-      )}
-      {addOpen && (
-        <AddSongsModal
-          allSongs={songs}
-          alreadyIn={alreadyIn}
-          folderId={folder.id}
-          onAdd={onAddSong}
-          onClose={() => setAddOpen(false)}
-        />
       )}
       {eventModal && (
         <AddEventModal
@@ -971,7 +953,7 @@ function AddEventModal({ type, defaultLabel, defaultDate, onSave, onClose }: {
 
 /* ─── AddSongsModal ───────────────────────────────────────────────────────── */
 
-function AddSongsModal({
+export function AddSongsModal({
   allSongs, alreadyIn, folderId, onAdd, onClose,
 }: {
   allSongs: Song[];

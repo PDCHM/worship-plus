@@ -8,6 +8,10 @@ type Props = {
   onAiChords: () => void;
   onImportFile: () => void;
   onSearchOnline: () => void;
+  // When provided (folder/setlist "+ Add Songs" flow), a "Choose from library"
+  // entry is shown that opens the existing library picker. Omitted in the plain
+  // library context, where there's nothing to add the song to.
+  onChooseFromLibrary?: () => void;
   onClose: () => void;
 };
 
@@ -26,8 +30,11 @@ const ICON_FILE = (
 const ICON_GLOBE = (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
 );
+const ICON_LIBRARY = (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 5h18"/><path d="M3 12h18"/><path d="M3 19h18"/><circle cx="7" cy="5" r="0.5" fill="currentColor"/></svg>
+);
 
-export default function AddSongSheet({ onBuildNew, onPasteChart, onAiChords, onImportFile, onSearchOnline, onClose }: Props) {
+export default function AddSongSheet({ onBuildNew, onPasteChart, onAiChords, onImportFile, onSearchOnline, onChooseFromLibrary, onClose }: Props) {
   // Second-level menus: "Paste Song" (paste text) and "Import Song" (which shows
   // format guidance before opening the native file picker).
   const [pasteSubOpen, setPasteSubOpen] = useState(false);
@@ -80,6 +87,11 @@ export default function AddSongSheet({ onBuildNew, onPasteChart, onAiChords, onI
           </div>
         ) : (
           <div className="p-3 space-y-1">
+            {onChooseFromLibrary && (
+              <SheetBtn onClick={() => { onChooseFromLibrary(); onClose(); }}
+                icon={ICON_LIBRARY}
+                label="Choose from library" desc="Add songs you already have" />
+            )}
             <SheetBtn onClick={() => setImportSubOpen(true)}
               icon={ICON_FILE}
               label="Import Song" desc="From a file — best with SongBook Pro .sbp / .sbpbackup" chevron />

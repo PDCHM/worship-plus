@@ -16,7 +16,7 @@ import Library from "@/app/_components/Library";
 import PasteSongModal from "@/app/_components/PasteSongModal";
 import SettingsView from "@/app/_components/SettingsView";
 import SongEditor from "@/app/_components/SongEditor";
-import FoldersView, { type Folder, type FolderSong, type SetlistEvent } from "@/app/_components/FoldersView";
+import FoldersView, { AddSongsModal, type Folder, type FolderSong, type SetlistEvent } from "@/app/_components/FoldersView";
 import GroupsView, { type Group, type GroupMember, type GroupSong } from "@/app/_components/GroupsView";
 import PrintLayout from "@/app/_components/PrintLayout";
 import SetlistPrintLayout from "@/app/_components/SetlistPrintLayout";
@@ -382,6 +382,16 @@ export default function Home() {
   const [pasteAiIntent, setPasteAiIntent] = useState(false);
   const [aiGenerateSongId, setAiGenerateSongId] = useState<string | null>(null);
   const [addSheetOpen, setAddSheetOpen] = useState(false);
+  // When the Add-Song flow is launched from a folder/setlist's "+ Add Songs",
+  // this holds that target's id. Any song created/imported/searched while it's
+  // set is auto-linked to that folder once it saves. Set only by the folder
+  // opener; every other opener (library tabs, sidebar, editor) resets it to null.
+  const [addTargetFolderId, setAddTargetFolderId] = useState<string | null>(null);
+  // "Choose from library" picker launched from the folder Add-Song sheet.
+  const [libraryPickerFolderId, setLibraryPickerFolderId] = useState<string | null>(null);
+  // Build New saves later (in the editor), not immediately — so we can't link on
+  // creation. Record songId → target folder and link once saveSong succeeds.
+  const pendingFolderLinkRef = useRef<Map<string, string>>(new Map());
   const [searchOpen, setSearchOpen] = useState(false);
   const [upgradeModal, setUpgradeModal] = useState<{ reason?: string } | null>(null);
   // Effective plan = own plan widened by any paid team the user has joined
@@ -981,6 +991,13 @@ export default function Home() {
     newSongIdsRef.current.delete(song.id);
     try { localStorage.removeItem("wp-backup-" + song.id); } catch {}
     showToast("Saved");
+    // Build New launched from a folder's "+ Add Songs": now that the song exists
+    // in the DB, link it to the target folder (once).
+    const pendingFolder = pendingFolderLinkRef.current.get(song.id);
+    if (pendingFolder) {
+      pendingFolderLinkRef.current.delete(song.id);
+      await linkSongsToTarget(pendingFolder, [song.id]);
+    }
   };
 
   // Load full content (sections/lines/chords) for one song on demand and merge
@@ -1298,6 +1315,18 @@ export default function Home() {
     if (newRows.length) setFolderSongs((prev) => [...prev, ...newRows]);
   };
 
+  // Auto-link songs created/imported via a folder/setlist's "+ Add Songs" flow to
+  // that target once they're saved. Reuses bulkAddSongsToSetlist so positions and
+  // the already-in dedupe match the manual picker. No-op when no target is set.
+  // Songs must already be persisted (RPC has an FK on song_id).
+  const linkSongsToTarget = async (folderId: string | null, songIds: string[]) => {
+    const ids = songIds.filter(Boolean);
+    if (!folderId || !ids.length) return;
+    await bulkAddSongsToSetlist(ids, folderId);
+    const f = folders.find((x) => x.id === folderId);
+    showToast(`Added to "${f?.name ?? "folder"}"`);
+  };
+
   const newSong = () => {
     // Songs are ungated on every plan — no count limit.
     // Stamp ownership (userId) so it shows in All Songs immediately — the list
@@ -1308,6 +1337,12 @@ export default function Home() {
     lastSavedRef.current.set(song.id, song);
     newSongIdsRef.current.add(song.id);
     hydratedIdsRef.current.add(song.id);
+    // Folder flow: a blank song isn't in the DB yet, so defer the folder link
+    // until its first successful save (handled in saveSong).
+    if (addTargetFolderId) {
+      pendingFolderLinkRef.current.set(song.id, addTargetFolderId);
+      setAddTargetFolderId(null);
+    }
     navigateTo({ kind: "editor", songId: song.id });
   };
 
@@ -1444,7 +1479,15 @@ export default function Home() {
     setPasteOpen(false);
     setPasteAiIntent(false);
     showToast(`Imported "${song.title}"`);
-    if (user) void saveSongToDb(supabase, song, user.id);
+    // Folder flow: persist, then link to the target it was launched from.
+    const target = addTargetFolderId;
+    setAddTargetFolderId(null);
+    if (user) {
+      void (async () => {
+        const r = await saveSongToDb(supabase, song, user.id);
+        if (r.ok) await linkSongsToTarget(target, [song.id]);
+      })();
+    }
   };
 
   // AI song search: find a library song whose title matches (case/space
@@ -1479,6 +1522,11 @@ export default function Home() {
   };
 
   const handleImport = async (inputFile: File) => {
+    // Folder flow: capture the target (the folder/setlist "+ Add Songs" was
+    // launched from) before any await, then clear it so a later unrelated import
+    // doesn't reuse it. Newly-saved songs are linked to it at each save path.
+    const linkTarget = addTargetFolderId;
+    setAddTargetFolderId(null);
     // Defense-in-depth for the mobile "could not read file" bug: detach the bytes
     // from the <input>-backed File synchronously, before any await. On iOS Safari /
     // Android WebView, clearing the input's value can revoke the original File's
@@ -1514,6 +1562,7 @@ export default function Home() {
           for (const s of imported) {
             try { const r = await saveSongToDb(supabase, s, user.id); if (!r.ok) failed++; } catch { failed++; }
           }
+          await linkSongsToTarget(linkTarget, imported.map((s) => s.id));
           const folder = await createFolder(setlistName, "setlist", null);
           if (folder) {
             // Insert with explicit positions so the saved order matches the
@@ -1555,6 +1604,7 @@ export default function Home() {
             for (const s of imported) {
               try { const r = await saveSongToDb(supabase, s, user.id); if (!r.ok) failed++; } catch { failed++; }
             }
+            await linkSongsToTarget(linkTarget, imported.map((s) => s.id));
             if (failed) showToast(failed + " of " + imported.length + " failed to save");
           }
         } else {
@@ -1644,7 +1694,13 @@ export default function Home() {
         const r0 = resolved[0];
         navigateTo({ kind: "editor", songId: r0.id });
         showToast(r0.created ? `Imported "${r0.title}"` : `"${r0.title}" is already in your library`);
-        if (r0.created && user) { const c = toCreate[0]; if (c) void saveSongToDb(supabase, c, user.id); }
+        // Folder flow: a reused song is already persisted; a freshly-created one
+        // must finish saving before the link RPC (FK on song_id), so await it.
+        if (r0.created && user) {
+          const c = toCreate[0];
+          if (c) { await saveSongToDb(supabase, c, user.id); }
+        }
+        await linkSongsToTarget(linkTarget, [r0.id]);
         return;
       }
 
@@ -1659,6 +1715,10 @@ export default function Home() {
       for (const s of toCreate) {
         try { const r = await saveSongToDb(supabase, s, user.id); if (!r.ok) failed++; } catch { failed++; }
       }
+
+      // Folder flow: link every resolved song (created + already-in-library) to
+      // the target the import was launched from, in parse order.
+      await linkSongsToTarget(linkTarget, resolved.map((r) => r.id));
 
       // Recreate each set as a setlist, in Order. NOTE: folder_songs has no
       // per-entry key/capo column (unique per (folder, song)), so SongBook Pro's
@@ -1725,7 +1785,12 @@ export default function Home() {
           ? `Imported "${parsed.title}" — PDF/Word import is best-effort; chords & sections may need touch-up`
           : `Imported "${parsed.title}"`,
       );
-      if (user) void saveSongToDb(supabase, parsed, user.id);
+      // Folder flow: persist, then link to the target (FK on song_id needs the
+      // save committed first, so await it).
+      if (user) {
+        await saveSongToDb(supabase, parsed, user.id);
+        await linkSongsToTarget(linkTarget, [parsed.id]);
+      }
     } catch {
       showToast("Could not parse file");
     }
@@ -2087,7 +2152,7 @@ export default function Home() {
           sidebarOpen={sidebarOpen}
           desktopCollapsed={navCollapsed}
           onClose={() => setSidebarOpen(false)}
-          onAddSong={() => setAddSheetOpen(true)}
+          onAddSong={() => { setAddTargetFolderId(null); setAddSheetOpen(true); }}
           onCreateFolder={(name) => createFolder(name, "folder", null)}
           onCreateSetlist={(name) => createFolder(name, "setlist", null)}
           onCreateTeam={gatedCreateTeam}
@@ -2105,11 +2170,11 @@ export default function Home() {
               onToggleFavorite={toggleFavorite}
               onDelete={deleteSong}
               onSaveAsCopy={librarySaveAsCopy}
-              onNewSong={newSong}
-              onPasteChart={() => { setPasteAiIntent(false); setPasteOpen(true); }}
-              onAiChords={() => { setPasteAiIntent(true); setPasteOpen(true); }}
-              onImportFile={() => fileInputRef.current?.click()}
-              onSearchOnline={gatedSearchOnline}
+              onNewSong={() => { setAddTargetFolderId(null); newSong(); }}
+              onPasteChart={() => { setAddTargetFolderId(null); setPasteAiIntent(false); setPasteOpen(true); }}
+              onAiChords={() => { setAddTargetFolderId(null); setPasteAiIntent(true); setPasteOpen(true); }}
+              onImportFile={() => { setAddTargetFolderId(null); fileInputRef.current?.click(); }}
+              onSearchOnline={() => { setAddTargetFolderId(null); gatedSearchOnline(); }}
               canUseAiChords={gate.canUse("ai_chords")}
               onRequireUpgrade={() => setUpgradeModal({ reason: "AI chord generation" })}
               showToast={showToast}
@@ -2136,7 +2201,7 @@ export default function Home() {
               isDark={isDark}
               onPrint={handlePrint}
               onExport={() => setExportOpen(true)}
-              onPasteSong={() => setPasteOpen(true)}
+              onPasteSong={() => { setAddTargetFolderId(null); setPasteOpen(true); }}
               isDirty={view.kind === "editor" && dirtyIds.has((view as { kind: "editor"; songId: string }).songId)}
               onSave={() => { const s = songs.find(x => view.kind === "editor" && x.id === (view as { kind: "editor"; songId: string }).songId); if (s) void saveSong(s); }}
               onSaveAsCopy={(title, liveSong) => { void saveAsCopy(liveSong, title); }}
@@ -2196,6 +2261,7 @@ export default function Home() {
               onRename={renameFolder}
               onDelete={deleteFolder}
               onAddSong={addSongToFolder}
+              onAddSongs={(folderId) => { setAddTargetFolderId(folderId); setAddSheetOpen(true); }}
               onRemoveSong={removeSongFromFolder}
               onToggleFavorite={toggleFavorite}
               onCommitOrder={commitSetlistOrder}
@@ -2224,7 +2290,7 @@ export default function Home() {
         </main>
       </div>
 
-      {!editorMarkup && <BottomTabs view={view} onNavigate={navigateTo} onAdd={() => setAddSheetOpen(true)} />}
+      {!editorMarkup && <BottomTabs view={view} onNavigate={navigateTo} onAdd={() => { setAddTargetFolderId(null); setAddSheetOpen(true); }} />}
 
       {activeSong && <PrintLayout song={activeSong} settings={settings} sectionStyles={sectionStyles} />}
       {printSongs && <SetlistPrintLayout songs={printSongs} settings={settings} sectionStyles={sectionStyles} />}
@@ -2250,7 +2316,7 @@ export default function Home() {
       <PasteSongModal
         open={pasteOpen}
         aiIntent={pasteAiIntent}
-        onClose={() => { setPasteOpen(false); setPasteAiIntent(false); }}
+        onClose={() => { setPasteOpen(false); setPasteAiIntent(false); setAddTargetFolderId(null); }}
         onImport={handleImportPasted}
       />
 
@@ -2261,17 +2327,30 @@ export default function Home() {
           onAiChords={() => { setPasteAiIntent(true); setPasteOpen(true); }}
           onImportFile={() => fileInputRef.current?.click()}
           onSearchOnline={gatedSearchOnline}
+          // Only in the folder/setlist flow (target set) — opens the existing
+          // library picker to add songs you already have to that target.
+          onChooseFromLibrary={addTargetFolderId ? () => { setLibraryPickerFolderId(addTargetFolderId); } : undefined}
           onClose={() => setAddSheetOpen(false)}
+        />
+      )}
+
+      {libraryPickerFolderId && (
+        <AddSongsModal
+          allSongs={songs}
+          alreadyIn={new Set(folderSongs.filter((fs) => fs.folderId === libraryPickerFolderId).map((fs) => fs.songId))}
+          folderId={libraryPickerFolderId}
+          onAdd={addSongToFolder}
+          onClose={() => { setLibraryPickerFolderId(null); setAddTargetFolderId(null); }}
         />
       )}
 
       {searchOpen && (
         <SongSearchSheet
           findInLibrary={findSongInLibrary}
-          onOpenExisting={(songId) => { setSearchOpen(false); navigateTo({ kind: "editor", songId }); }}
+          onOpenExisting={(songId) => { setSearchOpen(false); setAddTargetFolderId(null); navigateTo({ kind: "editor", songId }); }}
           onCreateWithAi={handleSearchCreate}
           onRequireUpgrade={() => setUpgradeModal({ reason: "AI song search" })}
-          onClose={() => setSearchOpen(false)}
+          onClose={() => { setSearchOpen(false); setAddTargetFolderId(null); }}
         />
       )}
 
