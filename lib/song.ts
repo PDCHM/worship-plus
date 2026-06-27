@@ -473,6 +473,44 @@ export function transposeChord(
     .join("/");
 }
 
+// ── Capo display model ──────────────────────────────────────────────────────
+// A capo never changes a song's sounding key — the stored chords are ALWAYS the
+// sounding chords. A capo only lets the player use easier shapes: the displayed
+// "play" chords are the sounding chords shifted DOWN by `capo` semitones. The
+// play key (sounding key shifted down by capo) is spelled with the app's
+// standard key names (KEYS, a chromatic scale) and drives the sharp/flat
+// preference — the same enharmonic logic Key transpose uses — so the shifted
+// chords spell consistently. Capo and Key transpose are independent axes: Key
+// transpose rewrites the stored (sounding) chords; capo only re-spells what's
+// displayed on top of them.
+
+// The key the displayed shapes are in: sounding key shifted DOWN by `capo`.
+// Capo 0/null returns the sounding key unchanged.
+export function playKey(soundingKey: string, capo: number | null): string {
+  const c = capo ?? 0;
+  const idx = noteToIndex(soundingKey);
+  if (!c || idx === -1) return soundingKey;
+  return KEYS[(((idx - c) % 12) + 12) % 12];
+}
+
+// Transpose one chord DOWN by `capo` for display as a play shape, spelled to
+// match the play key. Capo 0/null returns the chord unchanged.
+export function capoChord(chord: string, soundingKey: string, capo: number | null): string {
+  const c = capo ?? 0;
+  if (!c) return chord;
+  return transposeChord(chord, -c, PREFER_FLAT_KEYS.has(playKey(soundingKey, c)));
+}
+
+// Apply capo (play-shape) transposition to a line's chords for display, keeping
+// every chord's position (wordIndex/offset/pos) intact. Capo 0/null is a no-op,
+// returning the same array reference. Used by the print/PDF render paths.
+export function capoChords(chords: Chord[], soundingKey: string, capo: number | null): Chord[] {
+  const c = capo ?? 0;
+  if (!c) return chords;
+  const preferFlat = PREFER_FLAT_KEYS.has(playKey(soundingKey, c));
+  return chords.map((ch) => ({ ...ch, chord: transposeChord(ch.chord, -c, preferFlat) }));
+}
+
 export function getSectionColorKey(label: string): SectionColorKey {
   const t = label.toLowerCase();
   if (/pre[\s-]?chorus/.test(t)) return "prechorus";

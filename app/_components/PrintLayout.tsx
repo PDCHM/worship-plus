@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { buildChordLine, getEffectiveStyle, getSectionColorKey, getSectionStyleKey, type SectionStyles, type Song, type Settings } from "@/lib/song";
+import { buildChordLine, capoChords, playKey, getEffectiveStyle, getSectionColorKey, getSectionStyleKey, type SectionStyles, type Song, type Settings } from "@/lib/song";
 
 const FONT_CSS: Record<string, string> = {
   system: "ui-sans-serif, system-ui, -apple-system, sans-serif",
@@ -70,6 +70,7 @@ export function SongSheet({ song, settings, sectionStyles }: Props) {
         }}>
           {song.key  && <div><strong>Key:</strong> {song.key}</div>}
           {song.capo != null && <div><strong>Capo:</strong> {song.capo}</div>}
+          {(song.capo ?? 0) > 0 && <div><strong>Play:</strong> {playKey(song.key, song.capo)}</div>}
           {song.bpm  != null && <div><strong>BPM:</strong>  {song.bpm}</div>}
         </div>
       </div>
@@ -131,7 +132,7 @@ export function SongSheet({ song, settings, sectionStyles }: Props) {
                         overflow: "hidden",
                         width: "100%",
                       }}>
-                        {buildChordLine(line.chords, line.lyric)}
+                        {buildChordLine(capoChords(line.chords, song.key, song.capo), line.lyric)}
                       </pre>
                     )}
                     {/* Lyric line — forced monospace so chord columns align */}

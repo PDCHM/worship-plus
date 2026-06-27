@@ -10,6 +10,8 @@ import { LineBubbles, useSongBubbles } from "@/app/_components/SongBubbles";
 import {
   CHORD_FONT_CLAMP,
   KEYS,
+  capoChord,
+  playKey,
   LYRIC_FONT_CLAMP,
   LINE_SPACING,
   LYRIC_FONT_SIZE_PX,
@@ -740,12 +742,15 @@ function LineToolButton({
 // is pushed right past it, with a one-character breathing gap. Returns the
 // chosen column (in characters) per chord, in the given order. Used only for
 // multi-chord words; single-chord words keep their exact offset untouched.
-function chordColumnsForUnit(chords: Chord[], wordStart: number): number[] {
+// `labelLen` returns the rendered width (in chars) of a chord's label — passed
+// in so capo'd play-shapes (which can differ in length, e.g. C → Bb) space
+// correctly. Defaults to the raw chord length.
+function chordColumnsForUnit(chords: Chord[], wordStart: number, labelLen: (ch: Chord) => number = (ch) => ch.chord.length): number[] {
   let prevEnd = -Infinity;
   return chords.map((ch) => {
     const want = ch.offset != null ? ch.offset : Math.max(0, ch.pos - wordStart);
     const col = Math.max(want, prevEnd);
-    prevEnd = col + ch.chord.length + 1; // label width + 1-char gap
+    prevEnd = col + labelLen(ch) + 1; // label width + 1-char gap
     return col;
   });
 }
@@ -1633,6 +1638,15 @@ export default function SongEditor({
     update((s) => ({ ...s, capo: value }));
   };
 
+  // Capo display: stored chords are the SOUNDING chords; the chart shows the
+  // PLAY shapes (shifted DOWN by capo). displayChord renders a sounding chord as
+  // its play shape; soundingChord is the inverse — it turns a chord the user
+  // typed in play (capo) spelling back into the stored sounding chord, so edits
+  // never change the actual key. Both are no-ops when there's no capo.
+  const displayChord = (raw: string) => capoChord(raw, song.key, song.capo);
+  const soundingChord = (played: string) =>
+    song.capo ? transposeChord(played, song.capo, PREFER_FLAT_KEYS.has(song.key)) : played;
+
   // Canonical chord order on a line: by word, then sub-word offset, then pos.
   const sortChords = (chords: Chord[]): Chord[] =>
     [...chords].sort(
@@ -2367,6 +2381,12 @@ export default function SongEditor({
               </div>
             )}
           </div>
+          {(song.capo ?? 0) > 0 && (
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 text-xs font-medium border border-indigo-200 dark:border-indigo-900"
+              title="Capo shifts the displayed chord shapes down; the sounding key is unchanged.">
+              Sounding {song.key} · Capo {song.capo} · Play {playKey(song.key, song.capo)}
+            </span>
+          )}
           {clipboard && !readOnly && (
             <span className="inline-flex items-center gap-2 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-xs border border-amber-200 dark:border-amber-900 print:hidden">
               <span className="font-medium">{clipboard.label}</span> copied
@@ -2719,7 +2739,7 @@ export default function SongEditor({
                         onPointerDown={
                           readOnly
                             ? undefined
-                            : handleChordDragStart(line.id, ch.id, chordOnly, ch.chord)
+                            : handleChordDragStart(line.id, ch.id, chordOnly, displayChord(ch.chord))
                         }
                         onClick={
                           readOnly
@@ -2770,7 +2790,7 @@ export default function SongEditor({
                           fontFamily: lyricFontFamily,
                         }}
                       >
-                        {ch.chord}
+                        {displayChord(ch.chord)}
                       </span>
                     );
 
@@ -2833,6 +2853,7 @@ export default function SongEditor({
                                     ? chordColumnsForUnit(
                                         u.chords,
                                         tokens[u.dragIndex]?.start ?? 0,
+                                        (ch) => displayChord(ch.chord).length,
                                       )
                                     : null;
                                 return (
@@ -2862,9 +2883,9 @@ export default function SongEditor({
                                           >
                                             {editingChord === ch.id && !readOnly ? (
                                               <ChordInput
-                                                defaultValue={ch.chord}
+                                                defaultValue={displayChord(ch.chord)}
                                                 fontSize={chordFontSize}
-                                                onCommit={(v) => commitChord(line.id, ch.id, v)}
+                                                onCommit={(v) => commitChord(line.id, ch.id, soundingChord(v))}
                                                 onCancel={() => setEditingChord(null)}
                                               />
                                             ) : (
@@ -2879,7 +2900,7 @@ export default function SongEditor({
                                           >
                                             <ChordInput
                                               fontSize={chordFontSize}
-                                              onCommit={(v) => commitAddChord(line.id, u.dragIndex, addingChord?.offset ?? 0, v)}
+                                              onCommit={(v) => commitAddChord(line.id, u.dragIndex, addingChord?.offset ?? 0, soundingChord(v))}
                                               onCancel={() => setAddingChord(null)}
                                             />
                                           </span>
@@ -2896,9 +2917,9 @@ export default function SongEditor({
                                           editingChord === ch.id && !readOnly ? (
                                             <ChordInput
                                               key={ch.id}
-                                              defaultValue={ch.chord}
+                                              defaultValue={displayChord(ch.chord)}
                                               fontSize={chordFontSize}
-                                              onCommit={(v) => commitChord(line.id, ch.id, v)}
+                                              onCommit={(v) => commitChord(line.id, ch.id, soundingChord(v))}
                                               onCancel={() => setEditingChord(null)}
                                             />
                                           ) : (
@@ -2908,7 +2929,7 @@ export default function SongEditor({
                                         {addingHere && (
                                           <ChordInput
                                             fontSize={chordFontSize}
-                                            onCommit={(v) => commitAddChord(line.id, u.dragIndex, addingChord?.offset ?? 0, v)}
+                                            onCommit={(v) => commitAddChord(line.id, u.dragIndex, addingChord?.offset ?? 0, soundingChord(v))}
                                             onCancel={() => setAddingChord(null)}
                                           />
                                         )}

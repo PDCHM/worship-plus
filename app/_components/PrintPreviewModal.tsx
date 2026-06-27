@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { CHORD_FONT_CLAMP, LYRIC_FONT_CLAMP, buildChordLine, getEffectiveStyle, getSectionColorKey, getSectionStyleKey, type SectionStyles, type Song, type Settings } from "@/lib/song";
+import { CHORD_FONT_CLAMP, LYRIC_FONT_CLAMP, buildChordLine, capoChords, playKey, getEffectiveStyle, getSectionColorKey, getSectionStyleKey, type SectionStyles, type Song, type Settings } from "@/lib/song";
 
 const FONT_CSS: Record<string, string> = {
   system: "ui-sans-serif, system-ui, -apple-system, sans-serif",
@@ -177,6 +177,7 @@ function PaperContent({ song, settings, sectionStyles, cols, paperW, paperH }: {
         <div style={{ fontSize: `${fontSize * 0.78}px`, color: "#444", textAlign: "right", lineHeight: 2, paddingLeft: "1em", flexShrink: 0 }}>
           {song.key           && <div><strong>Key:</strong>  {song.key}</div>}
           {song.capo != null  && <div><strong>Capo:</strong> {song.capo}</div>}
+          {(song.capo ?? 0) > 0 && <div><strong>Play:</strong> {playKey(song.key, song.capo)}</div>}
           {song.bpm  != null  && <div><strong>BPM:</strong>  {song.bpm}</div>}
         </div>
       </div>
@@ -216,7 +217,7 @@ function PaperContent({ song, settings, sectionStyles, cols, paperW, paperH }: {
                       fontSize: CHORD_FONT_CLAMP, fontWeight: 700,
                       color: chordColor, lineHeight: 1.3, whiteSpace: "pre", overflow: "hidden", width: "100%",
                     }}>
-                      {buildChordLine(line.chords, line.lyric)}
+                      {buildChordLine(capoChords(line.chords, song.key, song.capo), line.lyric)}
                     </pre>
                   )}
                   <div style={{ fontSize: LYRIC_FONT_CLAMP, whiteSpace: "pre-wrap", wordBreak: "break-word", overflowWrap: "break-word", lineHeight: 1.4, minHeight: `${fontSize * 1.4}px`, overflow: "hidden", fontFamily: MONO_FAMILY, width: "100%" }}>
