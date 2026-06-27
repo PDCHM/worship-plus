@@ -325,6 +325,19 @@ function flowLabels(sections: Section[]): string[] {
   });
 }
 
+// Label for a duplicated section: keep the original's stem (its label minus any
+// trailing number) and assign the next index among sections sharing that stem,
+// so duplicating "Verse 1" → "Verse 2", "Chorus" → "Chorus 2". The flow bar's
+// own prefix numbering (flowLabels) then renders it as the next chip (V2, C2…).
+function nextDuplicateLabel(sections: Section[], label: string): string {
+  const stem = label.replace(/\s*\d+\s*$/, "").trim() || label.trim();
+  if (!stem) return label;
+  const esc = stem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const re = new RegExp(`^${esc}\\b`, "i");
+  const count = sections.filter((s) => re.test(s.label.trim())).length;
+  return `${stem} ${count + 1}`;
+}
+
 function hexAlpha(hex: string, alpha: number): string {
   const h = hex.replace("#", "");
   if (h.length !== 6) return hex;
@@ -335,7 +348,7 @@ function hexAlpha(hex: string, alpha: number): string {
 }
 
 function SongFlowBar({
-  sections, sectionStyles, activeId, readOnly, onScrollTo, onReorder, onRename,
+  sections, sectionStyles, activeId, readOnly, onScrollTo, onReorder, onRename, onDuplicate, onDelete,
 }: {
   sections: Section[];
   sectionStyles: SectionStyles;
@@ -344,17 +357,57 @@ function SongFlowBar({
   onScrollTo: (id: string) => void;
   onReorder: (fromId: string, toIndex: number) => void;
   onRename: (id: string, label: string) => void;
+  onDuplicate: (id: string) => void;
+  onDelete: (id: string) => void;
 }) {
   const [dragId, setDragId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
+  // Long-press (touch) / right-click (desktop) context menu, anchored as a fixed
+  // popover at x/y (the flow bar is a scroll container, so an absolute child
+  // would be clipped). confirmDeleteId drives the delete confirmation.
+  const [menu, setMenu] = useState<{ id: string; x: number; y: number } | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const suppressClickRef = useRef(false);
   const clickTimerRef = useRef<number | null>(null);
+  const longPressRef = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const sectionsRef = useRef(sections);
   useEffect(() => { sectionsRef.current = sections; }, [sections]);
   const labels = flowLabels(sections);
 
+  // Dismiss the chip menu on outside click, Escape, or window blur.
+  useEffect(() => {
+    if (!menu) return;
+    const close = (e: Event) => {
+      const t = e.target as Node | null;
+      if (t && menuRef.current?.contains(t)) return;
+      setMenu(null);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMenu(null); };
+    const onBlur = () => setMenu(null);
+    // pointerdown (not mousedown): a touch long-press synthesizes a mousedown on
+    // release that would instantly close the just-opened menu; the real next
+    // pointerdown is what should dismiss it.
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, [menu]);
+
   if (sections.length === 0) return null;
+
+  // Open the chip menu near the chip, clamped to the viewport. Marks the next
+  // click as suppressed so a long-press doesn't also scroll-to the section.
+  const openMenu = (chipId: string, x: number, y: number) => {
+    suppressClickRef.current = true;
+    window.setTimeout(() => { suppressClickRef.current = false; }, 400);
+    setMenu({ id: chipId, x: Math.min(x, window.innerWidth - 170), y: Math.min(y, window.innerHeight - 110) });
+  };
 
   const startDrag = (e: React.PointerEvent<HTMLDivElement>, chipId: string) => {
     if (readOnly || editingId === chipId) return;
@@ -362,14 +415,35 @@ function SongFlowBar({
     const startX = e.clientX;
     const startY = e.clientY;
     const pointerId = e.pointerId;
+    const chipEl = e.currentTarget as HTMLElement;
     let didDrag = false;
+    let menuOpened = false;
+
+    const clearLongPress = () => {
+      if (longPressRef.current !== null) {
+        window.clearTimeout(longPressRef.current);
+        longPressRef.current = null;
+      }
+    };
+
+    // Long-press (held still ~450ms) opens the chip menu. Movement past the drag
+    // threshold cancels it (that gesture is a reorder); pointer-up cancels it too.
+    longPressRef.current = window.setTimeout(() => {
+      longPressRef.current = null;
+      if (didDrag) return;
+      menuOpened = true;
+      const r = chipEl.getBoundingClientRect();
+      openMenu(chipId, r.left, r.bottom + 4);
+    }, 450);
 
     const move = (ev: PointerEvent) => {
       if (ev.pointerId !== pointerId) return;
+      if (menuOpened) return; // menu already open — don't also start a reorder
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
       if (!didDrag && Math.hypot(dx, dy) > 6) {
         didDrag = true;
+        clearLongPress();
         setDragId(chipId);
       }
       if (!didDrag) return;
@@ -397,10 +471,12 @@ function SongFlowBar({
 
     const finish = (ev: PointerEvent) => {
       if (ev.pointerId !== pointerId) return;
+      clearLongPress();
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", finish);
       window.removeEventListener("pointercancel", finish);
-      if (didDrag) {
+      // Suppress the trailing click (scroll-to) after a drag or a long-press menu.
+      if (didDrag || menuOpened) {
         suppressClickRef.current = true;
         window.setTimeout(() => { suppressClickRef.current = false; }, 100);
       }
@@ -451,7 +527,8 @@ function SongFlowBar({
               onPointerDown={(e) => startDrag(e, s.id)}
               onClick={() => handleClick(s.id)}
               onDoubleClick={(e) => { e.preventDefault(); handleDoubleClick(s.id); }}
-              title={readOnly ? s.label : `${s.label} — double-click to rename, drag to reorder`}
+              onContextMenu={readOnly ? undefined : (e) => { e.preventDefault(); openMenu(s.id, e.clientX, e.clientY); }}
+              title={readOnly ? s.label : `${s.label} — double-click to rename, drag to reorder, long-press for more`}
               style={chipStyle}
               className={
                 "shrink-0 h-7 px-3 rounded-full text-xs font-semibold transition-all select-none flex items-center justify-center text-center " +
@@ -490,6 +567,54 @@ function SongFlowBar({
           );
         })}
       </div>
+
+      {menu && (
+        <div
+          ref={menuRef}
+          role="menu"
+          style={{ left: menu.x, top: menu.y }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+          className="fixed z-50 min-w-[160px] py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/20"
+        >
+          <button
+            type="button"
+            onClick={() => { onDuplicate(menu.id); setMenu(null); }}
+            className="w-full text-left px-3 py-1.5 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-2"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="9" y="9" width="13" height="13" rx="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+            </svg>
+            Duplicate section
+          </button>
+          {sections.length > 1 && (
+            <button
+              type="button"
+              onClick={() => { setConfirmDeleteId(menu.id); setMenu(null); }}
+              className="w-full text-left px-3 py-1.5 text-sm hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center gap-2"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                <path d="M10 11v6M14 11v6" />
+                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+              </svg>
+              Delete section
+            </button>
+          )}
+        </div>
+      )}
+
+      {confirmDeleteId && (
+        <ConfirmDialog
+          title="Delete section?"
+          message={`Delete ${sections.find((s) => s.id === confirmDeleteId)?.label ?? "this section"}? This removes the section and its lines.`}
+          confirmLabel="Delete"
+          onCancel={() => setConfirmDeleteId(null)}
+          onConfirm={() => { onDelete(confirmDeleteId); setConfirmDeleteId(null); }}
+        />
+      )}
     </div>
   );
 }
@@ -2108,6 +2233,22 @@ export default function SongEditor({
     });
   };
 
+  // Deep-copy a section (cloneSection gives fresh ids for the section, lines, and
+  // chords) and insert the copy immediately after the original, renumbered for
+  // its type. Positions/ordering come from array order (no position field), and
+  // chord offsets are copied verbatim so chord-over-lyric alignment is preserved.
+  const duplicateSection = (sectionId: string) => {
+    update((s) => {
+      const idx = s.sections.findIndex((sec) => sec.id === sectionId);
+      if (idx === -1) return s;
+      const copy = cloneSection(s.sections[idx]);
+      copy.label = nextDuplicateLabel(s.sections, s.sections[idx].label);
+      const next = [...s.sections];
+      next.splice(idx + 1, 0, copy);
+      return { ...s, sections: next };
+    });
+  };
+
   // Backspace/Delete on a truly empty line removes it. If it's the section's only
   // line, drop the now-empty section instead (deleteSection no-ops on the last
   // section, so the canonical empty-song state — one empty line — is preserved).
@@ -2507,6 +2648,8 @@ export default function SongEditor({
         onScrollTo={scrollToSection}
         onReorder={reorderSections}
         onRename={renameSection}
+        onDuplicate={duplicateSection}
+        onDelete={deleteSection}
       />
 
       {stylesPanelOpen && (

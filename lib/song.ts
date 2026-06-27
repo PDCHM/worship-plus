@@ -822,6 +822,10 @@ export function cloneLine(line: Line): Line {
       pos: c.pos,
       chord: c.chord,
       wordIndex: c.wordIndex ?? null,
+      // Preserve the sub-word offset so chord-over-lyric alignment survives a
+      // clone (section duplicate, copy/paste, import) — multi-chord words rely
+      // on it; dropping it collapses every chord onto the word start.
+      offset: c.offset,
     })),
   };
 }
