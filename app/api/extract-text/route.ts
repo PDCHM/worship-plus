@@ -23,6 +23,16 @@ export async function POST(request: Request) {
   if (file.size > MAX_BYTES) {
     return NextResponse.json({ error: "File too large (max 15 MB)." }, { status: 413 });
   }
+  // A zero-byte upload means the file's bytes never arrived — distinct from a
+  // genuine parse failure. On mobile this happened when the client cleared the
+  // <input> mid-upload (revoking the File's backing store). Surface a retryable,
+  // diagnosable message instead of the generic "could not read" below.
+  if (file.size === 0) {
+    return NextResponse.json(
+      { error: "The file did not upload completely — please retry." },
+      { status: 422 },
+    );
+  }
 
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
   try {

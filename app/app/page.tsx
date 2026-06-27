@@ -1478,7 +1478,13 @@ export default function Home() {
     handleImportPasted(song, true);
   };
 
-  const handleImport = async (file: File) => {
+  const handleImport = async (inputFile: File) => {
+    // Defense-in-depth for the mobile "could not read file" bug: detach the bytes
+    // from the <input>-backed File synchronously, before any await. On iOS Safari /
+    // Android WebView, clearing the input's value can revoke the original File's
+    // backing store mid-upload; a freshly-constructed File is independent of the
+    // input element, so it stays readable for the fetch upload / file.text() reads.
+    const file = new File([inputFile], inputFile.name, { type: inputFile.type, lastModified: inputFile.lastModified });
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
     if (ext === "worship") {
       try {
@@ -2038,10 +2044,16 @@ export default function Home() {
         type="file"
         accept=".txt,.worship,.chopro,.cho,.onsong,.sbp,.sbpbackup,.docx,.pdf,.pptx,.rtf"
         className="hidden"
-        onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) handleImport(f);
-          e.target.value = "";
+        onChange={async (e) => {
+          // Capture the input element before any await: clearing its value mid-read
+          // revokes the selected File's backing store on iOS Safari / Android
+          // WebView, which made .sbp/.pdf uploads fail ("could not read file"). Reset
+          // only AFTER the import has fully consumed the file (finally), and keep the
+          // node reference so it survives the await.
+          const el = e.target;
+          const f = el.files?.[0];
+          try { if (f) await handleImport(f); }
+          finally { el.value = ""; }
         }}
       />
 
