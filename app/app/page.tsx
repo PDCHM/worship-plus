@@ -1521,12 +1521,19 @@ export default function Home() {
     handleImportPasted(song, true);
   };
 
-  const handleImport = async (inputFile: File) => {
-    // Folder flow: capture the target (the folder/setlist "+ Add Songs" was
-    // launched from) before any await, then clear it so a later unrelated import
-    // doesn't reuse it. Newly-saved songs are linked to it at each save path.
-    const linkTarget = addTargetFolderId;
-    setAddTargetFolderId(null);
+  const handleImport = async (inputFile: File, linkTargetOverride?: string | null) => {
+    // Folder flow: link newly-saved songs to the folder/setlist "+ Add Songs" was
+    // launched from. When importing multiple files at once the caller passes the
+    // target explicitly (it captures + clears it once for the whole batch); for a
+    // single import we capture-and-clear here so a later unrelated import can't
+    // reuse it.
+    let linkTarget: string | null;
+    if (linkTargetOverride !== undefined) {
+      linkTarget = linkTargetOverride;
+    } else {
+      linkTarget = addTargetFolderId;
+      setAddTargetFolderId(null);
+    }
     // Defense-in-depth for the mobile "could not read file" bug: detach the bytes
     // from the <input>-backed File synchronously, before any await. On iOS Safari /
     // Android WebView, clearing the input's value can revoke the original File's
@@ -2115,16 +2122,22 @@ export default function Home() {
         // still validated and routed by extension afterward, so the broader accept
         // only widens what's pickable; unsupported types get a clear error.
         accept=".txt,.worship,.chopro,.cho,.onsong,.sbp,.sbpbackup,.docx,.pdf,.pptx,.rtf,application/zip,application/x-zip-compressed,application/octet-stream,application/pdf,text/plain,application/rtf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        multiple
         className="hidden"
         onChange={async (e) => {
           // Capture the input element before any await: clearing its value mid-read
           // revokes the selected File's backing store on iOS Safari / Android
           // WebView, which made .sbp/.pdf uploads fail ("could not read file"). Reset
-          // only AFTER the import has fully consumed the file (finally), and keep the
-          // node reference so it survives the await.
+          // only AFTER every import has fully consumed its file (finally), and keep
+          // the node reference so it survives the awaits.
           const el = e.target;
-          const f = el.files?.[0];
-          try { if (f) await handleImport(f); }
+          const files = el.files ? Array.from(el.files) : [];
+          // Capture + clear the folder target once for the whole batch, then link
+          // every imported file to it (each handleImport clears it otherwise, so
+          // only the first file would link). Imports run sequentially.
+          const target = addTargetFolderId;
+          setAddTargetFolderId(null);
+          try { for (const f of files) await handleImport(f, target); }
           finally { el.value = ""; }
         }}
       />
@@ -2339,7 +2352,11 @@ export default function Home() {
           allSongs={songs}
           alreadyIn={new Set(folderSongs.filter((fs) => fs.folderId === libraryPickerFolderId).map((fs) => fs.songId))}
           folderId={libraryPickerFolderId}
-          onAdd={addSongToFolder}
+          onAdd={async (fid, ids) => {
+            await bulkAddSongsToSetlist(ids, fid);
+            const f = folders.find((x) => x.id === fid);
+            showToast(`Added ${ids.length} song${ids.length === 1 ? "" : "s"} to "${f?.name ?? "folder"}"`);
+          }}
           onClose={() => { setLibraryPickerFolderId(null); setAddTargetFolderId(null); }}
         />
       )}

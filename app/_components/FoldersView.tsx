@@ -810,6 +810,8 @@ function SetlistDetail({
                 <button
                   type="button"
                   onClick={() => onRemoveSong(folder.id, song.id)}
+                  title="Remove from setlist"
+                  aria-label="Remove from setlist"
                   className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -959,25 +961,46 @@ export function AddSongsModal({
   allSongs: Song[];
   alreadyIn: Set<string>;
   folderId: string;
-  onAdd: (folderId: string, songId: string) => Promise<void>;
+  // Bulk add: every ticked song is linked in a single action.
+  onAdd: (folderId: string, songIds: string[]) => Promise<void>;
   onClose: () => void;
 }) {
   const [search, setSearch] = useState("");
-  const [adding, setAdding] = useState<Set<string>>(new Set());
-  const [added, setAdded] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [adding, setAdding] = useState(false);
 
   const available = allSongs.filter((s) => {
-    if (alreadyIn.has(s.id) || added.has(s.id)) return false;
+    if (alreadyIn.has(s.id)) return false;
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return s.title.toLowerCase().includes(q) || (s.artist ?? "").toLowerCase().includes(q);
   });
 
-  const handleAdd = async (songId: string) => {
-    setAdding((prev) => new Set(prev).add(songId));
-    await onAdd(folderId, songId);
-    setAdded((prev) => new Set(prev).add(songId));
-    setAdding((prev) => { const n = new Set(prev); n.delete(songId); return n; });
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+
+  // Every song matching the current search is selected → "Select all" flips to
+  // "Clear". (Selection persists across searches, so this only reflects the
+  // currently-visible rows.)
+  const allVisibleSelected = available.length > 0 && available.every((s) => selected.has(s.id));
+  const toggleAllVisible = () =>
+    setSelected((prev) => {
+      const n = new Set(prev);
+      if (allVisibleSelected) available.forEach((s) => n.delete(s.id));
+      else available.forEach((s) => n.add(s.id));
+      return n;
+    });
+
+  const handleAddSelected = async () => {
+    if (!selected.size || adding) return;
+    setAdding(true);
+    await onAdd(folderId, [...selected]);
+    setAdding(false);
+    onClose();
   };
 
   return (
@@ -993,15 +1016,24 @@ export function AddSongsModal({
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
-        <div className="px-4 py-2 border-b border-slate-100 dark:border-slate-800">
+        <div className="px-4 py-2 border-b border-slate-100 dark:border-slate-800 flex items-center gap-2">
           <input
             autoFocus
             type="text"
             placeholder="Search songs…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-8 px-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-indigo-400"
+            className="flex-1 min-w-0 h-8 px-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-indigo-400"
           />
+          {available.length > 0 && (
+            <button
+              type="button"
+              onClick={toggleAllVisible}
+              className="shrink-0 h-8 px-2 rounded-lg text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+            >
+              {allVisibleSelected ? "Clear" : "Select all"}
+            </button>
+          )}
         </div>
         <div className="overflow-y-auto flex-1">
           {available.length === 0 ? (
@@ -1014,38 +1046,46 @@ export function AddSongsModal({
             </p>
           ) : (
             available.map((song) => {
-              const isAdding = adding.has(song.id);
+              const checked = selected.has(song.id);
               return (
                 <button
                   key={song.id}
                   type="button"
-                  onClick={() => !isAdding && handleAdd(song.id)}
-                  disabled={isAdding}
+                  onClick={() => toggle(song.id)}
+                  aria-pressed={checked}
                   className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-left border-b border-slate-50 dark:border-slate-800/50 last:border-b-0"
                 >
+                  <span className={"w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors " + (checked ? "bg-indigo-600 border-indigo-600 text-white" : "border-slate-300 dark:border-slate-600")}>
+                    {checked && (
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    )}
+                  </span>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{song.title}</div>
                     {song.artist && (
                       <div className="text-xs text-slate-400 truncate">{song.artist}</div>
                     )}
                   </div>
-                  {isAdding ? (
-                    <div className="w-5 h-5 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin shrink-0" />
-                  ) : (
-                    <svg className="text-indigo-500 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                  )}
                 </button>
               );
             })
           )}
         </div>
-        <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800">
+        <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800 flex gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="w-full h-9 rounded-lg text-sm font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
+            className="flex-1 h-9 rounded-lg text-sm font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
           >
-            Done
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleAddSelected}
+            disabled={!selected.size || adding}
+            className="flex-1 h-9 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {adding ? "Adding…" : selected.size ? `Add ${selected.size} song${selected.size === 1 ? "" : "s"}` : "Add songs"}
           </button>
         </div>
       </div>
@@ -1524,6 +1564,8 @@ function SongCard({
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onRemove(); }}
+        title="Remove from folder"
+        aria-label="Remove from folder"
         className="absolute top-2 right-2 w-5 h-5 rounded-md flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 opacity-0 group-hover:opacity-100 transition-opacity"
       >
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
