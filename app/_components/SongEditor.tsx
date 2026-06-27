@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import Coachmark from "@/app/_components/Coachmark";
 import ConfirmDialog from "@/app/_components/ConfirmDialog";
 import PrintPreviewModal from "@/app/_components/PrintPreviewModal";
@@ -371,30 +372,22 @@ function SongFlowBar({
   const clickTimerRef = useRef<number | null>(null);
   const longPressRef = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
   const sectionsRef = useRef(sections);
   useEffect(() => { sectionsRef.current = sections; }, [sections]);
   const labels = flowLabels(sections);
 
-  // Dismiss the chip menu on outside click, Escape, or window blur.
+  // Dismiss the chip menu on Escape or window blur. Outside-click dismissal is
+  // handled by a backdrop element rendered with the menu (see the portal below) —
+  // a document-level pointer listener races the very gesture that opens the menu
+  // (right-click / long-press), which closed it before it could show.
   useEffect(() => {
     if (!menu) return;
-    const close = (e: Event) => {
-      const t = e.target as Node | null;
-      if (t && menuRef.current?.contains(t)) return;
-      setMenu(null);
-    };
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMenu(null); };
     const onBlur = () => setMenu(null);
-    // pointerdown (not mousedown): a touch long-press synthesizes a mousedown on
-    // release that would instantly close the just-opened menu; the real next
-    // pointerdown is what should dismiss it.
-    document.addEventListener("pointerdown", close);
-    document.addEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey);
     window.addEventListener("blur", onBlur);
     return () => {
-      document.removeEventListener("pointerdown", close);
-      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onKey);
       window.removeEventListener("blur", onBlur);
     };
   }, [menu]);
@@ -411,7 +404,9 @@ function SongFlowBar({
 
   const startDrag = (e: React.PointerEvent<HTMLDivElement>, chipId: string) => {
     if (readOnly || editingId === chipId) return;
-    if (e.button !== undefined && e.button !== 0) return;
+    // Right-click / Ctrl-click (macOS) are context-menu gestures, not drags or
+    // long-presses — let onContextMenu handle them; don't arm the drag/long-press.
+    if ((e.button !== undefined && e.button !== 0) || e.ctrlKey) return;
     const startX = e.clientX;
     const startY = e.clientY;
     const pointerId = e.pointerId;
@@ -568,42 +563,51 @@ function SongFlowBar({
         })}
       </div>
 
-      {menu && (
-        <div
-          ref={menuRef}
-          role="menu"
-          style={{ left: menu.x, top: menu.y }}
-          onMouseDown={(e) => e.stopPropagation()}
-          onContextMenu={(e) => e.preventDefault()}
-          className="fixed z-50 min-w-[160px] py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/20"
-        >
-          <button
-            type="button"
-            onClick={() => { onDuplicate(menu.id); setMenu(null); }}
-            className="w-full text-left px-3 py-1.5 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-2"
+      {menu && typeof document !== "undefined" && createPortal(
+        <>
+          {/* Transparent backdrop: outside-click/right-click closes the menu.
+              It exists only after the menu opens, so the opening gesture can't
+              trigger it (unlike a document-level pointer listener). */}
+          <div
+            className="fixed inset-0 z-[60]"
+            onClick={() => setMenu(null)}
+            onContextMenu={(e) => { e.preventDefault(); setMenu(null); }}
+          />
+          <div
+            role="menu"
+            style={{ left: menu.x, top: menu.y }}
+            onContextMenu={(e) => e.preventDefault()}
+            className="fixed z-[61] min-w-[160px] py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/20"
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="9" y="9" width="13" height="13" rx="2" />
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-            </svg>
-            Duplicate section
-          </button>
-          {sections.length > 1 && (
             <button
               type="button"
-              onClick={() => { setConfirmDeleteId(menu.id); setMenu(null); }}
-              className="w-full text-left px-3 py-1.5 text-sm hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center gap-2"
+              onClick={() => { onDuplicate(menu.id); setMenu(null); }}
+              className="w-full text-left px-3 py-1.5 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-2"
             >
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="3 6 5 6 21 6" />
-                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                <path d="M10 11v6M14 11v6" />
-                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                <rect x="9" y="9" width="13" height="13" rx="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
               </svg>
-              Delete section
+              Duplicate section
             </button>
-          )}
-        </div>
+            {sections.length > 1 && (
+              <button
+                type="button"
+                onClick={() => { setConfirmDeleteId(menu.id); setMenu(null); }}
+                className="w-full text-left px-3 py-1.5 text-sm hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center gap-2"
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                  <path d="M10 11v6M14 11v6" />
+                  <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                </svg>
+                Delete section
+              </button>
+            )}
+          </div>
+        </>,
+        document.body,
       )}
 
       {confirmDeleteId && (
