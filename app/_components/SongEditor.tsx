@@ -2090,6 +2090,16 @@ export default function SongEditor({
     });
   };
 
+  // Backspace/Delete on a truly empty line removes it. If it's the section's only
+  // line, drop the now-empty section instead (deleteSection no-ops on the last
+  // section, so the canonical empty-song state — one empty line — is preserved).
+  const deleteEmptyLineOrSection = (sectionId: string, lineId: string) => {
+    const sec = song.sections.find((s) => s.id === sectionId);
+    if (!sec) return;
+    if (sec.lines.length > 1) deleteLine(sectionId, lineId);
+    else deleteSection(sectionId);
+  };
+
   const addSection = () => {
     const verseCount = song.sections.filter((s) =>
       /^verse/i.test(s.label),
@@ -2777,6 +2787,17 @@ export default function SongEditor({
                               if (e.key === "Enter")
                                 commitLine(line.id, (e.target as HTMLInputElement).value);
                               else if (e.key === "Escape") setEditingLine(null);
+                              // Backspace/Delete on a truly empty line (no text typed,
+                              // no chords) removes the line — a discoverable way to
+                              // delete the orphan "+ chord / Tap to add lyrics" line.
+                              else if (
+                                (e.key === "Backspace" || e.key === "Delete") &&
+                                (e.target as HTMLInputElement).value === "" &&
+                                line.chords.every((ch) => ch.chord.trim() === "")
+                              ) {
+                                e.preventDefault();
+                                deleteEmptyLineOrSection(section.id, line.id);
+                              }
                             }}
                             onBlur={(e) => commitLine(line.id, e.target.value)}
                             className="bg-slate-50 dark:bg-slate-800/60 outline-none rounded px-1 py-0.5 ring-2 ring-indigo-500 w-full"
