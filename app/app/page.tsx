@@ -2042,7 +2042,14 @@ export default function Home() {
       <input
         ref={fileInputRef}
         type="file"
-        accept=".txt,.worship,.chopro,.cho,.onsong,.sbp,.sbpbackup,.docx,.pdf,.pptx,.rtf"
+        // iOS matches `accept` by UTI/MIME and greys out custom extensions it can't
+        // map (.sbp/.sbpbackup have no registered UTI → dimmed, unselectable). So we
+        // pair the explicit extensions with the generic MIME types iOS DOES know —
+        // crucially application/octet-stream and the zip types (.sbp/.sbpbackup are
+        // ZIPs) — which makes those files selectable on iPad/iPhone. Selection is
+        // still validated and routed by extension afterward, so the broader accept
+        // only widens what's pickable; unsupported types get a clear error.
+        accept=".txt,.worship,.chopro,.cho,.onsong,.sbp,.sbpbackup,.docx,.pdf,.pptx,.rtf,application/zip,application/x-zip-compressed,application/octet-stream,application/pdf,text/plain,application/rtf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation"
         className="hidden"
         onChange={async (e) => {
           // Capture the input element before any await: clearing its value mid-read
