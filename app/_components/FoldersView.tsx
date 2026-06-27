@@ -969,12 +969,15 @@ export function AddSongsModal({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
 
-  const available = allSongs.filter((s) => {
-    if (alreadyIn.has(s.id)) return false;
+  // Songs matching the current search. Already-in songs stay visible (shown as
+  // a disabled "Added" row) so it's clear they can't be re-added.
+  const visible = allSongs.filter((s) => {
     if (!search.trim()) return true;
     const q = search.toLowerCase();
     return s.title.toLowerCase().includes(q) || (s.artist ?? "").toLowerCase().includes(q);
   });
+  // The subset that can actually be ticked (not already in the folder/setlist).
+  const selectable = visible.filter((s) => !alreadyIn.has(s.id));
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -983,20 +986,23 @@ export function AddSongsModal({
       return n;
     });
 
-  // Every song matching the current search is selected → "Select all" flips to
-  // "Clear". (Selection persists across searches, so this only reflects the
+  // Every selectable, currently-visible song is ticked → "Select all" flips to
+  // "Clear". (Selection persists across searches, so this reflects only the
   // currently-visible rows.)
-  const allVisibleSelected = available.length > 0 && available.every((s) => selected.has(s.id));
+  const allVisibleSelected = selectable.length > 0 && selectable.every((s) => selected.has(s.id));
   const toggleAllVisible = () =>
     setSelected((prev) => {
       const n = new Set(prev);
-      if (allVisibleSelected) available.forEach((s) => n.delete(s.id));
-      else available.forEach((s) => n.add(s.id));
+      if (allVisibleSelected) selectable.forEach((s) => n.delete(s.id));
+      else selectable.forEach((s) => n.add(s.id));
       return n;
     });
 
-  const handleAddSelected = async () => {
-    if (!selected.size || adding) return;
+  // "Done" commits: add all ticked songs in one action, then close. With nothing
+  // selected it's a no-op close.
+  const handleDone = async () => {
+    if (adding) return;
+    if (!selected.size) { onClose(); return; }
     setAdding(true);
     await onAdd(folderId, [...selected]);
     setAdding(false);
@@ -1025,7 +1031,7 @@ export function AddSongsModal({
             onChange={(e) => setSearch(e.target.value)}
             className="flex-1 min-w-0 h-8 px-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-indigo-400"
           />
-          {available.length > 0 && (
+          {selectable.length > 0 && (
             <button
               type="button"
               onClick={toggleAllVisible}
@@ -1036,56 +1042,56 @@ export function AddSongsModal({
           )}
         </div>
         <div className="overflow-y-auto flex-1">
-          {available.length === 0 ? (
+          {visible.length === 0 ? (
             <p className="text-center py-8 text-sm text-slate-400 dark:text-slate-500">
-              {allSongs.length === 0
-                ? "No songs in your library yet."
-                : allSongs.filter((s) => !alreadyIn.has(s.id)).length === 0
-                  ? "All songs already added."
-                  : "No matching songs."}
+              {allSongs.length === 0 ? "No songs in your library yet." : "No matching songs."}
             </p>
           ) : (
-            available.map((song) => {
+            visible.map((song) => {
+              const isAdded = alreadyIn.has(song.id);
               const checked = selected.has(song.id);
               return (
                 <button
                   key={song.id}
                   type="button"
-                  onClick={() => toggle(song.id)}
-                  aria-pressed={checked}
-                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-left border-b border-slate-50 dark:border-slate-800/50 last:border-b-0"
+                  onClick={() => { if (!isAdded) toggle(song.id); }}
+                  disabled={isAdded}
+                  aria-pressed={!isAdded && checked}
+                  className="w-full flex items-center gap-3 px-4 py-3 enabled:hover:bg-slate-50 dark:enabled:hover:bg-slate-800 transition-colors text-left border-b border-slate-50 dark:border-slate-800/50 last:border-b-0 disabled:opacity-60 disabled:cursor-default"
                 >
-                  <span className={"w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors " + (checked ? "bg-indigo-600 border-indigo-600 text-white" : "border-slate-300 dark:border-slate-600")}>
-                    {checked && (
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                    )}
-                  </span>
+                  {isAdded ? (
+                    <span className="w-5 h-5 rounded-md flex items-center justify-center shrink-0 text-emerald-500" aria-hidden="true">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    </span>
+                  ) : (
+                    <span className={"w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors " + (checked ? "bg-indigo-600 border-indigo-600 text-white" : "border-slate-300 dark:border-slate-600")}>
+                      {checked && (
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                      )}
+                    </span>
+                  )}
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{song.title}</div>
                     {song.artist && (
                       <div className="text-xs text-slate-400 truncate">{song.artist}</div>
                     )}
                   </div>
+                  {isAdded && (
+                    <span className="shrink-0 text-[11px] font-medium text-slate-400 dark:text-slate-500">Added</span>
+                  )}
                 </button>
               );
             })
           )}
         </div>
-        <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800 flex gap-2">
+        <div className="px-4 py-3 border-t border-slate-100 dark:border-slate-800">
           <button
             type="button"
-            onClick={onClose}
-            className="flex-1 h-9 rounded-lg text-sm font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
+            onClick={handleDone}
+            disabled={adding}
+            className="w-full h-9 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleAddSelected}
-            disabled={!selected.size || adding}
-            className="flex-1 h-9 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {adding ? "Adding…" : selected.size ? `Add ${selected.size} song${selected.size === 1 ? "" : "s"}` : "Add songs"}
+            {adding ? "Adding…" : selected.size ? `Add ${selected.size} song${selected.size === 1 ? "" : "s"}` : "Done"}
           </button>
         </div>
       </div>
