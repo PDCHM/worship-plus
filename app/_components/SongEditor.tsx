@@ -650,12 +650,14 @@ function LineToolButton({
   onClick,
   onMouseDown,
   active = false,
+  destructive = false,
   children,
 }: {
   label: string;
   onClick: (e: React.MouseEvent) => void;
   onMouseDown?: (e: React.MouseEvent) => void;
   active?: boolean;
+  destructive?: boolean;
   children: React.ReactNode;
 }) {
   const [tip, setTip] = useState(false);
@@ -712,7 +714,9 @@ function LineToolButton({
           "w-11 h-11 sm:w-7 sm:h-7 rounded-md flex items-center justify-center transition-colors " +
           (active
             ? "text-indigo-500 bg-indigo-50 dark:bg-indigo-950/60"
-            : "text-slate-400 dark:text-slate-500 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/60")
+            : destructive
+              ? "text-rose-500 dark:text-rose-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+              : "text-slate-400 dark:text-slate-500 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/60")
         }
       >
         {children}
@@ -3076,6 +3080,18 @@ export default function SongEditor({
                               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M13 20l7 -7" /><path d="M13 20v-6a1 1 0 0 1 1 -1h6v-7a3 3 0 0 0 -3 -3h-10a3 3 0 0 0 -3 3v14a3 3 0 0 0 3 3h6z" /></svg>
                             </LineToolButton>
                             <LineToolButton
+                              label="Delete line"
+                              destructive
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSectionPickerLine(null);
+                                setActiveLine(null);
+                                deleteEmptyLineOrSection(section.id, line.id);
+                              }}
+                            >
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1 -2 2H8a2 2 0 0 1 -2 -2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M8 6V4a2 2 0 0 1 2 -2h4a2 2 0 0 1 2 2v2" /></svg>
+                            </LineToolButton>
+                            <LineToolButton
                               label="Close"
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -3092,7 +3108,7 @@ export default function SongEditor({
                         {!readOnly && (
                           <button
                             type="button"
-                            onClick={() => deleteLine(section.id, line.id)}
+                            onClick={() => deleteEmptyLineOrSection(section.id, line.id)}
                             title="Delete line"
                             aria-label="Delete line"
                             className="shrink-0 w-7 h-7 mt-0.5 rounded-md flex items-center justify-center text-slate-300 dark:text-slate-600 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-all opacity-60 sm:opacity-0 sm:group-hover/line:opacity-100 focus-visible:opacity-100 print:hidden"
