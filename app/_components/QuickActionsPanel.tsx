@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   CHART_FONT_FAMILY,
   CHART_FONT_OPTIONS,
+  FONT_ZOOM_STEP,
   KEYS,
   playKey,
   type ChartFont,
@@ -15,6 +16,10 @@ type Props = {
   song: Song;
   settings: Settings;
   zoomOffset: number;
+  // Bounds for the font stepper (in zoom-offset units), derived from the active
+  // base size so the resulting px stays within [FONT_MIN_PX, FONT_MAX_PX].
+  zoomMin: number;
+  zoomMax: number;
   effectiveFontSize: number;
   chartFont: ChartFont;
   onChartFontChange: (font: ChartFont) => void;
@@ -35,7 +40,7 @@ type Props = {
 };
 
 export default function QuickActionsPanel({
-  song, settings, zoomOffset, effectiveFontSize,
+  song, settings, zoomOffset, zoomMin, zoomMax, effectiveFontSize,
   chartFont, onChartFontChange,
   autoScrolling, scrollSpeed,
   readOnly = false, playLayout = "scroll", onPlayLayoutChange,
@@ -122,11 +127,11 @@ export default function QuickActionsPanel({
         </div>
         <QARow label={"Font (" + effectiveFontSize + "px)"}>
           <div className="flex items-center gap-2">
-            <StepBtn onClick={() => onZoomChange(Math.max(zoomOffset - 2, -8))} label="Smaller">
+            <StepBtn onClick={() => onZoomChange(Math.max(zoomOffset - FONT_ZOOM_STEP, zoomMin))} label="Smaller" disabled={zoomOffset <= zoomMin}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><line x1="5" y1="11" x2="17" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             </StepBtn>
             <button type="button" onClick={() => onZoomChange(0)} className="w-8 text-center text-xs text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors font-medium">Reset</button>
-            <StepBtn onClick={() => onZoomChange(Math.min(zoomOffset + 2, 14))} label="Larger">
+            <StepBtn onClick={() => onZoomChange(Math.min(zoomOffset + FONT_ZOOM_STEP, zoomMax))} label="Larger" disabled={zoomOffset >= zoomMax}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             </StepBtn>
           </div>

@@ -695,11 +695,20 @@ export function collectStyleKeys(sections: Section[], styles: Record<string, Sec
 export const LYRIC_FONT_SIZE_PX: Record<EditorPrefs["lyricFontSize"], number> = { small: 14, medium: 17, large: 20 };
 export const CHORD_FONT_SIZE_PX: Record<EditorPrefs["chordFontSize"], number> = { small: 11, medium: 13, large: 16 };
 
-// Fluid typography for the editor and print preview. Lyrics scale with the
-// viewport from a 13px floor up to the user's chosen size (exposed as the
-// --lyric-font-size CSS variable on the container). Chords track 2px smaller.
-export const LYRIC_FONT_CLAMP = "clamp(13px, 2.2vw, var(--lyric-font-size, 16px))";
-export const CHORD_FONT_CLAMP = "clamp(11px, 1.8vw, calc(var(--lyric-font-size, 16px) - 2px))";
+// Chart font stepper: per-press step and px bounds. Device-independent — the
+// rendered size IS the user's chosen px, so one +/- press is the same visible
+// change on every screen (a phone, a Samsung tablet, a laptop all step 2px).
+export const FONT_ZOOM_STEP = 2;
+export const FONT_MIN_PX = 12;
+export const FONT_MAX_PX = 40;
+
+// Editor & print-preview chart typography. The user's chosen size (the
+// --lyric-font-size CSS variable) drives the font DIRECTLY; the clamp only
+// enforces the min/max bounds. Previously a viewport-relative `2.2vw` preferred
+// term capped growth — on tablets it sat below the chosen size, so stepping up
+// changed the number but not the text. Chords track 2px smaller.
+export const LYRIC_FONT_CLAMP = `clamp(${FONT_MIN_PX}px, var(--lyric-font-size, 17px), ${FONT_MAX_PX}px)`;
+export const CHORD_FONT_CLAMP = `clamp(${FONT_MIN_PX - 1}px, calc(var(--lyric-font-size, 17px) - 2px), ${FONT_MAX_PX - 2}px)`;
 export const LINE_SPACING: Record<EditorPrefs["lineSpacing"], number> = { compact: 1.25, normal: 1.55, relaxed: 1.95 };
 export const EDITOR_FONT_FAMILY: Record<EditorPrefs["fontFamily"], string> = {
   mono: "ui-monospace, Menlo, Consolas, 'Courier New', monospace",

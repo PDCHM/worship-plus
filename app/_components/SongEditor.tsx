@@ -10,6 +10,9 @@ import MarkupOverlay from "@/app/_components/MarkupOverlay";
 import { LineBubbles, useSongBubbles } from "@/app/_components/SongBubbles";
 import {
   CHORD_FONT_CLAMP,
+  FONT_ZOOM_STEP,
+  FONT_MIN_PX,
+  FONT_MAX_PX,
   KEYS,
   capoChord,
   playKey,
@@ -1105,7 +1108,16 @@ export default function SongEditor({
     void onSectionStylesSave({ ...sectionStyles, prefs: { ...sectionStyles.prefs, chartFont } });
   };
   const showChords = settings.showChords ?? true;
-  const baseFontSize = LYRIC_FONT_SIZE_PX[prefs.lyricFontSize] + zoomOffset;
+  // Font stepper works in absolute px: base (from the small/medium/large pref)
+  // plus the user's zoom offset, clamped to [FONT_MIN_PX, FONT_MAX_PX]. The zoom
+  // offset is bounded so the resulting px exactly spans that range for whichever
+  // base is active — no dead presses at the ends. One press = FONT_ZOOM_STEP px.
+  const lyricBase = LYRIC_FONT_SIZE_PX[prefs.lyricFontSize];
+  const zoomMin = FONT_MIN_PX - lyricBase;
+  const zoomMax = FONT_MAX_PX - lyricBase;
+  const adjustZoom = (dir: 1 | -1) =>
+    setZoomOffset((z) => Math.min(zoomMax, Math.max(zoomMin, z + dir * FONT_ZOOM_STEP)));
+  const baseFontSize = Math.min(FONT_MAX_PX, Math.max(FONT_MIN_PX, lyricBase + zoomOffset));
   // Ceiling for the fluid clamp() (the --lyric-font-size CSS var). The split-3
   // column view keeps its tighter size by lowering the ceiling; clamp then
   // scales fluidly from a 13px floor up to it based on viewport width.
@@ -3443,12 +3455,12 @@ export default function SongEditor({
               : <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>}
           </button>
         )}
-        <button type="button" onClick={() => setZoomOffset(z => Math.min(z + 2, 14))} title="Larger text"
-          className="w-11 h-11 rounded-full shadow-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-slate-700 flex items-center justify-center transition-colors">
+        <button type="button" onClick={() => adjustZoom(1)} title="Larger text" disabled={zoomOffset >= zoomMax}
+          className="w-11 h-11 rounded-full shadow-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 enabled:hover:bg-indigo-50 dark:enabled:hover:bg-slate-700 disabled:opacity-40 flex items-center justify-center transition-colors">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </button>
-        <button type="button" onClick={() => setZoomOffset(z => Math.max(z - 2, -8))} title="Smaller text"
-          className="w-11 h-11 rounded-full shadow-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-slate-700 flex items-center justify-center transition-colors">
+        <button type="button" onClick={() => adjustZoom(-1)} title="Smaller text" disabled={zoomOffset <= zoomMin}
+          className="w-11 h-11 rounded-full shadow-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 enabled:hover:bg-indigo-50 dark:enabled:hover:bg-slate-700 disabled:opacity-40 flex items-center justify-center transition-colors">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </button>
       </div>
@@ -3476,6 +3488,8 @@ export default function SongEditor({
           song={song}
           settings={settings}
           zoomOffset={zoomOffset}
+          zoomMin={zoomMin}
+          zoomMax={zoomMax}
           effectiveFontSize={fitMode ? Math.round(fitFont) : lyricCeiling}
           chartFont={prefs.chartFont}
           onChartFontChange={handleChartFontChange}
@@ -3543,8 +3557,8 @@ export default function SongEditor({
                 { label: "Print", onClick: () => setPreviewOpen(true), icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> },
                 { label: "Export / Share", onClick: onExport, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> },
                 { label: autoScrolling ? "Pause auto-scroll" : "Auto-scroll", onClick: () => setAutoScrolling((o) => !o), icon: autoScrolling ? <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> : <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> },
-                { label: "Larger text", onClick: () => setZoomOffset((z) => Math.min(z + 2, 14)), icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> },
-                { label: "Smaller text", onClick: () => setZoomOffset((z) => Math.max(z - 2, -8)), icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> },
+                { label: "Larger text", onClick: () => adjustZoom(1), icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> },
+                { label: "Smaller text", onClick: () => adjustZoom(-1), icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> },
                 { label: "Quick actions", onClick: () => setQuickActionsOpen(true), icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> },
               ] as const).map((item) => (
                 <button
