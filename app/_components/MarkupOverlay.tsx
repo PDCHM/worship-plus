@@ -60,7 +60,10 @@ type ProjNote = { id: string; x: number; y: number; text: string; color: string 
 type EditingNote = { id: string | null; anchor: Anchor; offset: Pt; x: number; y: number; text: string };
 
 const COLORS = ["#111827", "#EF4444", "#F97316", "#EAB308", "#22C55E", "#3B82F6", "#7C3AED", "#EC4899"];
-const WIDTHS = [3, 5, 8];
+// Base pen widths (smallest → largest). Kept deliberately small so the smallest
+// draws a genuinely thin line — the rendered nib is width × PEN_SIZE_MULT × box
+// scale, then pressure-modulated by perfect-freehand (see PEN_OPTS).
+const WIDTHS = [2, 4, 7];
 const HL_OPACITY = 0.35;
 const HL_PAD = 2; // px padding around a highlight row-run
 const ERASE_PAD = 8;
@@ -71,11 +74,18 @@ const LOCALIZE_W = 1.8;
 const LOCALIZE_W_FLOOR = 70;
 const LOCALIZE_H_LINES = 3;
 const LOCALIZE_PAD = 12;
-// Pen ink (slice 7, perfect-freehand). size ≈ visible nib width; we pass our
-// own pressure (default 0.5) so mouse/finger get a clean near-uniform line and
-// an Apple Pencil gets natural pressure-variable width.
-const PEN_SIZE_MULT = 2;
-const PEN_OPTS = { thinning: 0.6, smoothing: 0.5, streamline: 0.5, simulatePressure: false };
+// Pen ink (slice 7, perfect-freehand). The rendered nib = width × PEN_SIZE_MULT
+// × box-scale, then modulated by pressure. We pass our own pressure (default 0.5)
+// so mouse/finger get a clean near-uniform line; a stylus gets natural variation.
+//
+// `thinning` is the pressure→width strength: rendered diameter spans
+// size×(1−thinning) … size×(1+thinning) across pressure 0…1. It was 0.6, which
+// let a Samsung S-Pen (reports near-max pressure) inflate the line ~1.6× — so
+// even the smallest setting drew thick. At 0.25 high pressure adds only ~25%,
+// keeping the smallest genuinely thin on S-Pen while leaving finger/Pencil
+// (≈0.5 pressure) at the nominal size. Device-independent: same on all inputs.
+const PEN_SIZE_MULT = 1.3;
+const PEN_OPTS = { thinning: 0.25, smoothing: 0.5, streamline: 0.5, simulatePressure: false };
 
 function uid(): string {
   return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
