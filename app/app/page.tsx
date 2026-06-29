@@ -347,6 +347,9 @@ export default function Home() {
 
   // Offline (Phase 2): reactive connectivity for cache mirroring + the badge.
   const online = useOnlineStatus();
+  // TEMP DIAGNOSTIC (Phase 2 Android): visible progress of the background
+  // full-library content cache so we can see on-device whether it runs/finishes.
+  const [bgCache, setBgCache] = useState<{ done: number; total: number; phase: string } | null>(null);
 
   const [user, setUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -950,33 +953,55 @@ export default function Home() {
   // loaded and re-checks when the list or connectivity changes. Resumable: it
   // only fetches stale/missing songs, so an interrupted run continues next time.
   useEffect(() => {
+    console.log("[bgcache] effect fire:", { online, songsLoaded, user: !!user, songs: songs.length });
     if (!online || !songsLoaded || !user) return;
     let cancelled = false;
     const run = async () => {
-      // Only fetch songs whose cached content is missing or older than the
-      // server copy (cheap when nothing is stale → resumable across runs).
-      const list = songs.filter((s) => s.userId); // skip un-owned placeholders
-      const stale: Song[] = [];
-      for (const s of list) {
-        if (cancelled) return;
-        const c = await cacheGetContent(s.id);
-        if (!c || c.updatedAt < s.updatedAt) stale.push(s);
-      }
-      for (let i = 0; i < stale.length && !cancelled && navigator.onLine; i += 4) {
-        await Promise.all(stale.slice(i, i + 4).map(async (s) => {
-          const { data, error } = await supabase.rpc("get_song_content", { p_song: s.id });
-          if (error || cancelled) return;
-          const content = (data as unknown as { sections?: SectionRow[] } | null) ?? {};
-          const sections = sectionRowsToSections(content.sections ?? []);
-          await cachePutContent(s.id, sections, s.updatedAt);
-        }));
+      console.log("[bgcache] run() start");
+      try {
+        // Only fetch songs whose cached content is missing or older than the
+        // server copy (cheap when nothing is stale → resumable across runs).
+        const list = songs.filter((s) => s.userId); // skip un-owned placeholders
+        const stale: Song[] = [];
+        for (const s of list) {
+          if (cancelled) { console.log("[bgcache] cancelled during staleness scan"); return; }
+          const c = await cacheGetContent(s.id);
+          if (!c || c.updatedAt < s.updatedAt) stale.push(s);
+        }
+        console.log(`[bgcache] list=${list.length} stale=${stale.length} navigator.onLine=${navigator.onLine}`);
+        setBgCache({ done: 0, total: stale.length, phase: "fetching" });
+        let done = 0, ok = 0, failed = 0;
+        for (let i = 0; i < stale.length && !cancelled && navigator.onLine; i += 4) {
+          await Promise.all(stale.slice(i, i + 4).map(async (s) => {
+            try {
+              const { data, error } = await supabase.rpc("get_song_content", { p_song: s.id });
+              if (cancelled) return;
+              if (error) { failed++; console.warn("[bgcache] rpc error", s.id, error.message); return; }
+              const content = (data as unknown as { sections?: SectionRow[] } | null) ?? {};
+              const sections = sectionRowsToSections(content.sections ?? []);
+              await cachePutContent(s.id, sections, s.updatedAt);
+              ok++;
+            } catch (e) {
+              failed++;
+              console.warn("[bgcache] rpc THREW", s.id, (e as Error)?.message);
+            } finally {
+              done++;
+              setBgCache({ done, total: stale.length, phase: "fetching" });
+            }
+          }));
+        }
+        console.log(`[bgcache] run() DONE: ok=${ok} failed=${failed} done=${done}/${stale.length} cancelled=${cancelled} onLine=${navigator.onLine}`);
+        setBgCache({ done, total: stale.length, phase: cancelled ? "cancelled" : "done" });
+      } catch (e) {
+        console.error("[bgcache] run() THREW (loop aborted):", (e as Error)?.message);
+        setBgCache((p) => p ? { ...p, phase: "error" } : { done: 0, total: 0, phase: "error" });
       }
     };
     // Defer so it never competes with first paint / hydration. A deps change
     // (e.g. songs updated) cancels this run via cleanup and schedules a fresh one,
     // so no two loops overlap and the 1.5s debounce coalesces rapid changes.
     const t = window.setTimeout(() => { void run(); }, 1500);
-    return () => { cancelled = true; window.clearTimeout(t); };
+    return () => { console.log("[bgcache] effect cleanup (cancel + reschedule)"); cancelled = true; window.clearTimeout(t); };
   }, [online, songsLoaded, songs, user, supabase]);
 
   // Load settings + library view from localStorage.
@@ -2296,6 +2321,13 @@ export default function Home() {
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
       <OfflineBadge />
+      {/* TEMP DIAGNOSTIC (Phase 2 Android): visible background-cache progress. */}
+      {bgCache && (
+        <div className="fixed left-3 z-[60] px-2.5 py-1 rounded-full bg-slate-900/85 text-white text-[11px] font-mono shadow-lg print:hidden"
+          style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 7.5rem)" }}>
+          cache {bgCache.done}/{bgCache.total} · {bgCache.phase}
+        </div>
+      )}
       <input
         ref={fileInputRef}
         type="file"
