@@ -985,8 +985,6 @@ export default function Home() {
         }
         setCachedSongIds(new Set(ready));
         setOfflineCache({ cached: ready.size, total: list.length });
-        console.log(`[bgcache] scan total=${list.length} ready=${ready.size} stale=${stale.length} onLine=${navigator.onLine}`);
-        let ok = 0, failed = 0;
         for (let i = 0; i < stale.length && navigator.onLine; i += 4) {
           const batch = stale.slice(i, i + 4);
           const results = await Promise.allSettled(batch.map(async (s) => {
@@ -996,14 +994,12 @@ export default function Home() {
             const sections = sectionRowsToSections(content.sections ?? []);
             await cachePutContent(s.id, sections, s.updatedAt);
           }));
-          results.forEach((r, idx) => {
-            if (r.status === "fulfilled") { ok++; ready.add(batch[idx].id); }
-            else { failed++; console.warn("[bgcache] song failed (retry next run)", batch[idx].id, (r.reason as Error)?.message); }
-          });
+          // Cached songs join `ready`; a failed one is simply left out → stays
+          // stale and is retried on the next run (focus/online/size change).
+          results.forEach((r, idx) => { if (r.status === "fulfilled") ready.add(batch[idx].id); });
           setCachedSongIds(new Set(ready));
           setOfflineCache({ cached: ready.size, total: list.length });
         }
-        console.log(`[bgcache] pass done ok=${ok} failed=${failed} cached=${ready.size}/${list.length}`);
       } while (bgRerunRef.current && navigator.onLine);
     } finally {
       bgRunningRef.current = false;
