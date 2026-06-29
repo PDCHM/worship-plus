@@ -41,6 +41,9 @@ export type FoldersViewProps = {
   folders: Folder[];
   folderSongs: FolderSong[];
   songs: Song[];
+  // Song ids whose full content is cached for offline (Phase 2). Used to show an
+  // "Available offline" badge on a setlist once all its songs are saved locally.
+  cachedSongIds: Set<string>;
   teams: TeamOption[];
   currentUserId: string;
   onMoveToTeam: (setlistId: string, groupId: string | null) => void;
@@ -527,13 +530,15 @@ function FolderDetail({
 /* ─── SetlistDetail ───────────────────────────────────────────────────────── */
 
 function SetlistDetail({
-  folder, currentSongs, folderSongs, onNavigate, onRename, onDelete,
+  folder, currentSongs, folderSongs, cachedSongIds, onNavigate, onRename, onDelete,
   onAddSongs, onRemoveSong, onCommitOrder, onOpenSong, onUpdateDate, onExportSetlist,
   setlistEvents, onAddEvent, onDeleteEvent, canUseCalendar, onRequireUpgrade, showToast, teams, currentUserId, onMoveToTeam,
 }: { folder: Folder; currentSongs: Song[] } & FoldersViewProps) {
   const isOwner = folder.ownerId === currentUserId;
   const [eventModal, setEventModal] = useState<{ type: "rehearsal" | "event" } | null>(null);
   const [confirmDel, setConfirmDel] = useState<DeleteConfirm>(null);
+  // Every song in this set has its content cached → safe to use with no network.
+  const offlineReady = currentSongs.length > 0 && currentSongs.every((s) => cachedSongIds.has(s.id));
 
   const events = setlistEvents
     .filter((e) => e.folderId === folder.id)
@@ -748,13 +753,22 @@ function SetlistDetail({
       </div>
 
       <div className="flex items-center justify-between mt-6 mb-4">
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          {orderedSongs.length} {orderedSongs.length === 1 ? "song" : "songs"}
-        </p>
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            {orderedSongs.length} {orderedSongs.length === 1 ? "song" : "songs"}
+          </p>
+          {offlineReady && (
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900 text-[11px] font-semibold"
+              title="Every song in this setlist is saved on this device — it works with no internet.">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polyline points="20 6 9 17 4 12" /></svg>
+              Available offline
+            </span>
+          )}
+        </div>
         <button
           type="button"
           onClick={() => onAddSongs(folder.id)}
-          className="h-8 px-3 rounded-lg text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5"
+          className="h-8 px-3 rounded-lg text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5 shrink-0"
         >
           <PlusIconSm /> Add Songs
         </button>

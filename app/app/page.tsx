@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import * as Sentry from "@sentry/nextjs";
@@ -347,9 +347,16 @@ export default function Home() {
 
   // Offline (Phase 2): reactive connectivity for cache mirroring + the badge.
   const online = useOnlineStatus();
-  // TEMP DIAGNOSTIC (Phase 2 Android): visible progress of the background
-  // full-library content cache so we can see on-device whether it runs/finishes.
-  const [bgCache, setBgCache] = useState<{ done: number; total: number; phase: string } | null>(null);
+  // Offline-readiness: how many of the user's songs have full content cached
+  // (cached/total), driving the "Saving for offline… / Offline ready" indicator.
+  const [offlineCache, setOfflineCache] = useState<{ cached: number; total: number } | null>(null);
+  // Song ids with cached content → per-setlist "available offline" badge.
+  const [cachedSongIds, setCachedSongIds] = useState<Set<string>>(new Set());
+  // Background content-cache loop machinery (decoupled from `songs` identity so
+  // it isn't restarted on every setSongs; reads the latest list via songsRef).
+  const songsRef = useRef<Song[]>([]);
+  const bgRunningRef = useRef(false);
+  const bgRerunRef = useRef(false);
 
   const [user, setUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -946,63 +953,97 @@ export default function Home() {
     void cacheSetMeta("sectionStyles", sectionStyles);
   }, [sectionStyles, online, user]);
 
-  // Background full-library content cache: fetch sections for every song whose
-  // cached content is missing or older than the server copy, ≤4 at a time, so
-  // the WHOLE library (not just opened songs) is openable offline. Genuinely
-  // background — never awaited on the render path; runs after songs metadata is
-  // loaded and re-checks when the list or connectivity changes. Resumable: it
-  // only fetches stale/missing songs, so an interrupted run continues next time.
-  useEffect(() => {
-    console.log("[bgcache] effect fire:", { online, songsLoaded, user: !!user, songs: songs.length });
-    if (!online || !songsLoaded || !user) return;
-    let cancelled = false;
-    const run = async () => {
-      console.log("[bgcache] run() start");
-      try {
-        // Only fetch songs whose cached content is missing or older than the
-        // server copy (cheap when nothing is stale → resumable across runs).
-        const list = songs.filter((s) => s.userId); // skip un-owned placeholders
+  // Keep songsRef current without making it a dep of the cache loop (so the loop
+  // isn't torn down/restarted on every setSongs — favorite, open, etc.).
+  useEffect(() => { songsRef.current = songs; }, [songs]);
+
+  // Background full-library content cache. Caches sections for every song whose
+  // cached content is missing/older than the server copy, ≤4 at a time, so the
+  // WHOLE library (not just opened songs) is openable offline.
+  //  • Per-song FAIL-SAFE: each fetch is isolated (Promise.allSettled) — one
+  //    network blip can never abort the loop; a failed song is logged, skipped,
+  //    and retried on the next run.
+  //  • DECOUPLED from `songs` identity (reads songsRef) and guarded by an
+  //    in-flight ref, so initial-load settling and unrelated setSongs don't
+  //    restart it; a trigger during a run sets a rerun flag handled at the end.
+  const runBgCache = useCallback(async () => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) return;
+    if (bgRunningRef.current) { bgRerunRef.current = true; return; }
+    bgRunningRef.current = true;
+    try {
+      do {
+        bgRerunRef.current = false;
+        const list = songsRef.current.filter((s) => s.userId);
+        if (!list.length) { setOfflineCache(null); break; }
+        // Scan: split into already-cached (fresh) vs stale/missing.
+        const ready = new Set<string>();
         const stale: Song[] = [];
         for (const s of list) {
-          if (cancelled) { console.log("[bgcache] cancelled during staleness scan"); return; }
           const c = await cacheGetContent(s.id);
-          if (!c || c.updatedAt < s.updatedAt) stale.push(s);
+          if (c && c.updatedAt >= s.updatedAt) ready.add(s.id);
+          else stale.push(s);
         }
-        console.log(`[bgcache] list=${list.length} stale=${stale.length} navigator.onLine=${navigator.onLine}`);
-        setBgCache({ done: 0, total: stale.length, phase: "fetching" });
-        let done = 0, ok = 0, failed = 0;
-        for (let i = 0; i < stale.length && !cancelled && navigator.onLine; i += 4) {
-          await Promise.all(stale.slice(i, i + 4).map(async (s) => {
-            try {
-              const { data, error } = await supabase.rpc("get_song_content", { p_song: s.id });
-              if (cancelled) return;
-              if (error) { failed++; console.warn("[bgcache] rpc error", s.id, error.message); return; }
-              const content = (data as unknown as { sections?: SectionRow[] } | null) ?? {};
-              const sections = sectionRowsToSections(content.sections ?? []);
-              await cachePutContent(s.id, sections, s.updatedAt);
-              ok++;
-            } catch (e) {
-              failed++;
-              console.warn("[bgcache] rpc THREW", s.id, (e as Error)?.message);
-            } finally {
-              done++;
-              setBgCache({ done, total: stale.length, phase: "fetching" });
-            }
+        setCachedSongIds(new Set(ready));
+        setOfflineCache({ cached: ready.size, total: list.length });
+        console.log(`[bgcache] scan total=${list.length} ready=${ready.size} stale=${stale.length} onLine=${navigator.onLine}`);
+        let ok = 0, failed = 0;
+        for (let i = 0; i < stale.length && navigator.onLine; i += 4) {
+          const batch = stale.slice(i, i + 4);
+          const results = await Promise.allSettled(batch.map(async (s) => {
+            const { data, error } = await supabase.rpc("get_song_content", { p_song: s.id });
+            if (error) throw new Error(error.message);
+            const content = (data as unknown as { sections?: SectionRow[] } | null) ?? {};
+            const sections = sectionRowsToSections(content.sections ?? []);
+            await cachePutContent(s.id, sections, s.updatedAt);
           }));
+          results.forEach((r, idx) => {
+            if (r.status === "fulfilled") { ok++; ready.add(batch[idx].id); }
+            else { failed++; console.warn("[bgcache] song failed (retry next run)", batch[idx].id, (r.reason as Error)?.message); }
+          });
+          setCachedSongIds(new Set(ready));
+          setOfflineCache({ cached: ready.size, total: list.length });
         }
-        console.log(`[bgcache] run() DONE: ok=${ok} failed=${failed} done=${done}/${stale.length} cancelled=${cancelled} onLine=${navigator.onLine}`);
-        setBgCache({ done, total: stale.length, phase: cancelled ? "cancelled" : "done" });
-      } catch (e) {
-        console.error("[bgcache] run() THREW (loop aborted):", (e as Error)?.message);
-        setBgCache((p) => p ? { ...p, phase: "error" } : { done: 0, total: 0, phase: "error" });
-      }
+        console.log(`[bgcache] pass done ok=${ok} failed=${failed} cached=${ready.size}/${list.length}`);
+      } while (bgRerunRef.current && navigator.onLine);
+    } finally {
+      bgRunningRef.current = false;
+    }
+  }, [supabase]);
+
+  // Trigger: once signed in + online + songs loaded, and whenever the library
+  // SIZE changes (new songs). Debounced so own→shared load settling fires once.
+  // Reads songs via ref, so this doesn't churn on favorite/open/edit.
+  useEffect(() => {
+    if (!online || !songsLoaded || !user) return;
+    const t = window.setTimeout(() => { void runBgCache(); }, 1500);
+    return () => window.clearTimeout(t);
+  }, [online, songsLoaded, user, songs.length, runBgCache]);
+
+  // Resume: a backgrounded/locked Android tablet suspends timers/fetches; pick
+  // back up on regaining focus, visibility, or connectivity (retries failures too).
+  useEffect(() => {
+    const resume = () => { if (typeof navigator === "undefined" || navigator.onLine) void runBgCache(); };
+    const onVis = () => { if (document.visibilityState === "visible") resume(); };
+    window.addEventListener("focus", resume);
+    window.addEventListener("online", resume);
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.removeEventListener("focus", resume);
+      window.removeEventListener("online", resume);
+      document.removeEventListener("visibilitychange", onVis);
     };
-    // Defer so it never competes with first paint / hydration. A deps change
-    // (e.g. songs updated) cancels this run via cleanup and schedules a fresh one,
-    // so no two loops overlap and the 1.5s debounce coalesces rapid changes.
-    const t = window.setTimeout(() => { void run(); }, 1500);
-    return () => { console.log("[bgcache] effect cleanup (cancel + reschedule)"); cancelled = true; window.clearTimeout(t); };
-  }, [online, songsLoaded, songs, user, supabase]);
+  }, [runBgCache]);
+
+  // Show "Offline ready ✓" briefly once the whole library is cached, then fade.
+  const [offlineReadyFlash, setOfflineReadyFlash] = useState(false);
+  useEffect(() => {
+    if (offlineCache && offlineCache.total > 0 && offlineCache.cached >= offlineCache.total) {
+      setOfflineReadyFlash(true);
+      const t = window.setTimeout(() => setOfflineReadyFlash(false), 5000);
+      return () => window.clearTimeout(t);
+    }
+    setOfflineReadyFlash(false);
+  }, [offlineCache]);
 
   // Load settings + library view from localStorage.
   useEffect(() => {
@@ -2321,12 +2362,24 @@ export default function Home() {
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
       <OfflineBadge />
-      {/* TEMP DIAGNOSTIC (Phase 2 Android): visible background-cache progress. */}
-      {bgCache && (
-        <div className="fixed left-3 z-[60] px-2.5 py-1 rounded-full bg-slate-900/85 text-white text-[11px] font-mono shadow-lg print:hidden"
-          style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 7.5rem)" }}>
-          cache {bgCache.done}/{bgCache.total} · {bgCache.phase}
-        </div>
+      {/* Offline-readiness indicator — so a leader knows the library is fully
+          cached before a service. Downloading progress while caching; a brief
+          "Offline ready" confirmation when the whole library is saved. Hidden
+          while offline (the Offline badge covers that state). */}
+      {online && offlineCache && offlineCache.total > 0 && (
+        offlineCache.cached < offlineCache.total ? (
+          <div className="fixed left-3 z-[60] flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/85 dark:bg-slate-800/90 text-white text-xs font-medium shadow-lg print:hidden"
+            style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 4.75rem)" }}>
+            <span className="w-3 h-3 rounded-full border-2 border-white/40 border-t-white animate-spin" aria-hidden />
+            Saving for offline… {offlineCache.cached}/{offlineCache.total}
+          </div>
+        ) : offlineReadyFlash ? (
+          <div className="fixed left-3 z-[60] flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-600 text-white text-xs font-semibold shadow-lg print:hidden"
+            style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 4.75rem)" }} role="status">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polyline points="20 6 9 17 4 12" /></svg>
+            Offline ready
+          </div>
+        ) : null
       )}
       <input
         ref={fileInputRef}
@@ -2484,6 +2537,7 @@ export default function Home() {
               folders={folders}
               folderSongs={folderSongs}
               songs={songs}
+              cachedSongIds={cachedSongIds}
               teams={groups.filter(g => groupMembers.some(m => m.groupId === g.id && m.userId === user.id)).map(g => ({ id: g.id, name: g.name }))}
               currentUserId={user.id}
               onMoveToTeam={assignSetlistToTeam}
