@@ -8,6 +8,7 @@ import {
 } from "@/lib/song";
 import { type Plan } from "@/lib/plans";
 import { createClient } from "@/lib/supabase/client";
+import { clearCache } from "@/lib/offline/cache";
 import SubscriptionSection from "@/app/_components/SubscriptionSection";
 import SupportForm from "@/app/_components/SupportForm";
 
@@ -211,7 +212,9 @@ function AccountSection() {
         setDeleting(false);
         return;
       }
-      // Account row is gone server-side; clear the local session and leave.
+      // Account row is gone server-side; clear the local session, the offline
+      // library cache, and leave.
+      await clearCache();
       await supabase.auth.signOut();
       router.replace("/login");
     } catch {

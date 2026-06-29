@@ -6,6 +6,12 @@ import Image from "next/image";
 import * as Sentry from "@sentry/nextjs";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
+import {
+  cacheEnsureUser, clearCache, cacheGetAll, cacheReplace, cacheGetMeta, cacheSetMeta,
+  cacheGetContent, cachePutContent,
+} from "@/lib/offline/cache";
+import { useOnlineStatus } from "@/lib/offline/useOnlineStatus";
+import OfflineBadge from "@/app/_components/OfflineBadge";
 import AddSongSheet from "@/app/_components/AddSongSheet";
 import SongSearchSheet, { type SongSearchResult } from "@/app/_components/SongSearchSheet";
 import UpgradeModal from "@/app/_components/UpgradeModal";
@@ -339,11 +345,18 @@ export default function Home() {
   if (!supabaseRef.current) supabaseRef.current = createClient();
   const supabase = supabaseRef.current;
 
+  // Offline (Phase 2): reactive connectivity for cache mirroring + the badge.
+  const online = useOnlineStatus();
+
   const [user, setUser] = useState<User | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [songs, setSongs] = useState<Song[]>([]);
   const [songsLoaded, setSongsLoaded] = useState(false);
+  // True once the folders/folder_songs/setlist_events have loaded FROM THE
+  // NETWORK — gates the offline-cache mirror so a transient pre-load empty state
+  // can never overwrite a populated cache.
+  const [foldersLoaded, setFoldersLoaded] = useState(false);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [folderSongs, setFolderSongs] = useState<FolderSong[]>([]);
   const [setlistEvents, setSetlistEvents] = useState<SetlistEvent[]>([]);
@@ -637,6 +650,44 @@ export default function Home() {
         setUser(u);
         setAuthChecked(true);
 
+        // ── Offline cache seed (Phase 2) ──────────────────────────────────
+        // Hydrate state from IndexedDB FIRST, so the library paints instantly
+        // and works with no network. cacheEnsureUser() wipes the cache if it
+        // belonged to a different account (privacy on shared devices) before any
+        // cached row is read. When offline we stop here and rely on the cache;
+        // when online the network loads below overwrite state (and the mirror
+        // effects refresh the cache).
+        await cacheEnsureUser(u.id);
+        if (cancelled) return;
+        const [cSongs, cFolders, cFolderSongs, cEvents, cGroups, cMembers, cGroupSongs, cProfile, cStyles] = await Promise.all([
+          cacheGetAll<Song>("songs"),
+          cacheGetAll<Folder>("folders"),
+          cacheGetAll<FolderSong>("folderSongs"),
+          cacheGetAll<SetlistEvent>("setlistEvents"),
+          cacheGetAll<Group>("groups"),
+          cacheGetAll<GroupMember>("groupMembers"),
+          cacheGetAll<GroupSong>("groupSongs"),
+          cacheGetMeta<Profile>("profile"),
+          cacheGetMeta<SectionStyles>("sectionStyles"),
+        ]);
+        if (cancelled) return;
+        if (cSongs.length) { setSongs(cSongs); for (const s of cSongs) lastSavedRef.current.set(s.id, s); }
+        if (cFolders.length) setFolders(cFolders);
+        if (cFolderSongs.length) setFolderSongs(cFolderSongs);
+        if (cEvents.length) setSetlistEvents(cEvents);
+        if (cGroups.length) setGroups(cGroups);
+        if (cMembers.length) setGroupMembers(cMembers);
+        if (cGroupSongs.length) setGroupSongs(cGroupSongs);
+        if (cProfile) setProfile(cProfile);
+        if (cStyles && !sectionStylesTouched.current) setSectionStyles(cStyles);
+        if (!navigator.onLine) {
+          // Offline: the seed above is all we have. Mark loaders done so the UI
+          // renders the cached library instead of a perpetual spinner.
+          setSongsLoaded(true);
+          setGroupsLoaded(true);
+          return;
+        }
+
         void (async () => {
           let { data: profileRow, error: profErr } = await supabase
             .from("profiles").select(PROFILE_COLS).eq("id", u.id).maybeSingle();
@@ -647,7 +698,9 @@ export default function Home() {
           if (cancelled) return;
           if (profileRow) {
             const p = profileRow as Profile;
-            setProfile({ ...p, plan: (p.plan as Plan | undefined) ?? "free" });
+            const withPlan = { ...p, plan: (p.plan as Plan | undefined) ?? "free" };
+            setProfile(withPlan);
+            void cacheSetMeta("profile", withPlan); // offline copy
             // Authoritative cross-device copy — but don't overwrite a change the
             // user already made this session while this fetch was in flight.
             if (!sectionStylesTouched.current) setSectionStyles(mergeSectionStyles(p.section_styles));
@@ -818,6 +871,7 @@ export default function Home() {
             eventDate: r.event_date,
             eventType: (r.event_type === "rehearsal" ? "rehearsal" : "event") as "rehearsal" | "event",
           })));
+          setFoldersLoaded(true); // network folders in → offline mirror may run
         });
 
         /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -847,7 +901,7 @@ export default function Home() {
     })();
 
     const { data: subscription } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_OUT") router.replace("/login");
+      if (event === "SIGNED_OUT") { void clearCache(); router.replace("/login"); }
     });
 
     return () => {
@@ -856,6 +910,74 @@ export default function Home() {
       subscription.subscription.unsubscribe();
     };
   }, [supabase, router]);
+
+  // ── Offline cache mirrors (Phase 2) ─────────────────────────────────────────
+  // Mirror the in-memory library arrays into IndexedDB while ONLINE, so the cache
+  // tracks server truth (last write wins). Each is gated on its network-load flag
+  // so a transient pre-load empty array can never wipe a populated cache. Song
+  // rows are stored metadata-only (sections live in the songContent store, filled
+  // by the background loop / on open).
+  useEffect(() => {
+    if (!online || !songsLoaded) return;
+    const snapshot = songs.map((s) => ({ ...s, sections: [] as Song["sections"] }));
+    const t = window.setTimeout(() => { void cacheReplace("songs", snapshot); }, 600);
+    return () => window.clearTimeout(t);
+  }, [songs, online, songsLoaded]);
+
+  useEffect(() => {
+    if (!online || !foldersLoaded) return;
+    void cacheReplace("folders", folders);
+    void cacheReplace("folderSongs", folderSongs);
+    void cacheReplace("setlistEvents", setlistEvents);
+  }, [folders, folderSongs, setlistEvents, online, foldersLoaded]);
+
+  useEffect(() => {
+    if (!online || !groupsLoaded) return;
+    void cacheReplace("groups", groups);
+    void cacheReplace("groupMembers", groupMembers);
+    void cacheReplace("groupSongs", groupSongs);
+  }, [groups, groupMembers, groupSongs, online, groupsLoaded]);
+
+  useEffect(() => {
+    if (!online || !user) return;
+    void cacheSetMeta("sectionStyles", sectionStyles);
+  }, [sectionStyles, online, user]);
+
+  // Background full-library content cache: fetch sections for every song whose
+  // cached content is missing or older than the server copy, ≤4 at a time, so
+  // the WHOLE library (not just opened songs) is openable offline. Genuinely
+  // background — never awaited on the render path; runs after songs metadata is
+  // loaded and re-checks when the list or connectivity changes. Resumable: it
+  // only fetches stale/missing songs, so an interrupted run continues next time.
+  useEffect(() => {
+    if (!online || !songsLoaded || !user) return;
+    let cancelled = false;
+    const run = async () => {
+      // Only fetch songs whose cached content is missing or older than the
+      // server copy (cheap when nothing is stale → resumable across runs).
+      const list = songs.filter((s) => s.userId); // skip un-owned placeholders
+      const stale: Song[] = [];
+      for (const s of list) {
+        if (cancelled) return;
+        const c = await cacheGetContent(s.id);
+        if (!c || c.updatedAt < s.updatedAt) stale.push(s);
+      }
+      for (let i = 0; i < stale.length && !cancelled && navigator.onLine; i += 4) {
+        await Promise.all(stale.slice(i, i + 4).map(async (s) => {
+          const { data, error } = await supabase.rpc("get_song_content", { p_song: s.id });
+          if (error || cancelled) return;
+          const content = (data as unknown as { sections?: SectionRow[] } | null) ?? {};
+          const sections = sectionRowsToSections(content.sections ?? []);
+          await cachePutContent(s.id, sections, s.updatedAt);
+        }));
+      }
+    };
+    // Defer so it never competes with first paint / hydration. A deps change
+    // (e.g. songs updated) cancels this run via cleanup and schedules a fresh one,
+    // so no two loops overlap and the 1.5s debounce coalesces rapid changes.
+    const t = window.setTimeout(() => { void run(); }, 1500);
+    return () => { cancelled = true; window.clearTimeout(t); };
+  }, [online, songsLoaded, songs, user, supabase]);
 
   // Load settings + library view from localStorage.
   useEffect(() => {
@@ -935,6 +1057,17 @@ export default function Home() {
     toastTimer.current = window.setTimeout(() => setToast(null), 2400);
   };
 
+  // Phase 2 is VIEW-ONLY offline: every create/edit/delete/import/share calls
+  // this first. Offline → show one clear message and bail (no optimistic change,
+  // no silent queue). Uses live navigator.onLine (most current at click time).
+  const guardOnline = (): boolean => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      showToast("You're offline — changes need a connection");
+      return false;
+    }
+    return true;
+  };
+
   // Optimistic-remove + Undo toast for lighter destructive actions. `restore`
   // puts local state back; `commit` performs the actual DB write. The commit is
   // deferred until the toast expires, so Undo just cancels it — no re-insert.
@@ -976,6 +1109,7 @@ export default function Home() {
 
   const saveSong = async (song: Song) => {
     if (!user) return;
+    if (!guardOnline()) return;
     const result = await saveSongToDb(supabase, song, user.id);
     if (!result.ok) {
       const m = result.message || "";
@@ -1011,30 +1145,50 @@ export default function Home() {
       return;
     }
     setHydratingId(songId);
+
+    // Merge resolved content into the in-memory metadata row + clear the spinner.
+    const applySections = (sections: Song["sections"]) => {
+      hydratedIdsRef.current.add(songId);
+      setSongs((prev) =>
+        prev.map((s) => {
+          if (s.id !== songId) return s;
+          const merged = { ...s, sections };
+          lastSavedRef.current.set(songId, merged);
+          return merged;
+        }),
+      );
+      setHydratingId((cur) => (cur === songId ? null : cur));
+    };
+
+    // Offline (or a failed fetch) → read this song's sections from the cache. If
+    // the background loop reached it, it opens fully; if not, show a clean
+    // "not available offline yet" message instead of a perpetual spinner.
+    const fromCache = async (msgIfMissing: string) => {
+      const cached = await cacheGetContent(songId);
+      if (cached) { applySections(cached.sections as Song["sections"]); return; }
+      showToast(msgIfMissing);
+      setHydratingId((cur) => (cur === songId ? null : cur));
+    };
+
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      await fromCache("This song isn’t available offline yet");
+      return;
+    }
+
     // SECURITY DEFINER RPC builds the full sections → lines → chords tree in
     // one round trip, past a single can_read_song() gate — avoids PostgREST
     // re-evaluating per-row RLS on every section/line/chord.
     const { data, error } = await supabase.rpc("get_song_content", { p_song: songId });
     if (error) {
       console.error("hydrate song failed", error.message);
-      showToast("Could not load song: " + error.message);
-      setHydratingId((cur) => (cur === songId ? null : cur));
+      // Network/RLS error while "online" — try the cache before surfacing it.
+      await fromCache("Could not load song: " + error.message);
       return;
     }
     const content = (data as unknown as { sections?: SectionRow[] } | null) ?? {};
     const sections = sectionRowsToSections(content.sections ?? []);
-    hydratedIdsRef.current.add(songId);
-    // Merge content into the metadata entry already in the list; keep any
-    // locally-toggled metadata (e.g. favorite) untouched.
-    setSongs((prev) =>
-      prev.map((s) => {
-        if (s.id !== songId) return s;
-        const merged = { ...s, sections };
-        lastSavedRef.current.set(songId, merged);
-        return merged;
-      }),
-    );
-    setHydratingId((cur) => (cur === songId ? null : cur));
+    void cachePutContent(songId, sections, songs.find((s) => s.id === songId)?.updatedAt ?? Date.now()); // refresh offline copy
+    applySections(sections);
   };
 
   // Fetch one setlist's songs directly via folder_songs ⋈ songs (ordered by
@@ -1251,6 +1405,7 @@ export default function Home() {
   }, [view]);
 
   const toggleFavorite = async (songId: string) => {
+    if (!guardOnline()) return;
     const current = songs.find((s) => s.id === songId);
     if (!current) return;
     const newFav = !current.favorite;
@@ -1262,6 +1417,7 @@ export default function Home() {
   };
 
   const deleteSong = async (songId: string) => {
+    if (!guardOnline()) return;
     setSongs((prev) => prev.filter((s) => s.id !== songId));
     setView((prev) => {
       if (prev.kind === "editor" && prev.songId === songId) return { kind: "library", filter: "all" };
@@ -1280,6 +1436,7 @@ export default function Home() {
   // Toast is shown by the caller (Library) so it can say "[N] songs deleted".
   const bulkDeleteSongs = async (ids: string[]) => {
     if (!ids.length) return;
+    if (!guardOnline()) return;
     const idSet = new Set(ids);
     setSongs((prev) => prev.filter((s) => !idSet.has(s.id)));
     setFolderSongs((prev) => prev.filter((fs) => !idSet.has(fs.songId)));
@@ -1296,6 +1453,7 @@ export default function Home() {
   // addSongToFolder derives position from stale state, so it can't be looped).
   // Songs already in the setlist are skipped. Toast shown by the caller.
   const bulkAddSongsToSetlist = async (songIds: string[], folderId: string) => {
+    if (!guardOnline()) return;
     const inFolder = folderSongs.filter((fs) => fs.folderId === folderId);
     const have = new Set(inFolder.map((fs) => fs.songId));
     let position = inFolder.length ? Math.max(...inFolder.map((fs) => fs.position)) + 1 : 0;
@@ -1328,6 +1486,7 @@ export default function Home() {
   };
 
   const newSong = () => {
+    if (!guardOnline()) return;
     // Songs are ungated on every plan — no count limit.
     // Stamp ownership (userId) so it shows in All Songs immediately — the list
     // filters on userId === user.id.
@@ -1386,6 +1545,7 @@ export default function Home() {
   // opened, so load full content first (else the copy would be empty), then
   // create an owned copy titled "… (copy)" and open it.
   const librarySaveAsCopy = async (songId: string, title?: string) => {
+    if (!guardOnline()) return;
     const source = songs.find(s => s.id === songId);
     if (!source || !user) return;
     let sections = source.sections;
@@ -1424,6 +1584,7 @@ export default function Home() {
   // "Save as copy" — e.g. keep the original and save an AI-chorded version.
   const saveAsCopy = async (song: Song, title?: string, afterView?: View) => {
     if (!user) return;
+    if (!guardOnline()) return;
     const copy: Song = {
       ...song,
       id: uid(),
@@ -1467,6 +1628,7 @@ export default function Home() {
   const openSong = (id: string, opts?: { setlistId?: string }) => navigateTo({ kind: "editor", songId: id, setlistId: opts?.setlistId });
 
   const handleImportPasted = (song: Song, aiIntent = false) => {
+    if (!guardOnline()) return;
     // Stamp ownership so the song passes the All Songs filter (which keys on
     // userId === user.id) and appears immediately — no refresh needed. Preserve
     // any userId already set (e.g. the AI-chords path stamps it upstream).
@@ -1522,6 +1684,7 @@ export default function Home() {
   };
 
   const handleImport = async (inputFile: File, linkTargetOverride?: string | null) => {
+    if (!guardOnline()) return;
     // Folder flow: link newly-saved songs to the folder/setlist "+ Add Songs" was
     // launched from. When importing multiple files at once the caller passes the
     // target explicitly (it captures + clears it once for the whole batch); for a
@@ -1804,6 +1967,10 @@ export default function Home() {
   };
 
   const handleSignOut = async () => {
+    // Wipe the offline library cache so it's never readable on this (possibly
+    // shared) device after logout. The next different login also re-checks via
+    // cacheEnsureUser(), so this is belt-and-suspenders.
+    await clearCache();
     await supabase.auth.signOut();
     router.replace("/login");
   };
@@ -1835,6 +2002,7 @@ export default function Home() {
   // ─── Folder / Setlist CRUD ────────────────────────────────────────────────
 
   const createFolder = async (name: string, type: "folder" | "setlist", groupId: string | null = null): Promise<Folder | null> => {
+    if (!guardOnline()) return null;
     // Setlists are Personal+; plain folders are ungated. Single chokepoint for
     // every setlist-creation path (sidebar, FoldersView, bundle import).
     if (type === "setlist" && !gate.canUse("setlists")) {
@@ -1872,6 +2040,7 @@ export default function Home() {
   };
 
   const updateFolderDate = async (id: string, date: string | null): Promise<void> => {
+    if (!guardOnline()) return;
     setFolders(prev => prev.map(f => f.id === id ? { ...f, date: date ?? undefined } : f));
     const { error } = await supabase.from("folders").update({ date }).eq("id", id);
     if (error) logErr("update folder date", error);
@@ -1881,6 +2050,7 @@ export default function Home() {
   // Optimistic: the same `folders` state drives the personal Overview (!groupId)
   // and the team view (groupId === team), so the row moves between views at once.
   const assignSetlistToTeam = (setlistId: string, newGroupId: string | null): void => {
+    if (!guardOnline()) return;
     const prev = folders;
     setFolders((p) => p.map((f) => f.id === setlistId ? { ...f, groupId: newGroupId } : f));
     void (async () => {
@@ -1902,6 +2072,7 @@ export default function Home() {
   };
 
   const addSetlistEvent = async (folderId: string, ev: { label: string; eventDate: string; eventType: "rehearsal" | "event" }): Promise<void> => {
+    if (!guardOnline()) return;
     const { data, error } = await supabase
       .from("setlist_events")
       .insert({ folder_id: folderId, label: ev.label, event_date: ev.eventDate, event_type: ev.eventType })
@@ -1916,6 +2087,7 @@ export default function Home() {
   };
 
   const deleteSetlistEvent = (id: string): void => {
+    if (!guardOnline()) return;
     const prev = setlistEvents;
     const ev = setlistEvents.find((e) => e.id === id);
     setSetlistEvents((p) => p.filter((e) => e.id !== id));
@@ -1931,6 +2103,7 @@ export default function Home() {
 
   const createGroup=async(name:string):Promise<Group|null>=>{
     if(!user)return null;
+    if(!guardOnline())return null;
     const{data,error}=await supabase.rpc("create_worship_group",{group_name:name});
     if(error){logErr("create group",error);showToast("Error: "+error.message);return null;}
     const r=data as{id:string;name:string;invite_token:string;created_at:string};
@@ -1940,12 +2113,14 @@ export default function Home() {
     return g;
   };
   const updateGroupName = async (groupId: string, name: string): Promise<void> => {
+    if (!guardOnline()) return;
     setGroups(p => p.map(g => g.id === groupId ? { ...g, name } : g));
     const { error } = await supabase.from("groups").update({ name }).eq("id", groupId);
     if (error) { logErr("update group name", error); showToast("Couldn't rename team: " + error.message); }
   };
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const addGroupMember=async(groupId:string,displayName:string,role:string,instrument:string,instrumentDetail:string):Promise<void>=>{
+    if(!guardOnline())return;
     const{data,error}=await supabase.rpc("add_group_member",{p_group_id:groupId,p_display_name:displayName,p_role:role,p_instrument:instrument,p_instrument_detail:instrumentDetail});
     if(error){showToast("Error: "+error.message);return;}
     const r=data as any;
@@ -1953,6 +2128,7 @@ export default function Home() {
   };
   /* eslint-enable @typescript-eslint/no-explicit-any */
   const shareGroupSong=async(groupId:string,songId:string):Promise<void>=>{
+    if(!guardOnline())return;
     const{data,error}=await supabase.rpc("add_song_to_group",{p_group_id:groupId,p_song_id:songId});
     if(error){logErr("share song",error);showToast("Error: "+error.message);return;}
     // add_song_to_group returns null when the (group_id, song_id) row already
@@ -1962,12 +2138,14 @@ export default function Home() {
     setGroupSongs(prev=>[...prev,{id:r.id,groupId:r.group_id,songId:r.song_id}]);
   };
   const unshareGroupSong=async(groupId:string,songId:string):Promise<void>=>{
+    if(!guardOnline())return;
     const prev=groupSongs;
     setGroupSongs(p=>p.filter(gs=>!(gs.groupId===groupId&&gs.songId===songId)));
     const{error}=await supabase.from("group_songs").delete().eq("group_id",groupId).eq("song_id",songId);
     if(error){logErr("unshare group song",error);showToast("Couldn't unshare song: "+error.message);setGroupSongs(prev);}
   };
   const deleteGroup=async(groupId:string):Promise<boolean>=>{
+    if(!guardOnline())return false;
     const snapshot={groups,groupMembers,groupSongs,folders};
     setGroups(p=>p.filter(g=>g.id!==groupId));
     setGroupMembers(p=>p.filter(m=>m.groupId!==groupId));
@@ -1986,6 +2164,7 @@ export default function Home() {
     return true;
   };
   const removeGroupMember=async(memberId:string):Promise<boolean>=>{
+    if(!guardOnline())return false;
     const snapshot=groupMembers;
     setGroupMembers(p=>p.filter(m=>m.id!==memberId));
     const{error}=await supabase.from("group_members").delete().eq("id",memberId);
@@ -1999,12 +2178,14 @@ export default function Home() {
   };
 
   const renameFolder = async (id: string, name: string): Promise<void> => {
+    if (!guardOnline()) return;
     setFolders((prev) => prev.map((f) => f.id === id ? { ...f, name } : f));
     const { error } = await supabase.from("folders").update({ name }).eq("id", id);
     if (error) logErr("rename folder", error);
   };
 
   const deleteFolder = async (id: string): Promise<void> => {
+    if (!guardOnline()) return;
     // Snapshot for rollback if the DB delete fails.
     const prevFolders = folders;
     const prevFolderSongs = folderSongs;
@@ -2026,6 +2207,7 @@ export default function Home() {
   };
 
   const addSongToFolder=async(folderId:string,songId:string):Promise<void>=>{
+    if(!guardOnline())return;
     const existing=folderSongs.filter(fs=>fs.folderId===folderId);
     const position=existing.length>0?Math.max(...existing.map(fs=>fs.position))+1:0;
     const{data,error}=await supabase.rpc("add_song_to_folder",{p_folder_id:folderId,p_song_id:songId,p_position:position});
@@ -2037,6 +2219,7 @@ export default function Home() {
   };
 
   const removeSongFromFolder = (folderId: string, songId: string): void => {
+    if (!guardOnline()) return;
     const prev = folderSongs;
     const title = songs.find((s) => s.id === songId)?.title;
     setFolderSongs((p) => p.filter((fs) => !(fs.folderId === folderId && fs.songId === songId)));
@@ -2051,6 +2234,7 @@ export default function Home() {
   };
 
   const commitSetlistOrder = async (folderId: string, orderedSongIds: string[]): Promise<void> => {
+    if (!guardOnline()) return;
     const inFolder = folderSongs.filter((fs) => fs.folderId === folderId);
     const updates = inFolder
       .map((fs) => ({ id: fs.id, position: orderedSongIds.indexOf(fs.songId) }))
@@ -2111,6 +2295,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+      <OfflineBadge />
       <input
         ref={fileInputRef}
         type="file"
@@ -2235,6 +2420,7 @@ export default function Home() {
               onSectionStylesChange={(next) => { sectionStylesTouched.current = true; setSectionStyles(next); }}
               onSectionStylesSave={async (next) => {
                 if (!user) return;
+                if (!guardOnline()) return;
                 sectionStylesTouched.current = true;
                 setSectionStyles(next);
                 const { error } = await supabase.from("profiles").update({ section_styles: next }).eq("id", user.id);

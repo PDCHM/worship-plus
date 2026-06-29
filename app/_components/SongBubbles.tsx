@@ -71,6 +71,17 @@ export function useSongBubbles(
   const [draft, setDraft] = useState<Draft | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
+  // View-only offline: bubble writes (add/reply/resolve/delete) need a
+  // connection. Gate each mutation; bubbles aren't part of the offline cache, so
+  // they simply don't appear with no network (the load fails quietly).
+  const requireOnline = (): boolean => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      showToast("You're offline — changes need a connection");
+      return false;
+    }
+    return true;
+  };
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -100,6 +111,7 @@ export function useSongBubbles(
 
   const saveDraft = async () => {
     if (!draft) return;
+    if (!requireOnline()) return; // keep the draft text; don't clear it offline
     const message = draft.text.trim();
     const d = draft;
     if (!message) { setDraft(null); return; }
@@ -116,6 +128,7 @@ export function useSongBubbles(
   const addReply = async (root: BubbleRow, text: string) => {
     const message = text.trim();
     if (!message) return;
+    if (!requireOnline()) return;
     const { data, error } = await supabase
       .from("song_bubbles")
       .insert({ song_id: songId, user_id: currentUserId, message, parent_id: root.id, section_id: root.section_id, line_index: root.line_index })
@@ -126,6 +139,7 @@ export function useSongBubbles(
   };
 
   const toggleResolve = async (b: BubbleRow) => {
+    if (!requireOnline()) return;
     const next = !b.resolved;
     setBubbles((prev) => prev.map((x) => (x.id === b.id ? { ...x, resolved: next } : x)));
     const { error } = await supabase.from("song_bubbles").update({ resolved: next }).eq("id", b.id);
@@ -136,6 +150,7 @@ export function useSongBubbles(
   };
 
   const remove = async (b: BubbleRow) => {
+    if (!requireOnline()) return;
     const ids = new Set([b.id, ...bubbles.filter((x) => x.parent_id === b.id).map((x) => x.id)]);
     const snapshot = bubbles;
     setBubbles((prev) => prev.filter((x) => !ids.has(x.id)));

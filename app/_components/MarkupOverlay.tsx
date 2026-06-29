@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { getStroke } from "perfect-freehand";
 import { createClient } from "@/lib/supabase/client";
+import { cacheGetAnnotations, cachePutAnnotations } from "@/lib/offline/cache";
 
 // Markup overlay. Two item kinds share the song_annotations `strokes` jsonb:
 //   • freehand strokes (pen; legacy "highlighter" freehand still renders) —
@@ -345,6 +346,9 @@ export default function MarkupOverlay({
     const sid = songIdRef.current;
     const uidNow = userIdRef.current;
     if (!sid || !uidNow) return;
+    // View-only offline: markup writes need a connection. Entry is blocked while
+    // offline (see SongEditor), so this mainly guards the unmount flush.
+    if (typeof navigator !== "undefined" && !navigator.onLine) return;
     if (saveTimer.current) { clearTimeout(saveTimer.current); saveTimer.current = null; }
     let toSave = strokesRef.current;
     if (svgRef.current?.isConnected) {
@@ -371,6 +375,7 @@ export default function MarkupOverlay({
         { onConflict: "song_id,user_id" },
       );
     if (error) console.warn("[markup] save failed:", error.message);
+    else void cachePutAnnotations(sid, toSave); // keep the offline copy current
   }, []);
 
   const scheduleSave = useCallback(() => {
@@ -382,6 +387,16 @@ export default function MarkupOverlay({
   useEffect(() => {
     if (!songId || !userId) { setStrokes([]); return; }
     let cancelled = false;
+    // Existing markup must display offline — read the cached strokes when offline
+    // or when the network load fails. Online, cache the freshly-loaded strokes.
+    const loadFromCache = async () => {
+      const cached = await cacheGetAnnotations(songId);
+      if (!cancelled) setStrokes(Array.isArray(cached) ? (cached as Item[]) : []);
+    };
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      void loadFromCache();
+      return () => { cancelled = true; };
+    }
     createClient()
       .from("song_annotations")
       .select("strokes")
@@ -390,8 +405,10 @@ export default function MarkupOverlay({
       .maybeSingle()
       .then(({ data, error }) => {
         if (cancelled) return;
-        if (error) { console.warn("[markup] load failed:", error.message); return; }
-        setStrokes(Array.isArray(data?.strokes) ? (data!.strokes as Item[]) : []);
+        if (error) { console.warn("[markup] load failed:", error.message); void loadFromCache(); return; }
+        const items = Array.isArray(data?.strokes) ? (data!.strokes as Item[]) : [];
+        setStrokes(items);
+        void cachePutAnnotations(songId, items);
       });
     return () => { cancelled = true; };
   }, [songId, userId]);

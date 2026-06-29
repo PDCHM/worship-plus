@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useOnlineStatus } from "@/lib/offline/useOnlineStatus";
 import Coachmark from "@/app/_components/Coachmark";
 import ConfirmDialog from "@/app/_components/ConfirmDialog";
 import PrintPreviewModal from "@/app/_components/PrintPreviewModal";
@@ -958,6 +959,10 @@ export default function SongEditor({
   const [capoPickerOpen, setCapoPickerOpen] = useState(false);
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [markupMode, setMarkupMode] = useState(false);
+  // Markup CREATION needs a connection (view-only offline). Entry is disabled
+  // offline so the user can't draw a whole annotation only to lose it on save;
+  // existing markup still displays (the overlay's display layer is always on).
+  const online = useOnlineStatus();
   const [autoScrolling, setAutoScrolling] = useState(false);
   const [scrollSpeed, setScrollSpeed] = useState(3);
   const [zoomOffset, setZoomOffset] = useState(0);
@@ -2592,15 +2597,20 @@ export default function SongEditor({
             <SquarePenIcon />
           </button>
           {readOnly && (
-            <button type="button" onClick={() => setMarkupMode((m) => !m)}
-              title={markupMode ? "Exit markup mode" : "Markup — draw on the chart"}
+            <button type="button"
+              onClick={() => {
+                if (!online && !markupMode) { showToast("Markup needs a connection"); return; }
+                setMarkupMode((m) => !m);
+              }}
+              disabled={!online && !markupMode}
+              title={!online && !markupMode ? "Markup needs a connection" : markupMode ? "Exit markup mode" : "Markup — draw on the chart"}
               aria-pressed={markupMode}
               aria-label={markupMode ? "Exit markup mode" : "Enter markup mode"}
               className={
-                "h-9 w-9 rounded-lg flex items-center justify-center transition-colors " +
+                "h-9 w-9 rounded-lg flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed " +
                 (markupMode
                   ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-600/30"
-                  : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300")
+                  : "bg-slate-100 enabled:hover:bg-slate-200 dark:bg-slate-800 dark:enabled:hover:bg-slate-700 text-slate-600 dark:text-slate-300")
               }>
               <HighlighterIcon />
             </button>
