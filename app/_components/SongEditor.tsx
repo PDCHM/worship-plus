@@ -2518,7 +2518,7 @@ export default function SongEditor({
                     <div className="text-[10px] text-slate-400 uppercase tracking-wider">CAPO</div>
                   </div>
                   <button type="button"
-                    onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); handleCapoChange(Math.min(7, (song.capo ?? 0) + 1)); }}
+                    onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); handleCapoChange(Math.min(11, (song.capo ?? 0) + 1)); }}
                     className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors">
                     +
                   </button>
