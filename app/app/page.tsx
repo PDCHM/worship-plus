@@ -2148,6 +2148,18 @@ export default function Home() {
     }]);
   };
 
+  const updateSetlistEvent = async (id: string, ev: { label: string; eventDate: string; eventType: "rehearsal" | "event" }): Promise<void> => {
+    if (!guardOnline()) return;
+    const { error } = await supabase
+      .from("setlist_events")
+      .update({ label: ev.label, event_date: ev.eventDate, event_type: ev.eventType })
+      .eq("id", id);
+    if (error) { logErr("update setlist event", error); showToast("Couldn't update event: " + error.message); return; }
+    setSetlistEvents((prev) => prev.map((e) => (e.id === id
+      ? { ...e, label: ev.label, eventDate: ev.eventDate, eventType: ev.eventType }
+      : e)));
+  };
+
   const deleteSetlistEvent = (id: string): void => {
     if (!guardOnline()) return;
     const prev = setlistEvents;
@@ -2553,6 +2565,7 @@ export default function Home() {
               onExportSetlist={setExportSetlistId}
               setlistEvents={setlistEvents}
               onAddEvent={addSetlistEvent}
+              onUpdateEvent={updateSetlistEvent}
               onDeleteEvent={deleteSetlistEvent}
               canUseCalendar={gate.canUse("google_calendar")}
               canUseSetlists={gate.canUse("setlists")}
