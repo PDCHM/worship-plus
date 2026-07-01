@@ -2678,6 +2678,13 @@ export default function Home() {
               onUpdateDate={updateFolderDate}
               onExportSetlist={setExportSetlistId}
               canEditFolder={canEditFolder}
+              songLinks={songLinks}
+              onAddLink={addSongLink}
+              onUpdateLink={updateSongLink}
+              onDeleteLink={deleteSongLink}
+              onReorderLinks={reorderSongLinks}
+              canEditSong={canEditSong}
+              online={online}
               setlistEvents={setlistEvents}
               onAddEvent={addSetlistEvent}
               onUpdateEvent={updateSetlistEvent}

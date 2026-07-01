@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Song } from "@/lib/song";
 import ConfirmDialog from "@/app/_components/ConfirmDialog";
 import { SongRow } from "@/app/_components/Library";
+import SongReferences, { type SongLink } from "@/app/_components/SongReferences";
 
 type DeleteConfirm = { title: string; message: string; onConfirm: () => void } | null;
 
@@ -70,6 +71,18 @@ export type FoldersViewProps = {
   // team member viewing a shared team setlist — mutating controls are hidden.
   // RLS is the real gate; this is UI convenience.
   canEditFolder: (folder: Folder) => boolean;
+  // Song reference links (shared with the Library) — so a setlist row can show a
+  // 🔗 affordance and open the same references list + inline player. These are the
+  // SONG's links (Model A), not per-setlist copies.
+  songLinks: SongLink[];
+  onAddLink: (songId: string, url: string, title: string) => Promise<void>;
+  onUpdateLink: (id: string, patch: { url?: string; title?: string }) => Promise<void>;
+  onDeleteLink: (id: string) => void;
+  onReorderLinks: (songId: string, orderedIds: string[]) => Promise<void>;
+  // Per-song edit permission (owner/editor/leader), mirroring can_write_song.
+  canEditSong: (song: Song) => boolean;
+  // Live online status — YouTube inline playback needs a connection.
+  online: boolean;
   setlistEvents: SetlistEvent[];
   onAddEvent: (folderId: string, ev: { label: string; eventDate: string; eventType: "rehearsal" | "event" }) => Promise<void>;
   onUpdateEvent: (id: string, ev: { label: string; eventDate: string; eventType: "rehearsal" | "event" }) => Promise<void>;
@@ -538,10 +551,13 @@ function SetlistDetail({
   folder, currentSongs, folderSongs, cachedSongIds, onNavigate, onRename, onDelete,
   onAddSongs, onRemoveSong, onCommitOrder, onOpenSong, onUpdateDate, onExportSetlist,
   setlistEvents, onAddEvent, onUpdateEvent, onDeleteEvent, canUseCalendar, onRequireUpgrade, showToast, teams, currentUserId, onMoveToTeam, canEditFolder,
+  songLinks, onAddLink, onUpdateLink, onDeleteLink, onReorderLinks, canEditSong, online,
 }: { folder: Folder; currentSongs: Song[] } & FoldersViewProps) {
   const isOwner = folder.ownerId === currentUserId;
   // Leader/editor/owner may mutate; plain team members are view-only (RLS enforced).
   const canEdit = canEditFolder(folder);
+  // Which song's reference links are open in the quick-access modal (null = none).
+  const [linksSongId, setLinksSongId] = useState<string | null>(null);
   // When `edit` is set, the modal opens pre-filled to update that entry in place;
   // otherwise it creates a new one of `type`.
   const [eventModal, setEventModal] = useState<{ type: "rehearsal" | "event"; edit?: SetlistEvent } | null>(null);
@@ -844,6 +860,20 @@ function SetlistDetail({
                     <div className="text-xs text-slate-400 truncate">{song.artist}</div>
                   )}
                 </div>
+                {/* Quick access to the song's reference links — only when it has
+                    any. Opens the same references list + inline player. */}
+                {songLinks.some((l) => l.songId === song.id) && (
+                  <button
+                    type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={() => setLinksSongId(song.id)}
+                    title="Reference links"
+                    aria-label="Reference links"
+                    className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors shrink-0"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                  </button>
+                )}
                 {canEdit && (
                   <button
                     type="button"
@@ -882,6 +912,37 @@ function SetlistDetail({
           onConfirm={() => { confirmDel.onConfirm(); setConfirmDel(null); }}
         />
       )}
+      {/* Quick-access reference links for a setlist song — reuses SongReferences
+          (list + inline YouTube player). These are the SONG's links (Model A). */}
+      {linksSongId && (() => {
+        const s = currentSongs.find((x) => x.id === linksSongId);
+        return (
+          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setLinksSongId(null)}>
+            <div className="w-full sm:max-w-md bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl max-h-[85vh] overflow-y-auto pb-[env(safe-area-inset-bottom)]" onClick={(e) => e.stopPropagation()}>
+              <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <span className="font-semibold text-sm truncate pr-2">{s?.title?.trim() || "References"}</span>
+                <button type="button" onClick={() => setLinksSongId(null)} aria-label="Close"
+                  className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+              <div className="px-4 pb-4">
+                <SongReferences
+                  songId={linksSongId}
+                  links={songLinks.filter((l) => l.songId === linksSongId)}
+                  canEdit={s ? canEditSong(s) : false}
+                  online={online}
+                  onAdd={onAddLink}
+                  onUpdate={onUpdateLink}
+                  onDelete={onDeleteLink}
+                  onReorder={onReorderLinks}
+                  showToast={showToast}
+                />
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
