@@ -5,17 +5,23 @@ import type { Folder } from "@/app/_components/FoldersView";
 import ConfirmDialog from "@/app/_components/ConfirmDialog";
 
 export type Group = { id: string; name: string; inviteToken: string; createdAt: number; };
+export type MemberRole = "leader" | "editor" | "member";
 export type GroupMember = {
-  id: string; groupId: string; userId: string | null; role: "owner"|"admin"|"member";
+  id: string; groupId: string; userId: string | null; role: MemberRole;
   displayName: string | null; instrument: string | null; instrumentDetail: string | null;
   status: "pending"|"joined"; email: string | null;
 };
+
+// Human labels for roles. "Musician" is the friendly name for the view/play-only
+// tier; "Editor" can edit songs/setlists; "Leader" is full admin.
+const ROLE_LABEL: Record<MemberRole, string> = { leader: "Leader", editor: "Editor", member: "Musician" };
 export type GroupSong = { id: string; groupId: string; songId: string; };
 export type GroupsViewProps = {
   userId: string; groups: Group[]; groupMembers: GroupMember[]; groupSongs: GroupSong[]; songs: Song[]; folders: Folder[];
   onCreateGroup: (name: string) => Promise<Group | null>;
   onUpdateGroup: (groupId: string, name: string) => Promise<void>;
   onAddMember: (groupId: string, displayName: string, role: string, instrument: string, instrumentDetail: string) => Promise<void>;
+  onSetMemberRole: (memberId: string, role: MemberRole) => Promise<void>;
   onRemoveMember: (memberId: string) => Promise<boolean>;
   onShareSong: (groupId: string, songId: string) => Promise<void>;
   onUnshareSong: (groupId: string, songId: string) => void;
@@ -66,7 +72,7 @@ export default function GroupsView(props: GroupsViewProps) {
   if (selectedId) {
     const membership = myMemberships.find(m => m.group.id === selectedId);
     if (membership) {
-      const isLeader = membership.role === "owner" || membership.role === "admin";
+      const isLeader = membership.role === "leader";
       return isLeader
         ? <LeaderView group={membership.group} onBack={() => setSelectedId(null)} {...props} />
         : <MemberView group={membership.group} onBack={() => setSelectedId(null)} {...props} />;
@@ -178,7 +184,7 @@ function TeamListView({ memberships, onSelect, onCreateGroup, showToast }: {
       )}
       <div className="space-y-2">
         {memberships.map(({ group, role, memberCount }) => {
-          const isLeader = role === "owner" || role === "admin";
+          const isLeader = role === "leader";
           return (
             <button key={group.id} type="button" onClick={() => onSelect(group.id)}
               className="w-full flex items-center gap-3 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-300 transition-colors text-left">
@@ -192,7 +198,7 @@ function TeamListView({ memberships, onSelect, onCreateGroup, showToast }: {
                 <div className="text-xs text-slate-500 mt-0.5">{memberCount} member{memberCount!==1?"s":""}</div>
               </div>
               <span className={"text-xs font-semibold px-2.5 py-1 rounded-lg shrink-0 "+(isLeader?"bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400":"bg-slate-100 dark:bg-slate-800 text-slate-500")}>
-                {isLeader?"Leader":"Musician"}
+                {ROLE_LABEL[role]}
               </span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="text-slate-300 shrink-0"><polyline points="9 18 15 12 9 6"/></svg>
             </button>
@@ -203,7 +209,7 @@ function TeamListView({ memberships, onSelect, onCreateGroup, showToast }: {
   );
 }
 
-function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, folders, onUpdateGroup, onAddMember, onRemoveMember, onShareSong, onUnshareSong, onDeleteGroup, onOpenSong, onOpenSetlist, showToast }: { group: Group; onBack: () => void } & GroupsViewProps) {
+function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, folders, onUpdateGroup, onAddMember, onSetMemberRole, onRemoveMember, onShareSong, onUnshareSong, onDeleteGroup, onOpenSong, onOpenSetlist, showToast }: { group: Group; onBack: () => void } & GroupsViewProps) {
   const [tab, setTab] = useState<"members"|"songs">("members");
   const [addOpen, setAddOpen] = useState(false);
   const [addSongsOpen, setAddSongsOpen] = useState(false);
@@ -234,7 +240,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
     else setNameVal(group.name);
     setEditingName(false);
   };
-  const isOwner = members.find(m => m.userId === userId)?.role === "owner";
+  const isLeader = members.find(m => m.userId === userId)?.role === "leader";
   const handleDelete = async () => {
     const ok = await onDeleteGroup(group.id);
     if (ok) { showToast("Team deleted"); onBack(); }
@@ -309,9 +315,24 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
                       </span>
                     </div>
                   </div>
-                  <span className={"text-xs font-medium px-2 py-0.5 rounded-full "+(m.role==="owner"?"bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600":"bg-slate-100 dark:bg-slate-800 text-slate-500")}>
-                    {m.role==="owner"?"Leader":"Musician"}
-                  </span>
+                  {/* Leaders show a static badge; a leader can toggle any other
+                      member between Editor and Musician in place. No control on
+                      self or on fellow leaders (role is enforced by RLS). */}
+                  {m.role === "leader" ? (
+                    <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 shrink-0">Leader</span>
+                  ) : m.userId === userId ? (
+                    <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 shrink-0">{ROLE_LABEL[m.role]}</span>
+                  ) : (
+                    <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden shrink-0" role="group" aria-label="Member role">
+                      {(["editor", "member"] as const).map((r) => (
+                        <button key={r} type="button"
+                          onClick={() => { if (m.role !== r) { onSetMemberRole(m.id, r); showToast(`${m.displayName ?? "Member"} is now ${ROLE_LABEL[r]}`); } }}
+                          className={"px-2 py-1 text-xs font-medium transition-colors "+(m.role===r?"bg-indigo-600 text-white":"bg-white dark:bg-slate-900 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800")}>
+                          {ROLE_LABEL[r]}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   {m.status==="pending" && m.userId !== userId && (
                     <button type="button" onClick={() => copyInvite(m.id, m.displayName??"")}
                       className="h-8 px-3 rounded-lg text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 hover:bg-indigo-100 transition-colors shrink-0">
@@ -359,7 +380,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
         </div>
       )}
       <TeamSetlistList setlists={teamSetlists} onOpen={onOpenSetlist} />
-      {isOwner && (
+      {isLeader && (
         <div className="mt-10 pt-6 border-t border-slate-200 dark:border-slate-800">
           <button type="button" onClick={() => setConfirmDeleteTeam(true)}
             className="h-9 px-4 rounded-xl text-sm font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors">
@@ -395,10 +416,13 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
   );
 }
 
-function MemberView({ group, onBack, groupSongs, songs, folders, onOpenSong, onOpenSetlist }: { group: Group; onBack: () => void } & GroupsViewProps) {
+function MemberView({ group, onBack, userId, groupMembers, groupSongs, songs, folders, onOpenSong, onOpenSetlist }: { group: Group; onBack: () => void } & GroupsViewProps) {
   const sharedSongIds = new Set(groupSongs.filter(gs => gs.groupId === group.id).map(gs => gs.songId));
   const sharedSongs = songs.filter(s => sharedSongIds.has(s.id));
   const teamSetlists = folders.filter(f => f.type === "setlist" && f.groupId === group.id);
+  // Editors also land here (only leaders get the management view), so show the
+  // viewer's actual role rather than assuming Musician.
+  const myRole: MemberRole = groupMembers.find(m => m.groupId === group.id && m.userId === userId)?.role ?? "member";
   return (
     <div className="max-w-3xl w-full mx-auto px-4 sm:px-6 py-6">
       <button type="button" onClick={onBack} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 mb-3 transition-colors">
@@ -407,7 +431,7 @@ function MemberView({ group, onBack, groupSongs, songs, folders, onOpenSong, onO
       </button>
       <div className="flex items-start justify-between mb-6">
         <div><h1 className="text-2xl font-bold">{group.name}</h1><p className="text-sm text-slate-500 mt-0.5">{sharedSongs.length} shared song{sharedSongs.length!==1?"s":""}</p></div>
-        <span className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 text-xs font-semibold mt-1">Musician</span>
+        <span className={"px-2.5 py-1 rounded-lg text-xs font-semibold mt-1 "+(myRole==="editor"?"bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400":"bg-slate-100 dark:bg-slate-800 text-slate-500")}>{ROLE_LABEL[myRole]}</span>
       </div>
       <TeamSetlistList setlists={teamSetlists} onOpen={onOpenSetlist} />
       {sharedSongs.length===0 ? (
@@ -465,7 +489,7 @@ function AddMemberModal({ groupId, suggestions, onAdd, onClose, showToast }: { g
     setName(s.displayName ?? "");
     setInstrument(s.instrument ?? "guitar");
     setDetail(s.instrumentDetail ?? "");
-    setRole(s.role === "owner" ? "owner" : "member");
+    setRole(s.role === "leader" ? "leader" : "member");
     setShowSuggest(false);
   };
   const handleAdd = async () => {
@@ -513,13 +537,14 @@ function AddMemberModal({ groupId, suggestions, onAdd, onClose, showToast }: { g
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Role</div>
             <div className="flex gap-2">
-              {[["member","Musician"],["owner","Leader"]].map(([v,l]) => (
+              {[["member","Musician"],["editor","Editor"],["leader","Leader"]].map(([v,l]) => (
                 <button key={v} type="button" onClick={() => setRole(v)}
                   className={"flex-1 h-9 rounded-xl text-sm font-medium border transition-colors "+(role===v?"border-indigo-500 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600":"border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400")}>
                   {l}
                 </button>
               ))}
             </div>
+            <p className="text-[11px] text-slate-400 mt-1.5">Musicians view &amp; play. Editors can edit songs and setlists. Leaders manage the team.</p>
           </div>
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Instrument</div>

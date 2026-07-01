@@ -119,6 +119,11 @@ type Props = {
   onSave: () => void;
   onSaveAsCopy: (title: string, song: Song) => void;
   onDelete: () => void;
+  // Permission lock for team content: false when a plain team member opens a
+  // shared song they can't edit. Forces read-only, hides the edit toggle / Save
+  // / Delete, and leaves "Save as copy" (duplicate to my library) available.
+  // RLS is the real gate; this is UI convenience. Defaults to true.
+  canEdit?: boolean;
   // When true (set by the "AI Chords" flow after a lyrics paste), the editor
   // auto-opens the Generate Chords sheet once, then calls onAutoGenerateConsumed.
   autoGenerateChords?: boolean;
@@ -900,6 +905,7 @@ export default function SongEditor({
   onSave,
   onSaveAsCopy,
   onDelete,
+  canEdit = true,
   autoGenerateChords,
   onAutoGenerateConsumed,
   canUseAiChords,
@@ -1046,7 +1052,9 @@ export default function SongEditor({
   };
 
   const colors = isDark ? settings.sectionColorsDark : settings.sectionColorsLight;
-  const readOnly = !editMode;
+  // A permission lock (member on a shared song) pins read-only regardless of the
+  // user's edit/performance preference.
+  const readOnly = !editMode || !canEdit;
 
   // ── Show-once coachmarks ──────────────────────────────────────────────────
   const dismissTip = (id: TipId) => {
@@ -2584,18 +2592,20 @@ export default function SongEditor({
               <span>Generate Chords</span>
             </button>
           )}
-          <button type="button" onClick={toggleEditMode}
-            title={editMode ? "Switch to read-only performance mode" : "Switch to edit mode"}
-            aria-pressed={editMode}
-            aria-label={editMode ? "Switch to read-only performance mode" : "Switch to edit mode"}
-            className={
-              "h-9 w-9 rounded-lg flex items-center justify-center transition-colors " +
-              (editMode
-                ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-600/30"
-                : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300")
-            }>
-            <SquarePenIcon />
-          </button>
+          {canEdit && (
+            <button type="button" onClick={toggleEditMode}
+              title={editMode ? "Switch to read-only performance mode" : "Switch to edit mode"}
+              aria-pressed={editMode}
+              aria-label={editMode ? "Switch to read-only performance mode" : "Switch to edit mode"}
+              className={
+                "h-9 w-9 rounded-lg flex items-center justify-center transition-colors " +
+                (editMode
+                  ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-600/30"
+                  : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300")
+              }>
+              <SquarePenIcon />
+            </button>
+          )}
           {readOnly && (
             <button type="button"
               onClick={() => {
@@ -2619,6 +2629,18 @@ export default function SongEditor({
             className="h-9 w-9 rounded-lg flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
           </button>
+          {!canEdit ? (
+            // View-only member: no direct Save on someone else's shared song,
+            // but they can still duplicate it into their own library.
+            <button
+              type="button"
+              onClick={() => { setCopyTitle((song.title.trim() || "Untitled Song") + " (copy)"); setSaveAsCopyOpen(true); }}
+              className="h-9 px-3 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center gap-1.5 shadow-sm shadow-indigo-600/30"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              <span className="hidden sm:inline">Save copy</span>
+            </button>
+          ) : (
           <div ref={saveMenuRef} className="relative flex">
             <button
               type="button"
@@ -2663,6 +2685,7 @@ export default function SongEditor({
               </div>
             )}
           </div>
+          )}
         </div>
       </div>
 
@@ -3581,15 +3604,19 @@ export default function SongEditor({
                   {item.label}
                 </button>
               ))}
-              <div className="my-1 border-t border-slate-200 dark:border-slate-700" />
-              <button
-                type="button"
-                onClick={() => { setMoreOpen(false); setConfirmDeleteOpen(true); }}
-                className="w-full min-h-[48px] px-5 flex items-center gap-3.5 text-[15px] text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
-              >
-                <span className="shrink-0 w-5 flex justify-center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></span>
-                Delete song
-              </button>
+              {canEdit && (
+                <>
+                  <div className="my-1 border-t border-slate-200 dark:border-slate-700" />
+                  <button
+                    type="button"
+                    onClick={() => { setMoreOpen(false); setConfirmDeleteOpen(true); }}
+                    className="w-full min-h-[48px] px-5 flex items-center gap-3.5 text-[15px] text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                  >
+                    <span className="shrink-0 w-5 flex justify-center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></span>
+                    Delete song
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

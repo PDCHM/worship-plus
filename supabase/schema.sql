@@ -135,7 +135,7 @@ create table if not exists public.group_members (
   id        uuid primary key default gen_random_uuid(),
   group_id  uuid not null references public.groups(id) on delete cascade,
   user_id   uuid not null references auth.users(id) on delete cascade,
-  role      text not null default 'member' check (role in ('owner', 'admin', 'member')),
+  role      text not null default 'member' check (role in ('leader', 'editor', 'member')),
   unique (group_id, user_id)
 );
 
@@ -297,7 +297,9 @@ as $$
   );
 $$;
 
-create or replace function public.is_group_admin(target_group uuid)
+-- Full admin: manage members/roles, rename/delete the team. 'leader' is also
+-- the billing anchor (effective_plan) and the auto-assigned creator role.
+create or replace function public.is_group_leader(target_group uuid)
 returns boolean
 language sql
 security definer
@@ -308,14 +310,47 @@ as $$
     select 1 from public.group_members
     where group_id = target_group
       and user_id = auth.uid()
-      and role in ('owner', 'admin')
+      and role = 'leader'
   );
 $$;
 
-revoke all on function public.is_group_member(uuid) from public;
-revoke all on function public.is_group_admin(uuid)  from public;
-grant execute on function public.is_group_member(uuid) to authenticated;
-grant execute on function public.is_group_admin(uuid)  to authenticated;
+-- Content editing: shared songs, team setlists and their contents. Leaders and
+-- editors both qualify; plain members are read-only on shared team content.
+create or replace function public.can_edit_group_content(target_group uuid)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.group_members
+    where group_id = target_group
+      and user_id = auth.uid()
+      and role in ('leader', 'editor')
+  );
+$$;
+
+-- Backwards-compatible alias: management policies (member mgmt, group rename)
+-- still reference is_group_admin, which now means leader-only.
+create or replace function public.is_group_admin(target_group uuid)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select public.is_group_leader(target_group);
+$$;
+
+revoke all on function public.is_group_member(uuid)        from public;
+revoke all on function public.is_group_leader(uuid)        from public;
+revoke all on function public.can_edit_group_content(uuid) from public;
+revoke all on function public.is_group_admin(uuid)         from public;
+grant execute on function public.is_group_member(uuid)        to authenticated;
+grant execute on function public.is_group_leader(uuid)        to authenticated;
+grant execute on function public.can_edit_group_content(uuid) to authenticated;
+grant execute on function public.is_group_admin(uuid)         to authenticated;
 
 -- effective_plan: the caller's billing tier, widened by any team they've
 -- joined. profiles_self_read lets a user read ONLY their own profile, so a
@@ -340,7 +375,7 @@ as $$
         select owner_pr.plan
         from public.group_members me
         join public.group_members owner_gm
-          on owner_gm.group_id = me.group_id and owner_gm.role = 'owner'
+          on owner_gm.group_id = me.group_id and owner_gm.role = 'leader'
         join public.profiles owner_pr on owner_pr.id = owner_gm.user_id
         where me.user_id = auth.uid() and me.status = 'joined'
       ) pl
@@ -407,28 +442,31 @@ stable
 set search_path = public
 as $$
   select exists (
+    -- Song owner can always edit their own song, regardless of team role.
     select 1 from public.songs s
     where s.id = p_song and s.user_id = auth.uid()
   )
   or exists (
+    -- Shared via group_songs: editor/leader only (members are read-only).
     select 1 from public.group_songs gs
-    where gs.song_id = p_song and public.is_group_member(gs.group_id)
+    where gs.song_id = p_song and public.can_edit_group_content(gs.group_id)
   )
   or exists (
+    -- Reachable via a team setlist: editor/leader only.
     select 1
     from public.folder_songs fs
     join public.folders f on f.id = fs.folder_id
     where fs.song_id = p_song
       and f.type = 'setlist'
       and f.group_id is not null
-      and public.is_group_member(f.group_id)
+      and public.can_edit_group_content(f.group_id)
   );
 $$;
 
 revoke all on function public.can_write_song(uuid) from public;
 grant execute on function public.can_write_song(uuid) to authenticated;
 
--- Auto-add the creator as 'owner' when a group is inserted.
+-- Auto-add the creator as 'leader' when a group is inserted.
 create or replace function public.handle_new_group()
 returns trigger
 language plpgsql
@@ -443,7 +481,7 @@ begin
     from public.profiles where id = auth.uid();
   insert into public.group_members (group_id, user_id, role, status, display_name, email)
   values (
-    new.id, auth.uid(), 'owner', 'joined',
+    new.id, auth.uid(), 'leader', 'joined',
     coalesce(v_full_name, v_email), v_email
   );
   return new;
@@ -621,9 +659,9 @@ create trigger groups_after_insert_owner
 -- previously manual-only (see docs/db-drift-report.md).
 -- ============================================================
 
--- create_worship_group: create a team. The OWNER ROW IS INSERTED BY THE
+-- create_worship_group: create a team. The LEADER ROW IS INSERTED BY THE
 -- groups_after_insert_owner trigger above (handle_new_group). This function's
--- own owner-insert is a DELIBERATE no-op guarded by "on conflict do nothing" —
+-- own leader-insert is a DELIBERATE no-op guarded by "on conflict do nothing" —
 -- it collides with the trigger's row on the partial unique
 -- group_members(group_id, user_id). Keep the on-conflict clause: it is
 -- load-bearing. Returns the new group row (the client reads invite_token from
@@ -644,10 +682,10 @@ declare new_group record;
 begin
   insert into public.groups(name) values(group_name) returning * into new_group;
   insert into public.group_members(group_id, user_id, role, display_name, status)
-  values(new_group.id, auth.uid(), 'owner',
+  values(new_group.id, auth.uid(), 'leader',
     (select full_name from public.profiles where id = auth.uid()),
     'joined')
-  on conflict do nothing;   -- trigger already inserted the owner; this is a no-op
+  on conflict do nothing;   -- trigger already inserted the leader; this is a no-op
   return row_to_json(new_group);
 end;
 $$;
@@ -664,6 +702,14 @@ set search_path = public
 as $$
 declare new_row record;
 begin
+  -- SECURITY DEFINER bypasses RLS, so guard here: only a leader of the target
+  -- group may create member slots, and only to a valid role.
+  if not public.is_group_leader(p_group_id) then
+    raise exception 'only a team leader can add members';
+  end if;
+  if p_role not in ('leader', 'editor', 'member') then
+    raise exception 'invalid role: %', p_role;
+  end if;
   insert into public.group_members(group_id, display_name, role, instrument, instrument_detail, status)
   values(p_group_id, p_display_name, p_role, p_instrument, p_instrument_detail, 'pending')
   returning * into new_row;
@@ -932,6 +978,22 @@ create policy folders_setlist_group_read on public.folders
     and public.is_group_member(group_id)
   );
 
+-- Team setlists: leaders/editors may edit the setlist row (rename, date, delete)
+-- even when they aren't its personal creator. Members stay read-only above.
+drop policy if exists folders_setlist_group_write on public.folders;
+create policy folders_setlist_group_write on public.folders
+  for all to authenticated
+  using (
+    type = 'setlist'
+    and group_id is not null
+    and public.can_edit_group_content(group_id)
+  )
+  with check (
+    type = 'setlist'
+    and group_id is not null
+    and public.can_edit_group_content(group_id)
+  );
+
 drop policy if exists folder_songs_via_folder on public.folder_songs;
 create policy folder_songs_via_folder on public.folder_songs
   for all to authenticated
@@ -962,6 +1024,29 @@ create policy folder_songs_setlist_group_read on public.folder_songs
     )
   );
 
+-- Team setlists: leaders/editors may add/remove/reorder songs. Members read-only.
+drop policy if exists folder_songs_setlist_group_write on public.folder_songs;
+create policy folder_songs_setlist_group_write on public.folder_songs
+  for all to authenticated
+  using (
+    exists (
+      select 1 from public.folders f
+      where f.id = folder_songs.folder_id
+        and f.type = 'setlist'
+        and f.group_id is not null
+        and public.can_edit_group_content(f.group_id)
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.folders f
+      where f.id = folder_songs.folder_id
+        and f.type = 'setlist'
+        and f.group_id is not null
+        and public.can_edit_group_content(f.group_id)
+    )
+  );
+
 -- Groups: members read; admins update; owners delete; any authenticated user can create.
 drop policy if exists groups_member_read on public.groups;
 create policy groups_member_read on public.groups
@@ -980,16 +1065,10 @@ create policy groups_admin_update on public.groups
   with check (public.is_group_admin(id));
 
 drop policy if exists groups_owner_delete on public.groups;
-create policy groups_owner_delete on public.groups
+drop policy if exists groups_leader_delete on public.groups;
+create policy groups_leader_delete on public.groups
   for delete to authenticated
-  using (
-    exists (
-      select 1 from public.group_members gm
-      where gm.group_id = groups.id
-        and gm.user_id = (select auth.uid())
-        and gm.role = 'owner'
-    )
-  );
+  using (public.is_group_leader(id));
 
 -- group_members: a user sees their own row + rows of groups they belong to.
 -- Writes are restricted to admins/owners (initial owner row is inserted by
@@ -1024,21 +1103,25 @@ create policy group_songs_member_read on public.group_songs
   for select to authenticated
   using (public.is_group_member(group_id));
 
+-- Sharing songs with a team is content editing: leaders and editors may write.
 drop policy if exists group_songs_admin_insert on public.group_songs;
-create policy group_songs_admin_insert on public.group_songs
+drop policy if exists group_songs_editor_insert on public.group_songs;
+create policy group_songs_editor_insert on public.group_songs
   for insert to authenticated
-  with check (public.is_group_admin(group_id));
+  with check (public.can_edit_group_content(group_id));
 
 drop policy if exists group_songs_admin_update on public.group_songs;
-create policy group_songs_admin_update on public.group_songs
+drop policy if exists group_songs_editor_update on public.group_songs;
+create policy group_songs_editor_update on public.group_songs
   for update to authenticated
-  using (public.is_group_admin(group_id))
-  with check (public.is_group_admin(group_id));
+  using (public.can_edit_group_content(group_id))
+  with check (public.can_edit_group_content(group_id));
 
 drop policy if exists group_songs_admin_delete on public.group_songs;
-create policy group_songs_admin_delete on public.group_songs
+drop policy if exists group_songs_editor_delete on public.group_songs;
+create policy group_songs_editor_delete on public.group_songs
   for delete to authenticated
-  using (public.is_group_admin(group_id));
+  using (public.can_edit_group_content(group_id));
 
 -- ============================================================
 -- Song Bubbles — collaborative, threaded annotations pinned to a
@@ -1206,6 +1289,13 @@ drop policy if exists setlist_events_group_read on public.setlist_events;
 create policy setlist_events_group_read on public.setlist_events
   for select to authenticated
   using (exists (select 1 from public.folders f where f.id = setlist_events.folder_id and f.group_id is not null and public.is_group_member(f.group_id)));
+
+-- Team setlists: leaders/editors may add/edit/delete schedule events. Members read-only.
+drop policy if exists setlist_events_group_write on public.setlist_events;
+create policy setlist_events_group_write on public.setlist_events
+  for all to authenticated
+  using (exists (select 1 from public.folders f where f.id = setlist_events.folder_id and f.type = 'setlist' and f.group_id is not null and public.can_edit_group_content(f.group_id)))
+  with check (exists (select 1 from public.folders f where f.id = setlist_events.folder_id and f.type = 'setlist' and f.group_id is not null and public.can_edit_group_content(f.group_id)));
 
 create index if not exists setlist_events_folder_id_idx on public.setlist_events(folder_id);
 

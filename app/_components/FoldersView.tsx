@@ -66,6 +66,10 @@ export type FoldersViewProps = {
   onLibraryViewChange: (v: "grid" | "list") => void;
   onUpdateDate: (id: string, date: string | null) => Promise<void>;
   onExportSetlist: (folderId: string) => void;
+  // Whether the current user may edit this folder/setlist. False for a plain
+  // team member viewing a shared team setlist — mutating controls are hidden.
+  // RLS is the real gate; this is UI convenience.
+  canEditFolder: (folder: Folder) => boolean;
   setlistEvents: SetlistEvent[];
   onAddEvent: (folderId: string, ev: { label: string; eventDate: string; eventType: "rehearsal" | "event" }) => Promise<void>;
   onUpdateEvent: (id: string, ev: { label: string; eventDate: string; eventType: "rehearsal" | "event" }) => Promise<void>;
@@ -533,9 +537,11 @@ function FolderDetail({
 function SetlistDetail({
   folder, currentSongs, folderSongs, cachedSongIds, onNavigate, onRename, onDelete,
   onAddSongs, onRemoveSong, onCommitOrder, onOpenSong, onUpdateDate, onExportSetlist,
-  setlistEvents, onAddEvent, onUpdateEvent, onDeleteEvent, canUseCalendar, onRequireUpgrade, showToast, teams, currentUserId, onMoveToTeam,
+  setlistEvents, onAddEvent, onUpdateEvent, onDeleteEvent, canUseCalendar, onRequireUpgrade, showToast, teams, currentUserId, onMoveToTeam, canEditFolder,
 }: { folder: Folder; currentSongs: Song[] } & FoldersViewProps) {
   const isOwner = folder.ownerId === currentUserId;
+  // Leader/editor/owner may mutate; plain team members are view-only (RLS enforced).
+  const canEdit = canEditFolder(folder);
   // When `edit` is set, the modal opens pre-filled to update that entry in place;
   // otherwise it creates a new one of `type`.
   const [eventModal, setEventModal] = useState<{ type: "rehearsal" | "event"; edit?: SetlistEvent } | null>(null);
@@ -705,6 +711,7 @@ function SetlistDetail({
         })}
         onShare={() => { void navigator.clipboard.writeText(setlistShareUrl(folder.id)); showToast("Setlist link copied"); }}
         onExport={() => onExportSetlist(folder.id)}
+        canEdit={canEdit}
       />
       <div className="mt-3">
         {isOwner ? (
@@ -722,7 +729,8 @@ function SetlistDetail({
           type="date"
           value={folder.date ?? ""}
           onChange={(e) => onUpdateDate(folder.id, e.target.value || null)}
-          className="text-sm text-slate-600 dark:text-slate-300 bg-transparent border-none outline-none cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+          disabled={!canEdit}
+          className="text-sm text-slate-600 dark:text-slate-300 bg-transparent border-none outline-none cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors disabled:cursor-default disabled:hover:text-slate-600"
         />
       </div>
 
@@ -742,22 +750,25 @@ function SetlistDetail({
                 folderId={folder.id}
                 canUseCalendar={canUseCalendar}
                 onRequireUpgrade={onRequireUpgrade}
+                canEdit={canEdit}
                 onEdit={() => setEventModal({ type: ev.eventType, edit: ev })}
                 onDelete={() => onDeleteEvent(ev.id)}
               />
             ))}
           </div>
         )}
-        <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => setEventModal({ type: "rehearsal" })}
-            className="h-8 px-3 rounded-lg text-xs font-medium bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/50 flex items-center gap-1.5 transition-colors">
-            <span className="w-2 h-2 rounded-full bg-violet-500" /> Rehearsal +
-          </button>
-          <button type="button" onClick={() => setEventModal({ type: "event" })}
-            className="h-8 px-3 rounded-lg text-xs font-medium bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 flex items-center gap-1.5 transition-colors">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" /> Event +
-          </button>
-        </div>
+        {canEdit && (
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => setEventModal({ type: "rehearsal" })}
+              className="h-8 px-3 rounded-lg text-xs font-medium bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/50 flex items-center gap-1.5 transition-colors">
+              <span className="w-2 h-2 rounded-full bg-violet-500" /> Rehearsal +
+            </button>
+            <button type="button" onClick={() => setEventModal({ type: "event" })}
+              className="h-8 px-3 rounded-lg text-xs font-medium bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 flex items-center gap-1.5 transition-colors">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" /> Event +
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center justify-between mt-6 mb-4">
@@ -773,24 +784,26 @@ function SetlistDetail({
             </span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={() => onAddSongs(folder.id)}
-          className="h-8 px-3 rounded-lg text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5 shrink-0"
-        >
-          <PlusIconSm /> Add Songs
-        </button>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={() => onAddSongs(folder.id)}
+            className="h-8 px-3 rounded-lg text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5 shrink-0"
+          >
+            <PlusIconSm /> Add Songs
+          </button>
+        )}
       </div>
       {orderedSongs.length === 0 ? (
         <div className="py-14 text-center text-sm text-slate-400 dark:text-slate-500">
-          No songs yet.{" "}
+          No songs yet.{canEdit && (<>{" "}
           <button
             type="button"
             onClick={() => onAddSongs(folder.id)}
             className="text-indigo-600 dark:text-indigo-400 hover:underline"
           >
             Add some
-          </button>
+          </button></>)}
         </div>
       ) : (
         <div ref={containerRef} className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
@@ -800,7 +813,7 @@ function SetlistDetail({
               <div
                 key={song.id}
                 data-row-song-id={song.id}
-                onPointerDown={(e) => startDrag(e, song.id)}
+                onPointerDown={canEdit ? (e) => startDrag(e, song.id) : undefined}
                 className={
                   "flex items-center gap-2 px-2 py-3 bg-white dark:bg-slate-900 group select-none transition-[transform,box-shadow,background-color] duration-150 " +
                   (isDragging
@@ -808,15 +821,17 @@ function SetlistDetail({
                     : "hover:bg-slate-50 dark:hover:bg-slate-800/50")
                 }
               >
-                <button
-                  type="button"
-                  aria-label="Drag to reorder"
-                  title="Drag to reorder"
-                  data-drag-handle
-                  className="w-7 h-7 rounded-md flex items-center justify-center text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-grab active:cursor-grabbing shrink-0"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>
-                </button>
+                {canEdit && (
+                  <button
+                    type="button"
+                    aria-label="Drag to reorder"
+                    title="Drag to reorder"
+                    data-drag-handle
+                    className="w-7 h-7 rounded-md flex items-center justify-center text-slate-300 dark:text-slate-600 hover:text-slate-500 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-grab active:cursor-grabbing shrink-0"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>
+                  </button>
+                )}
                 <span className="hidden sm:block w-5 text-center text-xs font-mono text-slate-400 shrink-0">
                   {idx + 1}
                 </span>
@@ -829,15 +844,17 @@ function SetlistDetail({
                     <div className="text-xs text-slate-400 truncate">{song.artist}</div>
                   )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => onRemoveSong(folder.id, song.id)}
-                  title="Remove from setlist"
-                  aria-label="Remove from setlist"
-                  className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </button>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => onRemoveSong(folder.id, song.id)}
+                    title="Remove from setlist"
+                    aria-label="Remove from setlist"
+                    className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                )}
               </div>
             );
           })}
@@ -871,9 +888,9 @@ function SetlistDetail({
 
 /* ─── EventRow ────────────────────────────────────────────────────────────── */
 
-function EventRow({ ev, setlistName, songs, folderId, canUseCalendar, onRequireUpgrade, onEdit, onDelete }: {
+function EventRow({ ev, setlistName, songs, folderId, canUseCalendar, onRequireUpgrade, canEdit, onEdit, onDelete }: {
   ev: SetlistEvent; setlistName: string; songs: Song[]; folderId: string;
-  canUseCalendar: boolean; onRequireUpgrade: () => void; onEdit: () => void; onDelete: () => void;
+  canUseCalendar: boolean; onRequireUpgrade: () => void; canEdit: boolean; onEdit: () => void; onDelete: () => void;
 }) {
   const isRehearsal = ev.eventType === "rehearsal";
   const when = new Date(ev.eventDate);
@@ -882,11 +899,18 @@ function EventRow({ ev, setlistName, songs, folderId, canUseCalendar, onRequireU
   return (
     <div className="flex items-center gap-3 px-3 py-2.5 bg-white dark:bg-slate-900 group">
       <span className={"w-2.5 h-2.5 rounded-full shrink-0 " + (isRehearsal ? "bg-violet-500" : "bg-emerald-500")} />
-      {/* Tap the label/date to edit this schedule entry in place. */}
-      <button type="button" onClick={onEdit} className="min-w-0 flex-1 text-left cursor-pointer" title="Edit schedule item">
-        <div className="text-sm font-medium truncate">{ev.label}</div>
-        <div className="text-xs text-slate-400 dark:text-slate-500">{dateStr} · {timeStr}</div>
-      </button>
+      {/* Tap the label/date to edit this schedule entry in place (editors only). */}
+      {canEdit ? (
+        <button type="button" onClick={onEdit} className="min-w-0 flex-1 text-left cursor-pointer" title="Edit schedule item">
+          <div className="text-sm font-medium truncate">{ev.label}</div>
+          <div className="text-xs text-slate-400 dark:text-slate-500">{dateStr} · {timeStr}</div>
+        </button>
+      ) : (
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium truncate">{ev.label}</div>
+          <div className="text-xs text-slate-400 dark:text-slate-500">{dateStr} · {timeStr}</div>
+        </div>
+      )}
       <span className={"shrink-0 px-1.5 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wide " + (isRehearsal
         ? "bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-300"
         : "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-300")}>
@@ -900,14 +924,18 @@ function EventRow({ ev, setlistName, songs, folderId, canUseCalendar, onRequireU
         className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
       </button>
-      <button type="button" onClick={onEdit} title="Edit schedule item" aria-label="Edit schedule item"
-        className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
-      </button>
-      <button type="button" onClick={onDelete} title="Remove event" aria-label="Remove event"
-        className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 opacity-0 group-hover:opacity-100 transition-opacity">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-      </button>
+      {canEdit && (
+        <>
+          <button type="button" onClick={onEdit} title="Edit schedule item" aria-label="Edit schedule item"
+            className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          </button>
+          <button type="button" onClick={onDelete} title="Remove event" aria-label="Remove event"
+            className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 opacity-0 group-hover:opacity-100 transition-opacity">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </>
+      )}
     </div>
   );
 }
@@ -1502,7 +1530,7 @@ function TeamStaticPill({ currentGroupId, teams }: { currentGroupId: string | nu
 }
 
 function DetailHeader({
-  folder, onBack, onRename, onDelete, onShare, onExport,
+  folder, onBack, onRename, onDelete, onShare, onExport, canEdit = true,
 }: {
   folder: Folder;
   onBack: () => void;
@@ -1510,6 +1538,8 @@ function DetailHeader({
   onDelete: () => void;
   onShare?: () => void;
   onExport?: () => void;
+  // When false, rename and delete are hidden (read-only viewer).
+  canEdit?: boolean;
 }) {
   const [renaming, setRenaming] = useState(false);
   const [nameVal, setNameVal] = useState(folder.name);
@@ -1535,7 +1565,7 @@ function DetailHeader({
       }`}>
         {folder.type === "setlist" ? <ListIconSm /> : <FolderIconSm />}
       </div>
-      {renaming ? (
+      {renaming && canEdit ? (
         <input
           autoFocus
           type="text"
@@ -1548,7 +1578,7 @@ function DetailHeader({
           }}
           className="text-lg font-bold bg-transparent border-b-2 border-indigo-400 outline-none flex-1"
         />
-      ) : (
+      ) : canEdit ? (
         <h1
           className="text-lg font-bold flex-1 truncate cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
           onClick={() => setRenaming(true)}
@@ -1556,6 +1586,8 @@ function DetailHeader({
         >
           {folder.name}
         </h1>
+      ) : (
+        <h1 className="text-lg font-bold flex-1 truncate">{folder.name}</h1>
       )}
       {onExport && (
         <button
@@ -1579,13 +1611,15 @@ function DetailHeader({
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         </button>
       )}
-      <button
-        type="button"
-        onClick={onDelete}
-        className="h-7 px-2.5 rounded-lg text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors shrink-0"
-      >
-        Delete
-      </button>
+      {canEdit && (
+        <button
+          type="button"
+          onClick={onDelete}
+          className="h-7 px-2.5 rounded-lg text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors shrink-0"
+        >
+          Delete
+        </button>
+      )}
     </div>
   );
 }

@@ -5,9 +5,9 @@ import { getAdminClient } from "@/lib/supabase/admin";
 
 // Permanently deletes the signed-in user's account.
 //
-// Step 1: delete any teams the user OWNS. `groups` has no owner FK back to
-// auth.users, so it does NOT cascade from deleteUser — without this step an
-// owned team would be left orphaned and owner-less. Deleting the group rows
+// Step 1: delete any teams the user LEADS. `groups` has no owner FK back to
+// auth.users, so it does NOT cascade from deleteUser — without this step a
+// led team would be left orphaned and leaderless. Deleting the group rows
 // cascades the team's group_members + group_songs; other members' folders that
 // reference the group get group_id set null (they simply lose access).
 //
@@ -39,12 +39,12 @@ export async function POST() {
     );
   }
 
-  // Step 1: remove teams this user owns, before touching the user itself.
+  // Step 1: remove teams this user leads, before touching the user itself.
   const { data: ownedRows, error: ownedError } = await admin
     .from("group_members")
     .select("group_id")
     .eq("user_id", user.id)
-    .eq("role", "owner");
+    .eq("role", "leader");
   if (ownedError) {
     console.error("[account/delete] owned-group lookup failed", ownedError.message);
     Sentry.captureException(ownedError, { tags: { source: "account-delete" } });
@@ -54,9 +54,32 @@ export async function POST() {
     );
   }
 
-  const ownedGroupIds = Array.from(
+  const ledGroupIds = Array.from(
     new Set((ownedRows ?? []).map((r) => r.group_id as string)),
   );
+  // Teams can now have multiple leaders. Only delete a team the user leads if
+  // they're its SOLE leader — otherwise a co-leader would lose the team. Teams
+  // with another leader just lose this user's membership (via the user delete
+  // cascade in Step 2).
+  let ownedGroupIds = ledGroupIds;
+  if (ledGroupIds.length) {
+    const { data: coLeaderRows, error: coLeaderError } = await admin
+      .from("group_members")
+      .select("group_id")
+      .in("group_id", ledGroupIds)
+      .eq("role", "leader")
+      .neq("user_id", user.id);
+    if (coLeaderError) {
+      console.error("[account/delete] co-leader lookup failed", coLeaderError.message);
+      Sentry.captureException(coLeaderError, { tags: { source: "account-delete" } });
+      return NextResponse.json(
+        { error: "Could not delete your account. Try again.", ...(process.env.NODE_ENV !== "production" ? { detail: coLeaderError.message } : {}) },
+        { status: 500 },
+      );
+    }
+    const coLedGroupIds = new Set((coLeaderRows ?? []).map((r) => r.group_id as string));
+    ownedGroupIds = ledGroupIds.filter((id) => !coLedGroupIds.has(id));
+  }
   if (ownedGroupIds.length) {
     const { error: groupDeleteError } = await admin
       .from("groups")

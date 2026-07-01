@@ -23,7 +23,7 @@ import PasteSongModal from "@/app/_components/PasteSongModal";
 import SettingsView from "@/app/_components/SettingsView";
 import SongEditor from "@/app/_components/SongEditor";
 import FoldersView, { AddSongsModal, type Folder, type FolderSong, type SetlistEvent } from "@/app/_components/FoldersView";
-import GroupsView, { type Group, type GroupMember, type GroupSong } from "@/app/_components/GroupsView";
+import GroupsView, { type Group, type GroupMember, type GroupSong, type MemberRole } from "@/app/_components/GroupsView";
 import PrintLayout from "@/app/_components/PrintLayout";
 import SetlistPrintLayout from "@/app/_components/SetlistPrintLayout";
 import SetlistExportModal from "@/app/_components/SetlistExportModal";
@@ -2183,7 +2183,7 @@ export default function Home() {
     const r=data as{id:string;name:string;invite_token:string;created_at:string};
     const g:Group={id:r.id,name:r.name,inviteToken:r.invite_token??"",createdAt:new Date(r.created_at).getTime()};
     setGroups(p=>[...p,g]);
-    setGroupMembers(p=>[...p,{id:uid(),groupId:g.id,userId:user.id,role:"owner",displayName:profile?.full_name??null,instrument:null,instrumentDetail:null,status:"joined",email:profile?.email??null}]);
+    setGroupMembers(p=>[...p,{id:uid(),groupId:g.id,userId:user.id,role:"leader",displayName:profile?.full_name??null,instrument:null,instrumentDetail:null,status:"joined",email:profile?.email??null}]);
     return g;
   };
   const updateGroupName = async (groupId: string, name: string): Promise<void> => {
@@ -2249,6 +2249,16 @@ export default function Home() {
       return false;
     }
     return true;
+  };
+  // Leader-only role change. RLS (group_members_admin_update → is_group_leader)
+  // is the real gate; a non-leader's update is rejected by the DB. Optimistic
+  // with rollback on error.
+  const setMemberRole = async (memberId: string, role: MemberRole): Promise<void> => {
+    if (!guardOnline()) return;
+    const snapshot = groupMembers;
+    setGroupMembers(p => p.map(m => m.id === memberId ? { ...m, role } : m));
+    const { error } = await supabase.from("group_members").update({ role }).eq("id", memberId);
+    if (error) { logErr("set member role", error); showToast("Couldn't change role: " + error.message); setGroupMembers(snapshot); }
   };
 
   const renameFolder = async (id: string, name: string): Promise<void> => {
@@ -2366,6 +2376,29 @@ export default function Home() {
   })();
 
   if (!authChecked || !user) return <LoadingScreen />;
+  const authedUser = user;
+
+  // The caller's role in a team (null if not a member). Mirrors the RLS role
+  // gate so UI can hide controls a plain member can't use (DB still enforces).
+  const myGroupRole = (groupId: string | null | undefined): MemberRole | null =>
+    groupId ? (groupMembers.find((m) => m.groupId === groupId && m.userId === authedUser.id)?.role ?? null) : null;
+  const canEditGroupContent = (groupId: string | null | undefined): boolean => {
+    const r = myGroupRole(groupId);
+    return r === "leader" || r === "editor";
+  };
+  // A song is editable if the user owns it, or it's shared to a team (directly or
+  // via a team setlist) where they're a leader/editor. Members are view-only.
+  // Client mirror of the can_write_song() RLS function.
+  const canEditSong = (song: Song): boolean => {
+    if (song.userId === authedUser.id) return true;
+    if (groupSongs.some((gs) => gs.songId === song.id && canEditGroupContent(gs.groupId))) return true;
+    const setlistFolderIds = new Set(folderSongs.filter((fs) => fs.songId === song.id).map((fs) => fs.folderId));
+    return folders.some((f) => setlistFolderIds.has(f.id) && f.type === "setlist" && canEditGroupContent(f.groupId));
+  };
+  // A setlist is editable if the user owns it, or it's a team setlist they can
+  // edit (leader/editor). Passed to FoldersView to gate mutating controls.
+  const canEditFolder = (folder: Folder): boolean =>
+    folder.ownerId === authedUser.id || (folder.type === "setlist" && canEditGroupContent(folder.groupId));
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
@@ -2497,6 +2530,7 @@ export default function Home() {
               onSave={() => { const s = songs.find(x => view.kind === "editor" && x.id === (view as { kind: "editor"; songId: string }).songId); if (s) void saveSong(s); }}
               onSaveAsCopy={(title, liveSong) => { void saveAsCopy(liveSong, title); }}
               onDelete={() => { void deleteSong(activeSong.id); }}
+              canEdit={canEditSong(activeSong)}
               autoGenerateChords={aiGenerateSongId === activeSong.id}
               onAutoGenerateConsumed={() => setAiGenerateSongId(null)}
               canUseAiChords={gate.canUse("ai_chords")}
@@ -2563,6 +2597,7 @@ export default function Home() {
               onLibraryViewChange={setLibraryView}
               onUpdateDate={updateFolderDate}
               onExportSetlist={setExportSetlistId}
+              canEditFolder={canEditFolder}
               setlistEvents={setlistEvents}
               onAddEvent={addSetlistEvent}
               onUpdateEvent={updateSetlistEvent}
@@ -2579,7 +2614,7 @@ export default function Home() {
             </div>
           )}
           {view.kind === "groups" && groupsLoaded && (
-            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={songs} folders={folders} onCreateGroup={gatedCreateTeam} onUpdateGroup={updateGroupName} onAddMember={gatedAddMember} onRemoveMember={removeGroupMember} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onDeleteGroup={deleteGroup} onOpenSong={openSong} onOpenSetlist={(id) => navigateTo({ kind: "folders", subview: id })} showToast={showToast} selectedTeamId={view.kind === "groups" ? (view.teamId ?? null) : null} onSelectTeam={(id) => navigateTo({ kind: "groups", teamId: id ?? undefined })}/>
+            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={songs} folders={folders} onCreateGroup={gatedCreateTeam} onUpdateGroup={updateGroupName} onAddMember={gatedAddMember} onSetMemberRole={setMemberRole} onRemoveMember={removeGroupMember} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onDeleteGroup={deleteGroup} onOpenSong={openSong} onOpenSetlist={(id) => navigateTo({ kind: "folders", subview: id })} showToast={showToast} selectedTeamId={view.kind === "groups" ? (view.teamId ?? null) : null} onSelectTeam={(id) => navigateTo({ kind: "groups", teamId: id ?? undefined })}/>
           )}
         </main>
       </div>
