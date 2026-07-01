@@ -91,7 +91,7 @@ function PlayerModal({ videoId, title, onClose }: { videoId: string; title: stri
 type Editing = { id: string | null; url: string; title: string } | null;
 
 export default function SongReferences({
-  songId, links, canEdit, online, onAdd, onUpdate, onDelete, onReorder, showToast,
+  songId, links, canEdit, online, onAdd, onUpdate, onDelete, onReorder, showToast, autoAdd = false,
 }: {
   songId: string;
   links: SongLink[];
@@ -102,10 +102,13 @@ export default function SongReferences({
   onDelete: (id: string) => void;
   onReorder: (songId: string, orderedIds: string[]) => Promise<void>;
   showToast: (msg: string) => void;
+  // When opened via a "+ Link" affordance, start directly in the add form
+  // (only meaningful for editors).
+  autoAdd?: boolean;
 }) {
   const [playing, setPlaying] = useState<{ videoId: string; title: string } | null>(null);
   // `editing.id === null` is the "add" form; a string id edits that row.
-  const [editing, setEditing] = useState<Editing>(null);
+  const [editing, setEditing] = useState<Editing>(autoAdd && canEdit ? { id: null, url: "", title: "" } : null);
   const [saving, setSaving] = useState(false);
 
   const ordered = [...links].sort((a, b) => a.position - b.position || a.id.localeCompare(b.id));

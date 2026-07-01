@@ -557,7 +557,8 @@ function SetlistDetail({
   // Leader/editor/owner may mutate; plain team members are view-only (RLS enforced).
   const canEdit = canEditFolder(folder);
   // Which song's reference links are open in the quick-access modal (null = none).
-  const [linksSongId, setLinksSongId] = useState<string | null>(null);
+  // `add` opens straight into the add form (from the "+ Link" affordance).
+  const [linksSong, setLinksSong] = useState<{ id: string; add: boolean } | null>(null);
   // When `edit` is set, the modal opens pre-filled to update that entry in place;
   // otherwise it creates a new one of `type`.
   const [eventModal, setEventModal] = useState<{ type: "rehearsal" | "event"; edit?: SetlistEvent } | null>(null);
@@ -825,6 +826,7 @@ function SetlistDetail({
         <div ref={containerRef} className="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
           {orderedSongs.map((song, idx) => {
             const isDragging = dragSongId === song.id;
+            const hasLinks = songLinks.some((l) => l.songId === song.id);
             return (
               <div
                 key={song.id}
@@ -860,20 +862,33 @@ function SetlistDetail({
                     <div className="text-xs text-slate-400 truncate">{song.artist}</div>
                   )}
                 </div>
-                {/* Quick access to the song's reference links — only when it has
-                    any. Opens the same references list + inline player. */}
-                {songLinks.some((l) => l.songId === song.id) && (
+                {/* Quick access to the song's reference links. With links: the 🔗
+                    icon opens the list + inline player. Without links: a subtle
+                    "+ Link" affordance for editors only (members see nothing). */}
+                {hasLinks ? (
                   <button
                     type="button"
                     onPointerDown={(e) => e.stopPropagation()}
-                    onClick={() => setLinksSongId(song.id)}
+                    onClick={() => setLinksSong({ id: song.id, add: false })}
                     title="Reference links"
                     aria-label="Reference links"
                     className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors shrink-0"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                   </button>
-                )}
+                ) : canEditSong(song) ? (
+                  <button
+                    type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={() => setLinksSong({ id: song.id, add: true })}
+                    title="Add a reference link"
+                    aria-label="Add a reference link"
+                    className="shrink-0 flex items-center gap-1 px-1.5 h-7 rounded-md text-[11px] font-medium text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    <span className="hidden sm:inline">Link</span>
+                  </button>
+                ) : null}
                 {canEdit && (
                   <button
                     type="button"
@@ -914,22 +929,22 @@ function SetlistDetail({
       )}
       {/* Quick-access reference links for a setlist song — reuses SongReferences
           (list + inline YouTube player). These are the SONG's links (Model A). */}
-      {linksSongId && (() => {
-        const s = currentSongs.find((x) => x.id === linksSongId);
+      {linksSong && (() => {
+        const s = currentSongs.find((x) => x.id === linksSong.id);
         return (
-          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setLinksSongId(null)}>
+          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setLinksSong(null)}>
             <div className="w-full sm:max-w-md bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl max-h-[85vh] overflow-y-auto pb-[env(safe-area-inset-bottom)]" onClick={(e) => e.stopPropagation()}>
               <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
                 <span className="font-semibold text-sm truncate pr-2">{s?.title?.trim() || "References"}</span>
-                <button type="button" onClick={() => setLinksSongId(null)} aria-label="Close"
+                <button type="button" onClick={() => setLinksSong(null)} aria-label="Close"
                   className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
               </div>
               <div className="px-4 pb-4">
                 <SongReferences
-                  songId={linksSongId}
-                  links={songLinks.filter((l) => l.songId === linksSongId)}
+                  songId={linksSong.id}
+                  links={songLinks.filter((l) => l.songId === linksSong.id)}
                   canEdit={s ? canEditSong(s) : false}
                   online={online}
                   onAdd={onAddLink}
@@ -937,6 +952,7 @@ function SetlistDetail({
                   onDelete={onDeleteLink}
                   onReorder={onReorderLinks}
                   showToast={showToast}
+                  autoAdd={linksSong.add}
                 />
               </div>
             </div>
