@@ -542,7 +542,11 @@ function SetlistDetail({
 
   const events = setlistEvents
     .filter((e) => e.folderId === folder.id)
-    .sort((a, b) => a.eventDate.localeCompare(b.eventDate));
+    .sort((a, b) => {
+      // Events above rehearsals, then date ascending within each group.
+      if (a.eventType !== b.eventType) return a.eventType === "event" ? -1 : 1;
+      return a.eventDate.localeCompare(b.eventDate);
+    });
   const rehearsalCount = events.filter((e) => e.eventType === "rehearsal").length;
 
   // Mark this setlist as "seen" at its current song fingerprint so the
