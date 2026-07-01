@@ -22,6 +22,7 @@ import Library from "@/app/_components/Library";
 import PasteSongModal from "@/app/_components/PasteSongModal";
 import SettingsView from "@/app/_components/SettingsView";
 import SongEditor from "@/app/_components/SongEditor";
+import { type SongLink } from "@/app/_components/SongReferences";
 import FoldersView, { AddSongsModal, type Folder, type FolderSong, type SetlistEvent } from "@/app/_components/FoldersView";
 import GroupsView, { type Group, type GroupMember, type GroupSong, type MemberRole } from "@/app/_components/GroupsView";
 import PrintLayout from "@/app/_components/PrintLayout";
@@ -370,6 +371,8 @@ export default function Home() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [folderSongs, setFolderSongs] = useState<FolderSong[]>([]);
   const [setlistEvents, setSetlistEvents] = useState<SetlistEvent[]>([]);
+  const [songLinks, setSongLinks] = useState<SongLink[]>([]);
+  const [songLinksLoaded, setSongLinksLoaded] = useState(false);
   // Setlist export modal target (folder id) + the hydrated songs queued for a
   // whole-setlist print run.
   const [exportSetlistId, setExportSetlistId] = useState<string | null>(null);
@@ -669,11 +672,12 @@ export default function Home() {
         // effects refresh the cache).
         await cacheEnsureUser(u.id);
         if (cancelled) return;
-        const [cSongs, cFolders, cFolderSongs, cEvents, cGroups, cMembers, cGroupSongs, cProfile, cStyles] = await Promise.all([
+        const [cSongs, cFolders, cFolderSongs, cEvents, cLinks, cGroups, cMembers, cGroupSongs, cProfile, cStyles] = await Promise.all([
           cacheGetAll<Song>("songs"),
           cacheGetAll<Folder>("folders"),
           cacheGetAll<FolderSong>("folderSongs"),
           cacheGetAll<SetlistEvent>("setlistEvents"),
+          cacheGetAll<SongLink>("songLinks"),
           cacheGetAll<Group>("groups"),
           cacheGetAll<GroupMember>("groupMembers"),
           cacheGetAll<GroupSong>("groupSongs"),
@@ -685,6 +689,7 @@ export default function Home() {
         if (cFolders.length) setFolders(cFolders);
         if (cFolderSongs.length) setFolderSongs(cFolderSongs);
         if (cEvents.length) setSetlistEvents(cEvents);
+        if (cLinks.length) setSongLinks(cLinks);
         if (cGroups.length) setGroups(cGroups);
         if (cMembers.length) setGroupMembers(cMembers);
         if (cGroupSongs.length) setGroupSongs(cGroupSongs);
@@ -838,10 +843,12 @@ export default function Home() {
           supabase.from("folders").select("id, name, type, created_at, date, group_id, user_id").order("created_at"),
           supabase.from("folder_songs").select("id, folder_id, song_id, position").order("position", { ascending: true }),
           supabase.from("setlist_events").select("id, folder_id, label, event_date, event_type").order("event_date", { ascending: true }),
+          supabase.from("song_links").select("id, song_id, user_id, url, title, position").order("position", { ascending: true }),
         ]).then(([
           { data: folderRows, error: foldersError },
           { data: folderSongRows, error: folderSongsError },
           { data: eventRows, error: eventsError },
+          { data: linkRows, error: linksError },
         ]) => {
           if (cancelled) return;
           if (foldersError) {
@@ -881,6 +888,16 @@ export default function Home() {
             eventDate: r.event_date,
             eventType: (r.event_type === "rehearsal" ? "rehearsal" : "event") as "rehearsal" | "event",
           })));
+          if (linksError) console.error("load song_links failed", linksError.message);
+          setSongLinks((linkRows ?? []).map((r: { id: string; song_id: string; user_id: string | null; url: string; title: string | null; position: number | null }) => ({
+            id: r.id,
+            songId: r.song_id,
+            userId: r.user_id ?? null,
+            url: r.url,
+            title: r.title ?? null,
+            position: r.position ?? 0,
+          })));
+          setSongLinksLoaded(true);
           setFoldersLoaded(true); // network folders in → offline mirror may run
         });
 
@@ -940,6 +957,11 @@ export default function Home() {
     void cacheReplace("folderSongs", folderSongs);
     void cacheReplace("setlistEvents", setlistEvents);
   }, [folders, folderSongs, setlistEvents, online, foldersLoaded]);
+
+  useEffect(() => {
+    if (!online || !songLinksLoaded) return;
+    void cacheReplace("songLinks", songLinks);
+  }, [songLinks, online, songLinksLoaded]);
 
   useEffect(() => {
     if (!online || !groupsLoaded) return;
@@ -2175,6 +2197,59 @@ export default function Home() {
     );
   };
 
+  // ── Song reference links ────────────────────────────────────────────────────
+  const addSongLink = async (songId: string, url: string, title: string): Promise<void> => {
+    if (!guardOnline()) return;
+    if (!user) return;
+    const maxPos = songLinks.filter((l) => l.songId === songId).reduce((m, l) => Math.max(m, l.position), -1);
+    const { data, error } = await supabase
+      .from("song_links")
+      .insert({ song_id: songId, user_id: user.id, url, title: title || null, position: maxPos + 1 })
+      .select()
+      .single();
+    if (error) { logErr("add song link", error); showToast("Couldn't add link: " + error.message); return; }
+    const r = data as { id: string; song_id: string; user_id: string | null; url: string; title: string | null; position: number | null };
+    setSongLinks((prev) => [...prev, { id: r.id, songId: r.song_id, userId: r.user_id ?? null, url: r.url, title: r.title ?? null, position: r.position ?? 0 }]);
+  };
+
+  const updateSongLink = async (id: string, patch: { url?: string; title?: string }): Promise<void> => {
+    if (!guardOnline()) return;
+    const prev = songLinks;
+    const dbPatch: Record<string, unknown> = {};
+    if (patch.url !== undefined) dbPatch.url = patch.url;
+    if (patch.title !== undefined) dbPatch.title = patch.title || null;
+    setSongLinks((p) => p.map((l) => l.id === id
+      ? { ...l, ...(patch.url !== undefined ? { url: patch.url } : {}), ...(patch.title !== undefined ? { title: patch.title || null } : {}) }
+      : l));
+    const { error } = await supabase.from("song_links").update(dbPatch).eq("id", id);
+    if (error) { logErr("update song link", error); showToast("Couldn't save link: " + error.message); setSongLinks(prev); }
+  };
+
+  const deleteSongLink = (id: string): void => {
+    if (!guardOnline()) return;
+    const prev = songLinks;
+    const link = songLinks.find((l) => l.id === id);
+    setSongLinks((p) => p.filter((l) => l.id !== id));
+    showUndoToast(
+      link ? `Removed "${link.title?.trim() || "link"}"` : "Link removed",
+      () => setSongLinks(prev),
+      async () => {
+        const { error } = await supabase.from("song_links").delete().eq("id", id);
+        if (error) { logErr("delete song link", error); showToast("Couldn't remove link: " + error.message); setSongLinks(prev); }
+      },
+    );
+  };
+
+  const reorderSongLinks = async (songId: string, orderedIds: string[]): Promise<void> => {
+    if (!guardOnline()) return;
+    const prev = songLinks;
+    const posById = new Map(orderedIds.map((id, i) => [id, i] as const));
+    setSongLinks((p) => p.map((l) => (l.songId === songId && posById.has(l.id)) ? { ...l, position: posById.get(l.id)! } : l));
+    const results = await Promise.all(orderedIds.map((id, i) => supabase.from("song_links").update({ position: i }).eq("id", id)));
+    const failed = results.find((r) => r.error);
+    if (failed?.error) { logErr("reorder song links", failed.error); showToast("Couldn't save order: " + failed.error.message); setSongLinks(prev); }
+  };
+
   const createGroup=async(name:string):Promise<Group|null>=>{
     if(!user)return null;
     if(!guardOnline())return null;
@@ -2531,6 +2606,11 @@ export default function Home() {
               onSaveAsCopy={(title, liveSong) => { void saveAsCopy(liveSong, title); }}
               onDelete={() => { void deleteSong(activeSong.id); }}
               canEdit={canEditSong(activeSong)}
+              songLinks={songLinks.filter((l) => l.songId === activeSong.id)}
+              onAddLink={addSongLink}
+              onUpdateLink={updateSongLink}
+              onDeleteLink={deleteSongLink}
+              onReorderLinks={reorderSongLinks}
               autoGenerateChords={aiGenerateSongId === activeSong.id}
               onAutoGenerateConsumed={() => setAiGenerateSongId(null)}
               canUseAiChords={gate.canUse("ai_chords")}

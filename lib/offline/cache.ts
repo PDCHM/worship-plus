@@ -15,7 +15,9 @@
 import { openDB, type IDBPDatabase } from "idb";
 
 const DB_NAME = "wp-offline";
-const DB_VERSION = 1;
+// v2 adds the "songLinks" store (reference links per song). The upgrade()
+// below creates any missing ARRAY_STORES, so bumping the version is enough.
+const DB_VERSION = 2;
 
 // Stores holding arrays of `{ id }`-keyed records (mirror the in-memory arrays).
 export type ArrayStore =
@@ -24,6 +26,7 @@ export type ArrayStore =
   | "folders"
   | "folderSongs"
   | "setlistEvents"
+  | "songLinks"
   | "groups"
   | "groupMembers"
   | "groupSongs";
@@ -34,6 +37,7 @@ const ARRAY_STORES: ArrayStore[] = [
   "folders",
   "folderSongs",
   "setlistEvents",
+  "songLinks",
   "groups",
   "groupMembers",
   "groupSongs",

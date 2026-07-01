@@ -9,6 +9,7 @@ import PrintPreviewModal from "@/app/_components/PrintPreviewModal";
 import QuickActionsPanel from "@/app/_components/QuickActionsPanel";
 import MarkupOverlay from "@/app/_components/MarkupOverlay";
 import { LineBubbles, useSongBubbles } from "@/app/_components/SongBubbles";
+import SongReferences, { type SongLink } from "@/app/_components/SongReferences";
 import {
   CHORD_FONT_CLAMP,
   FONT_ZOOM_STEP,
@@ -140,6 +141,13 @@ type Props = {
   onSectionStylesSave: (s: SectionStyles) => void | Promise<void>;
   showToast: (msg: string) => void;
   bubbleAuthors: Record<string, string>;
+  // Reference links (YouTube etc.) for this song + their CRUD, owned by the page
+  // so they mirror to the offline cache. Edit gating reuses `canEdit`.
+  songLinks: SongLink[];
+  onAddLink: (songId: string, url: string, title: string) => Promise<void>;
+  onUpdateLink: (id: string, patch: { url?: string; title?: string }) => Promise<void>;
+  onDeleteLink: (id: string) => void;
+  onReorderLinks: (songId: string, orderedIds: string[]) => Promise<void>;
   onBack: () => void;
   // Reports the editor's read-only (performance/view) state to the shell so it
   // can auto-collapse the left nav for full-width playing. Fires on mount and
@@ -918,6 +926,11 @@ export default function SongEditor({
   onSectionStylesSave,
   showToast,
   bubbleAuthors,
+  songLinks,
+  onAddLink,
+  onUpdateLink,
+  onDeleteLink,
+  onReorderLinks,
   onBack,
   onReadOnlyChange,
   onMarkupModeChange,
@@ -3398,6 +3411,18 @@ export default function SongEditor({
           </div>
         </div>
       )}
+
+      <SongReferences
+        songId={song.id}
+        links={songLinks}
+        canEdit={canEdit}
+        online={online}
+        onAdd={onAddLink}
+        onUpdate={onUpdateLink}
+        onDelete={onDeleteLink}
+        onReorder={onReorderLinks}
+        showToast={showToast}
+      />
 
       <div className="mt-5 text-xs text-slate-500 dark:text-slate-400 px-1 leading-relaxed space-y-1 print:hidden">
         {readOnly ? (

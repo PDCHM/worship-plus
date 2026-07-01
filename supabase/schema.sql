@@ -1181,6 +1181,52 @@ alter table public.song_bubbles add column if not exists line_index integer not 
 create index if not exists song_bubbles_section_id_idx on public.song_bubbles(section_id);
 
 -- ============================================================
+-- Song reference links (YouTube etc.) — multiple per song, ordered.
+-- READ: anyone who can view the song (owner + team members via shared
+-- songs / team setlists), via can_read_song().
+-- WRITE (add/edit/delete/reorder): owner + editor/leader, via
+-- can_write_song() — plain members are read-only.
+-- ============================================================
+create table if not exists public.song_links (
+  id         uuid primary key default gen_random_uuid(),
+  song_id    uuid not null references public.songs(id) on delete cascade,
+  user_id    uuid not null references auth.users(id) on delete cascade,
+  url        text not null,
+  title      text,
+  position   integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
+alter table public.song_links enable row level security;
+
+-- READ: same visibility as the song itself.
+drop policy if exists song_links_read on public.song_links;
+create policy song_links_read on public.song_links
+  for select to authenticated
+  using (public.can_read_song(song_id));
+
+-- INSERT: writer of the song, and the row's owner column must be the caller.
+drop policy if exists song_links_insert on public.song_links;
+create policy song_links_insert on public.song_links
+  for insert to authenticated
+  with check (public.can_write_song(song_id) and user_id = auth.uid());
+
+-- UPDATE (edit label/url + reorder): any writer of the song.
+drop policy if exists song_links_update on public.song_links;
+create policy song_links_update on public.song_links
+  for update to authenticated
+  using (public.can_write_song(song_id))
+  with check (public.can_write_song(song_id));
+
+-- DELETE: any writer of the song.
+drop policy if exists song_links_delete on public.song_links;
+create policy song_links_delete on public.song_links
+  for delete to authenticated
+  using (public.can_write_song(song_id));
+
+create index if not exists song_links_song_id_idx on public.song_links(song_id);
+
+-- ============================================================
 -- get_song_content: returns a song's full content (sections → lines →
 -- chords) as one JSON blob in a single round trip. SECURITY DEFINER so
 -- the nested reads run once past a single can_read_song() gate, instead
