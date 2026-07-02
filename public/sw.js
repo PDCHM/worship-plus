@@ -13,7 +13,13 @@
  *     dynamic/song-related responses are persisted.
  */
 
-const VERSION = "v1";
+// Bump this on every deploy that ships client changes. Changing the string makes
+// the browser see a byte-different sw.js → install → skipWaiting → activate, whose
+// handler deletes every cache not in the current-version list (below) and calls
+// clients.claim(), so fresh assets take over on the next load with no manual
+// refresh. (Navigations are already network-first, so online users get new HTML +
+// content-hashed chunks regardless; this guarantees stale caches are dropped too.)
+const VERSION = "2026-07-02a";
 const STATIC_CACHE = `wp-static-${VERSION}`;
 const PAGES_CACHE = `wp-pages-${VERSION}`;
 

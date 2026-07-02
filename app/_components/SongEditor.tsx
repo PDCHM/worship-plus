@@ -120,9 +120,6 @@ type Props = {
   onSave: () => void;
   onSaveAsCopy: (title: string, song: Song) => void;
   onDelete: () => void;
-  // Persist just the BPM (from the tempo panel). Updates + saves the song with
-  // the given tempo; owner/editor only (RLS enforces, panel hides Save for members).
-  onSaveBpm: (bpm: number) => void;
   // Permission lock for team content: false when a plain team member opens a
   // shared song they can't edit. Forces read-only, hides the edit toggle / Save
   // / Delete, and leaves "Save as copy" (duplicate to my library) available.
@@ -916,7 +913,6 @@ export default function SongEditor({
   onSave,
   onSaveAsCopy,
   onDelete,
-  onSaveBpm,
   canEdit = true,
   autoGenerateChords,
   onAutoGenerateConsumed,
@@ -1812,6 +1808,13 @@ export default function SongEditor({
     update((s) => ({ ...s, capo: value }));
   };
 
+  // BPM is wired exactly like capo: one source of truth (song.bpm) updated via
+  // update(), which flows through onChange → the page's song state → re-render.
+  // The tempo panel's −/+ / input call this; the readout reads song.bpm back.
+  const handleBpmChange = (value: number) => {
+    update((s) => ({ ...s, bpm: value }));
+  };
+
   // Capo display: stored chords are the SOUNDING chords; the chart shows the
   // PLAY shapes (shifted DOWN by capo). displayChord renders a sounding chord as
   // its play shape; soundingChord is the inverse — it turns a chord the user
@@ -2561,7 +2564,7 @@ export default function SongEditor({
                   <TempoPanel
                     bpm={song.bpm}
                     canEdit={canEdit}
-                    onSave={(v) => { onSaveBpm(v); setTempoPanelOpen(false); }}
+                    onBpmChange={handleBpmChange}
                   />
                 )}
               </div>
@@ -2574,11 +2577,37 @@ export default function SongEditor({
               {song.capo ? "Capo " + song.capo : "Capo"}
             </button>
             {capoPickerOpen && (
-              <div onMouseDown={(e) => e.stopPropagation()} className="fixed inset-x-2 bottom-2 z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 sm:w-44 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
-                <div className="text-[10px] text-slate-400 uppercase tracking-wider text-center mb-1.5">Capo</div>
-                {/* iOS-style rolling wheel: scroll/flick/drag; the fret in the
-                    centre band is applied on settle. 0 = no capo (→ null). */}
-                <CapoWheel value={song.capo ?? 0} onChange={(f) => handleCapoChange(f === 0 ? null : f)} />
+              <div onMouseDown={(e) => e.stopPropagation()} className="fixed inset-x-2 bottom-2 z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 sm:w-80 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
+                {/* Tap-to-select fret picker (proven path): every button's
+                    onMouseDown calls handleCapoChange → update() → song.capo,
+                    which the pill (playKey) and chart (capoChord) read back. */}
+                <div className="flex items-center justify-center gap-3 px-1 mb-2.5">
+                  <button type="button" aria-label="Fewer frets"
+                    onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); handleCapoChange((song.capo ?? 0) <= 1 ? null : (song.capo ?? 0) - 1); }}
+                    className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors">
+                    −
+                  </button>
+                  <div className="w-14 text-center">
+                    <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 tabular-nums">{song.capo ?? 0}</div>
+                    <div className="text-[10px] text-slate-400 uppercase tracking-wider">CAPO</div>
+                  </div>
+                  <button type="button" aria-label="More frets"
+                    onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); handleCapoChange(Math.min(7, (song.capo ?? 0) + 1)); }}
+                    className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors">
+                    +
+                  </button>
+                </div>
+                <div className="grid grid-cols-8 gap-1.5">
+                  {[0, 1, 2, 3, 4, 5, 6, 7].map((f) => (
+                    <button key={f} type="button"
+                      onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); handleCapoChange(f === 0 ? null : f); setCapoPickerOpen(false); }}
+                      className={"h-9 rounded-lg text-sm font-semibold transition-all " + ((song.capo ?? 0) === f
+                        ? "bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/40 scale-105"
+                        : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300")}>
+                      {f}
+                    </button>
+                  ))}
+                </div>
                 <div className="mt-2 text-[10px] text-slate-400 dark:text-slate-500 text-center">0 = no capo</div>
               </div>
             )}
@@ -3853,155 +3882,42 @@ export default function SongEditor({
   );
 }
 
-/* ─── CapoWheel ───────────────────────────────────────────────────────────────
-   iPhone-style drum-roll fret picker (0–7), CSS scroll-snap — no library. A
-   fixed-height overflow-scroll column with scroll-snap-align:center per fret and
-   a centre highlight band; touch flick / trackpad / mouse-wheel scroll natively,
-   mouse click-drag is handled via pointer events. Per-item opacity+scale is
-   painted on scroll (rAF-throttled) for the faded/shrinking edges. The fret that
-   settles in the centre is applied (debounced) via onChange — value only; the
-   capo/transpose math is untouched. */
-const CAPO_FRETS = [0, 1, 2, 3, 4, 5, 6, 7];
-const CAPO_ITEM_H = 40;              // px per fret row
-const CAPO_PAD = CAPO_ITEM_H * 2;    // top/bottom padding so 0 and 7 can centre
-
-function CapoWheel({ value, onChange }: { value: number; onChange: (fret: number) => void }) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const settleRef = useRef<number | null>(null);
-  const rafRef = useRef<number | null>(null);
-  const dragRef = useRef<{ y: number; top: number; id: number } | null>(null);
-  const lastRef = useRef(value);
-
-  // Fade + shrink each row by its distance from the centre. Direct DOM writes
-  // (no React re-render) keep scrolling smooth.
-  const paint = () => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const frac = el.scrollTop / CAPO_ITEM_H;
-    for (let i = 0; i < el.children.length; i++) {
-      const row = el.children[i] as HTMLElement;
-      const dist = Math.abs(i - frac);
-      row.style.opacity = String(Math.max(0.2, 1 - dist * 0.34));
-      row.style.transform = `scale(${Math.max(0.66, 1 - dist * 0.14)})`;
-    }
-  };
-
-  const commit = () => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const idx = Math.max(0, Math.min(7, Math.round(el.scrollTop / CAPO_ITEM_H)));
-    if (idx !== lastRef.current) { lastRef.current = idx; onChange(idx); }
-  };
-
-  // Centre the current value when the wheel opens (mount).
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollTop = value * CAPO_ITEM_H;
-    paint();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => () => {
-    if (settleRef.current != null) clearTimeout(settleRef.current);
-    if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
-  }, []);
-
-  const onScroll = () => {
-    if (rafRef.current == null) {
-      rafRef.current = window.requestAnimationFrame(() => { rafRef.current = null; paint(); });
-    }
-    // Apply once motion settles (fires after flick/scroll momentum stops).
-    if (settleRef.current != null) window.clearTimeout(settleRef.current);
-    settleRef.current = window.setTimeout(commit, 130);
-  };
-
-  // Mouse click-drag → scroll (touch/pen/trackpad use native scrolling directly).
-  const onPointerDown = (e: React.PointerEvent) => {
-    if (e.pointerType !== "mouse") return;
-    const el = scrollRef.current;
-    if (!el) return;
-    dragRef.current = { y: e.clientY, top: el.scrollTop, id: e.pointerId };
-    el.setPointerCapture(e.pointerId);
-  };
-  const onPointerMove = (e: React.PointerEvent) => {
-    const d = dragRef.current, el = scrollRef.current;
-    if (!d || !el) return;
-    el.scrollTop = d.top - (e.clientY - d.y);   // onScroll repaints + schedules commit
-  };
-  const endDrag = () => {
-    const el = scrollRef.current, d = dragRef.current;
-    dragRef.current = null;
-    if (el && d) { try { el.releasePointerCapture(d.id); } catch { /* already released */ } }
-  };
-
-  return (
-    <div className="relative select-none mx-auto" style={{ height: CAPO_ITEM_H * 5, width: 96 }}>
-      {/* centre selection band (behind the numbers) */}
-      <div className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 z-0 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 border-y border-indigo-200 dark:border-indigo-800"
-        style={{ height: CAPO_ITEM_H }} />
-      <div
-        ref={scrollRef}
-        onScroll={onScroll}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
-        className="relative z-[1] h-full overflow-y-scroll overscroll-contain touch-pan-y cursor-grab active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
-        style={{
-          scrollbarWidth: "none",
-          scrollSnapType: "y mandatory",
-          paddingTop: CAPO_PAD,
-          paddingBottom: CAPO_PAD,
-          WebkitOverflowScrolling: "touch",
-          WebkitMaskImage: "linear-gradient(to bottom, transparent, #000 30%, #000 70%, transparent)",
-          maskImage: "linear-gradient(to bottom, transparent, #000 30%, #000 70%, transparent)",
-        }}
-      >
-        {CAPO_FRETS.map((f) => (
-          <div key={f}
-            className="flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-300 tabular-nums will-change-transform"
-            style={{ height: CAPO_ITEM_H, scrollSnapAlign: "center", fontSize: 22 }}>
-            {f}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /* ─── TempoPanel ──────────────────────────────────────────────────────────────
-   Small popover: −/+ stepper (clamp 20–300), number readout, a local metronome
-   (Web Audio, lookahead scheduler), and Save. Single-device only — no time
-   signature, accent, count-in, or sync. Unmounts when the panel closes or the
-   editor unmounts, and its cleanup stops the metronome + closes the AudioContext,
+   Small popover: −/+ / tap-to-type BPM (clamp 20–300) + a local metronome
+   (Web Audio, lookahead scheduler). Single-device only — no time signature,
+   accent, count-in, or sync. BPM is NOT local state — it reads/writes song.bpm
+   through onBpmChange (the same update() path capo uses), so the readout, chip
+   and metronome all track one source of truth. Unmounts when the panel closes
+   or the editor unmounts; cleanup stops the scheduler + closes the AudioContext,
    so nothing ticks in the background. */
 const BPM_MIN = 20;
 const BPM_MAX = 300;
 const BPM_DEFAULT = 120;
+const clampBpm = (n: number) => Math.max(BPM_MIN, Math.min(BPM_MAX, n));
 
 // Minimal structural type for the Screen Wake Lock sentinel — avoids depending
 // on lib.dom's WakeLock types, which aren't present in all TS configs.
 type WakeLockLike = { release: () => Promise<void> };
 
-function TempoPanel({ bpm, canEdit, onSave }: {
+function TempoPanel({ bpm, canEdit, onBpmChange }: {
   bpm: number | null;
   canEdit: boolean;
-  onSave: (bpm: number) => void;
+  onBpmChange: (bpm: number) => void;
 }) {
-  const [draft, setDraft] = useState<number>(bpm ?? BPM_DEFAULT);
+  // Source of truth is song.bpm (via the prop); no local draft. A null bpm shows
+  // the default in the readout, and the first −/+ / edit writes a real value.
+  const value = bpm ?? BPM_DEFAULT;
   const [playing, setPlaying] = useState(false);
 
   const ctxRef = useRef<AudioContext | null>(null);
   const timerRef = useRef<number | null>(null);
   const nextNoteRef = useRef(0);
-  const bpmRef = useRef(draft);
+  const bpmRef = useRef(value);
   const wakeLockRef = useRef<WakeLockLike | null>(null);
-  // Scheduler reads tempo from a ref so −/+ retune the click live while playing.
-  // TEMP debug: proves the −/+ / input actually update state and re-render.
-  useEffect(() => { bpmRef.current = draft; console.log("[bpm] value =", draft); }, [draft]);
+  // Keep the scheduler's tempo in sync with song.bpm so −/+ retune live.
+  useEffect(() => { bpmRef.current = value; }, [value]);
 
-  const clamp = (n: number) => Math.max(BPM_MIN, Math.min(BPM_MAX, n));
+  const setBpm = (n: number) => { if (canEdit) onBpmChange(clampBpm(n)); };
 
   // Screen Wake Lock: keep the display awake while the metronome plays so the OS
   // doesn't lock the screen and suspend audio mid-practice. Silent no-op where
@@ -4036,15 +3952,12 @@ function TempoPanel({ bpm, canEdit, onSave }: {
       ctx = new Ctor();
       ctxRef.current = ctx;
     }
-    // Mobile Chrome/Safari (and sometimes desktop) start the context "suspended";
-    // currentTime stays 0/frozen and nothing is audible until resume() RESOLVES.
-    // Await it and confirm "running" BEFORE scheduling, then anchor the schedule
-    // to the post-resume clock — otherwise ticks land in the past and are silent.
-    console.log("[metronome] state before resume:", ctx.state);
+    // Contexts start "suspended" (always on mobile, often desktop): currentTime
+    // stays frozen and nothing is audible until resume() RESOLVES. Await it and
+    // confirm "running" before scheduling, then anchor to the post-resume clock.
     if (ctx.state !== "running") {
-      try { await ctx.resume(); } catch (err) { console.log("[metronome] resume error:", err); }
+      try { await ctx.resume(); } catch { /* ignore */ }
     }
-    console.log("[metronome] state after resume:", ctx.state, "bpm:", bpmRef.current);
     if (ctx.state !== "running") return;   // still blocked — leave toggle on "play"
     const LOOKAHEAD = 0.1;   // schedule ticks up to 100ms ahead
     const INTERVAL = 25;     // check every ~25ms
@@ -4052,11 +3965,13 @@ function TempoPanel({ bpm, canEdit, onSave }: {
     const scheduleClick = (time: number) => {
       const c = ctxRef.current;
       if (!c) return;
+      // NEW osc + gain per tick; gain -> destination; 0.3 peak; envelope never
+      // hits 0 (exponentialRamp requires >0), so the click is audible.
       const osc = c.createOscillator();
       const gain = c.createGain();
       osc.frequency.value = 1000;                    // plain tick, no accent
       gain.gain.setValueAtTime(0.0001, time);
-      gain.gain.exponentialRampToValueAtTime(0.5, time + 0.002);   // ~2ms attack
+      gain.gain.exponentialRampToValueAtTime(0.3, time + 0.002);   // ~2ms attack, 0.3 peak
       gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.03); // ~30ms decay
       osc.connect(gain); gain.connect(c.destination);
       osc.start(time); osc.stop(time + 0.05);
@@ -4066,7 +3981,7 @@ function TempoPanel({ bpm, canEdit, onSave }: {
       if (!c || c.state !== "running") return;
       while (nextNoteRef.current < c.currentTime + LOOKAHEAD) {
         scheduleClick(nextNoteRef.current);
-        nextNoteRef.current += 60 / bpmRef.current;
+        nextNoteRef.current += 60 / bpmRef.current;   // interval = 60/bpm sec, live
       }
     }, INTERVAL);
     void requestWakeLock();
@@ -4074,7 +3989,6 @@ function TempoPanel({ bpm, canEdit, onSave }: {
   };
 
   const toggle = () => { if (playing) stopMetronome(); else void startMetronome(); };
-  const step = (delta: number) => setDraft((d) => clamp(d + delta));
 
   // Returning to the foreground: resume the (possibly OS-suspended) context and
   // re-acquire the wake lock, which is auto-released while the tab is hidden.
@@ -4103,28 +4017,37 @@ function TempoPanel({ bpm, canEdit, onSave }: {
     <div onMouseDown={(e) => e.stopPropagation()}
       className="fixed inset-x-2 bottom-2 z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
       <div className="flex items-center gap-2 px-1">
-        {/* −/+ use onMouseDown (+ stop/prevent) to match the Key/Capo pickers:
-            inside these popovers the outside-click mousedown-closer races with
-            onClick, so onClick handlers get lost. */}
-        <button type="button" aria-label="Decrease BPM"
-          onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); step(-1); }}
-          className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors shrink-0">
-          −
-        </button>
-        {/* Tap to type a value directly; clamps to 20–300 on blur. */}
-        <div className="w-16 text-center shrink-0">
-          <input type="number" inputMode="numeric" min={BPM_MIN} max={BPM_MAX} value={draft}
-            onMouseDown={(e) => e.stopPropagation()}
-            onChange={(e) => { const n = parseInt(e.target.value, 10); setDraft(Number.isNaN(n) ? 0 : n); }}
-            onBlur={() => setDraft((d) => clamp(d))}
-            className="w-full text-center text-2xl font-bold text-indigo-600 dark:text-indigo-400 tabular-nums bg-transparent outline-none rounded-md focus:ring-2 focus:ring-indigo-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
-          <div className="text-[10px] text-slate-400 uppercase tracking-wider">BPM</div>
-        </div>
-        <button type="button" aria-label="Increase BPM"
-          onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); step(1); }}
-          className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors shrink-0">
-          +
-        </button>
+        {/* −/+ and the input write song.bpm via onBpmChange (same update() path as
+            capo). onMouseDown (+ stop/prevent) matches the Key/Capo pickers so the
+            outside-click mousedown-closer can't swallow the interaction. Members
+            (canEdit false) see a static readout but can still play the metronome. */}
+        {canEdit ? (
+          <>
+            <button type="button" aria-label="Decrease BPM"
+              onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); setBpm(value - 1); }}
+              className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors shrink-0">
+              −
+            </button>
+            <div className="w-16 text-center shrink-0">
+              <input type="number" inputMode="numeric" min={BPM_MIN} max={BPM_MAX} value={value}
+                onMouseDown={(e) => e.stopPropagation()}
+                onChange={(e) => { const n = parseInt(e.target.value, 10); if (!Number.isNaN(n)) onBpmChange(n); }}
+                onBlur={(e) => { const n = parseInt(e.target.value, 10); onBpmChange(clampBpm(Number.isNaN(n) ? BPM_DEFAULT : n)); }}
+                className="w-full text-center text-2xl font-bold text-indigo-600 dark:text-indigo-400 tabular-nums bg-transparent outline-none rounded-md focus:ring-2 focus:ring-indigo-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+              <div className="text-[10px] text-slate-400 uppercase tracking-wider">BPM</div>
+            </div>
+            <button type="button" aria-label="Increase BPM"
+              onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); setBpm(value + 1); }}
+              className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors shrink-0">
+              +
+            </button>
+          </>
+        ) : (
+          <div className="w-16 text-center shrink-0">
+            <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 tabular-nums">{value}</div>
+            <div className="text-[10px] text-slate-400 uppercase tracking-wider">BPM</div>
+          </div>
+        )}
         <button type="button" aria-pressed={playing}
           onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); toggle(); }}
           aria-label={playing ? "Stop metronome" : "Start metronome"}
@@ -4135,13 +4058,6 @@ function TempoPanel({ bpm, canEdit, onSave }: {
             ? <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
             : <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>}
         </button>
-        {canEdit && (
-          <button type="button"
-            onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); onSave(clamp(draft)); }}
-            className="h-10 px-4 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-600/30 shrink-0">
-            Save
-          </button>
-        )}
       </div>
     </div>
   );
