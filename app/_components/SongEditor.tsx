@@ -4242,7 +4242,7 @@ function MetronomePill({ bpm, playing, onToggle }: {
       aria-pressed={playing}
       aria-label={playing ? `Stop metronome, ${bpm} BPM` : `Start metronome, ${bpm} BPM`}
       style={{ bottom: "calc(env(safe-area-inset-bottom) + 5rem)" }}
-      className={"fixed right-4 z-40 print:hidden flex items-center gap-1.5 h-9 pl-2.5 pr-3 rounded-full text-sm font-semibold tabular-nums transition-colors " + (playing
+      className={"fixed left-4 z-40 print:hidden flex items-center gap-1.5 h-9 pl-2.5 pr-3 rounded-full text-sm font-semibold tabular-nums transition-colors " + (playing
         ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30"
         : "bg-white/90 dark:bg-slate-900/90 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 shadow-md backdrop-blur")}>
       <span className="inline-flex" style={playing ? { animation: `mp-beat ${(60 / bpm).toFixed(3)}s ease-in-out infinite` } : undefined}>
