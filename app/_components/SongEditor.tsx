@@ -4010,13 +4010,14 @@ function WheelPicker({ values, value, onChange, ariaLabel, width = 84 }: {
 }
 
 /* ─── TempoPanel ──────────────────────────────────────────────────────────────
-   Small popover: −/+ / tap-to-type BPM (clamp 20–300) + a local metronome
-   (Web Audio, lookahead scheduler). Single-device only — no time signature,
-   accent, count-in, or sync. BPM is NOT local state — it reads/writes song.bpm
-   through onBpmChange (the same update() path capo uses), so the readout, chip
-   and metronome all track one source of truth. Unmounts when the panel closes
-   or the editor unmounts; cleanup stops the scheduler + closes the AudioContext,
-   so nothing ticks in the background. */
+   Rolling BPM wheel + play/stop. The metronome uses HTML5 <Audio> click samples
+   (NOT Web Audio) — the first .play() fires synchronously in the play tap to
+   unlock iOS, then a self-scheduling setTimeout loop plays a click every 60/bpm
+   sec, reading the live wheel tempo. Single-device only — no time signature,
+   accent, count-in, or sync. Local `tempo` state drives the wheel + click;
+   editors also persist to song.bpm (chip + save). Unmounts when the panel closes
+   or the editor unmounts; cleanup clears the loop + releases the wake lock, so
+   nothing ticks in the background. */
 const BPM_MIN = 20;
 const BPM_MAX = 300;
 const BPM_DEFAULT = 120;
@@ -4027,6 +4028,35 @@ const CAPO_VALUES = [0, 1, 2, 3, 4, 5, 6, 7];
 // Minimal structural type for the Screen Wake Lock sentinel — avoids depending
 // on lib.dom's WakeLock types, which aren't present in all TS configs.
 type WakeLockLike = { release: () => Promise<void> };
+
+// A short click as a base64 WAV data-URI — generated in code so no binary asset
+// needs committing. ~40ms 1kHz tone with a fast exponential decay. Used as the
+// src for HTML5 <Audio> elements: HTMLAudioElement.play() after a user gesture is
+// the most reliable way to make sound on mobile web/PWA (no AudioContext, no
+// resume timing, no audio graph — which is where the Web Audio silence was).
+function makeClickDataUri(): string {
+  const sampleRate = 22050;
+  const n = Math.floor(sampleRate * 0.04);   // 40ms
+  const dataSize = n * 2;                      // 16-bit mono
+  const buf = new ArrayBuffer(44 + dataSize);
+  const dv = new DataView(buf);
+  const wstr = (o: number, s: string) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+  wstr(0, "RIFF"); dv.setUint32(4, 36 + dataSize, true); wstr(8, "WAVE");
+  wstr(12, "fmt "); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, sampleRate, true); dv.setUint32(28, sampleRate * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+  wstr(36, "data"); dv.setUint32(40, dataSize, true);
+  for (let i = 0; i < n; i++) {
+    const t = i / sampleRate;
+    const s = Math.sin(2 * Math.PI * 1000 * t) * Math.exp(-t * 55);   // decaying tone
+    dv.setInt16(44 + i * 2, Math.max(-1, Math.min(1, s)) * 0x7fff, true);
+  }
+  const bytes = new Uint8Array(buf);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return "data:audio/wav;base64," + btoa(bin);
+}
+let _clickSrc: string | null = null;
+const clickSrc = () => (_clickSrc ??= makeClickDataUri());
 
 function TempoPanel({ bpm, canEdit, onBpmChange }: {
   bpm: number | null;
@@ -4040,13 +4070,27 @@ function TempoPanel({ bpm, canEdit, onBpmChange }: {
   const [tempo, setTempo] = useState<number>(bpm ?? BPM_DEFAULT);
   const [playing, setPlaying] = useState(false);
 
-  const ctxRef = useRef<AudioContext | null>(null);
   const timerRef = useRef<number | null>(null);
-  const nextNoteRef = useRef(0);
   const bpmRef = useRef(tempo);
   const wakeLockRef = useRef<WakeLockLike | null>(null);
-  // Scheduler reads tempo from a ref so −/+ retune the click live while playing.
+  // A small pool of <Audio> elements so rapid ticks can overlap without cutting
+  // each other off (round-robin). Created client-side on mount.
+  const poolRef = useRef<HTMLAudioElement[]>([]);
+  const poolIdxRef = useRef(0);
+  // The loop reads tempo from a ref so the wheel retunes the click live.
   useEffect(() => { bpmRef.current = tempo; }, [tempo]);
+
+  useEffect(() => {
+    const src = clickSrc();
+    const pool = Array.from({ length: 3 }, () => {
+      const a = new Audio(src);
+      a.volume = 0.7;
+      a.preload = "auto";
+      return a;
+    });
+    poolRef.current = pool;
+    return () => { pool.forEach((a) => { try { a.pause(); } catch { /* ignore */ } }); poolRef.current = []; };
+  }, []);
 
   // Always update local tempo (guaranteed re-render); editors also persist to
   // song.bpm so the header chip + save reflect it.
@@ -4074,80 +4118,66 @@ function TempoPanel({ bpm, canEdit, onBpmChange }: {
   };
 
   const stopMetronome = () => {
-    if (timerRef.current != null) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (timerRef.current != null) { clearTimeout(timerRef.current); timerRef.current = null; }
     releaseWakeLock();
     setPlaying(false);
   };
 
-  const startMetronome = async () => {
-    // Create the context on the user gesture (mobile autoplay policy). resume()
-    // is invoked synchronously within this gesture-initiated call.
-    let ctx = ctxRef.current;
-    if (!ctx) {
-      const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!Ctor) return;
-      ctx = new Ctor();
-      ctxRef.current = ctx;
-    }
-    // Contexts start "suspended" (always on mobile, often desktop): currentTime
-    // stays frozen and nothing is audible until resume() RESOLVES. Await it and
-    // confirm "running" before scheduling, then anchor to the post-resume clock.
-    if (ctx.state !== "running") {
-      try { await ctx.resume(); } catch { /* ignore */ }
-    }
-    if (ctx.state !== "running") return;   // still blocked — leave toggle on "play"
-    const LOOKAHEAD = 0.1;   // schedule ticks up to 100ms ahead
-    const INTERVAL = 25;     // check every ~25ms
-    nextNoteRef.current = ctx.currentTime + 0.1;
-    const scheduleClick = (time: number) => {
-      const c = ctxRef.current;
-      if (!c) return;
-      // NEW osc + gain per tick; gain -> destination; 0.3 peak; envelope never
-      // hits 0 (exponentialRamp requires >0), so the click is audible.
-      const osc = c.createOscillator();
-      const gain = c.createGain();
-      osc.frequency.value = 1000;                    // plain tick, no accent
-      gain.gain.setValueAtTime(0.0001, time);
-      gain.gain.exponentialRampToValueAtTime(0.3, time + 0.002);   // ~2ms attack, 0.3 peak
-      gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.03); // ~30ms decay
-      osc.connect(gain); gain.connect(c.destination);
-      osc.start(time); osc.stop(time + 0.05);
-    };
-    timerRef.current = window.setInterval(() => {
-      const c = ctxRef.current;
-      if (!c || c.state !== "running") return;
-      while (nextNoteRef.current < c.currentTime + LOOKAHEAD) {
-        scheduleClick(nextNoteRef.current);
-        nextNoteRef.current += 60 / bpmRef.current;   // interval = 60/bpm sec, live
-      }
-    }, INTERVAL);
+  // Play one click via the next pooled element (round-robin so a still-ringing
+  // click isn't cut off). currentTime = 0 restarts from the top.
+  const playClick = () => {
+    const pool = poolRef.current;
+    if (!pool.length) return;
+    const a = pool[poolIdxRef.current % pool.length];
+    poolIdxRef.current++;
+    try { a.currentTime = 0; void a.play(); } catch { /* ignore */ }
+  };
+
+  // Self-scheduling loop reading the live BPM ref → interval = 60/bpm seconds.
+  const scheduleNext = () => {
+    timerRef.current = window.setTimeout(() => {
+      playClick();
+      scheduleNext();
+    }, (60 / bpmRef.current) * 1000);
+  };
+
+  const startMetronome = () => {
+    const pool = poolRef.current;
+    if (!pool.length) return;
+    // Unlock iOS INSIDE the user gesture: the first .play() must be synchronous
+    // (no await before it). Element 0 plays the audible downbeat now; the extras
+    // are unlocked silently (muted play→pause) so later round-robin plays work.
+    pool.forEach((a, i) => {
+      if (i === 0) return;
+      a.muted = true;
+      a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { a.muted = false; });
+    });
+    poolIdxRef.current = 0;
+    playClick();          // audible first click, synchronous within the gesture
+    scheduleNext();       // subsequent clicks every 60/bpm sec
     void requestWakeLock();
     setPlaying(true);
   };
 
-  const toggle = () => { if (playing) stopMetronome(); else void startMetronome(); };
+  const toggle = () => { if (playing) stopMetronome(); else startMetronome(); };
 
-  // Returning to the foreground: resume the (possibly OS-suspended) context and
-  // re-acquire the wake lock, which is auto-released while the tab is hidden.
+  // Returning to the foreground: re-acquire the wake lock, which is auto-released
+  // while the tab is hidden.
   useEffect(() => {
     if (!playing) return;
     const onVisible = () => {
       if (document.visibilityState !== "visible") return;
-      void ctxRef.current?.resume();
       void requestWakeLock();
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [playing]);
 
-  // On unmount (panel close OR navigating away from the song): kill the
-  // scheduler, release the wake lock, and release the AudioContext — no
-  // background ticking and no lingering screen lock.
+  // On unmount (panel close OR navigating away from the song): stop the loop and
+  // release the wake lock — no background ticking, no lingering screen lock.
   useEffect(() => () => {
-    if (timerRef.current != null) clearInterval(timerRef.current);
+    if (timerRef.current != null) clearTimeout(timerRef.current);
     releaseWakeLock();
-    const c = ctxRef.current;
-    if (c) void c.close();
   }, []);
 
   return (
@@ -4167,7 +4197,7 @@ function TempoPanel({ bpm, canEdit, onBpmChange }: {
           <div className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">BPM</div>
         </div>
         <button type="button" aria-pressed={playing}
-          onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); toggle(); }}
+          onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); toggle(); }}
           aria-label={playing ? "Stop metronome" : "Start metronome"}
           className={"w-10 h-10 rounded-full flex items-center justify-center transition-colors shrink-0 " + (playing
             ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-600/30"
