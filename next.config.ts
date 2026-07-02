@@ -81,6 +81,14 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Expose the deploy's commit SHA to the client so the service worker can be
+  // registered with a per-build URL (?v=<sha>). Vercel sets VERCEL_GIT_COMMIT_SHA
+  // at build; falls back to the deployment id, then "dev" locally. Changing this
+  // every deploy is what makes the browser pick up a new SW → fresh code.
+  env: {
+    NEXT_PUBLIC_BUILD_ID:
+      process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.VERCEL_DEPLOYMENT_ID ?? "dev",
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

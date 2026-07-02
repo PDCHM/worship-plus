@@ -13,13 +13,14 @@
  *     dynamic/song-related responses are persisted.
  */
 
-// Bump this on every deploy that ships client changes. Changing the string makes
-// the browser see a byte-different sw.js → install → skipWaiting → activate, whose
-// handler deletes every cache not in the current-version list (below) and calls
-// clients.claim(), so fresh assets take over on the next load with no manual
-// refresh. (Navigations are already network-first, so online users get new HTML +
-// content-hashed chunks regardless; this guarantees stale caches are dropped too.)
-const VERSION = "2026-07-02a";
+// The version is the build/commit id passed in the registration URL
+// (/sw.js?v=<sha> — see ServiceWorkerRegister). It changes every deploy, so:
+//   • the browser sees a new SW script URL → installs the new worker,
+//   • install skipWaiting()s and activate clients.claim()s (below),
+//   • activate deletes every cache whose name isn't in the current-version list,
+//   • the client's controllerchange handler reloads once → fresh code.
+// Falls back to "static" for legacy registrations without the query param.
+const VERSION = new URL(self.location.href).searchParams.get("v") || "static";
 const STATIC_CACHE = `wp-static-${VERSION}`;
 const PAGES_CACHE = `wp-pages-${VERSION}`;
 
