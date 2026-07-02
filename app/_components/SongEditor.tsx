@@ -3998,7 +3998,8 @@ function TempoPanel({ bpm, canEdit, onSave }: {
   const bpmRef = useRef(draft);
   const wakeLockRef = useRef<WakeLockLike | null>(null);
   // Scheduler reads tempo from a ref so −/+ retune the click live while playing.
-  useEffect(() => { bpmRef.current = draft; }, [draft]);
+  // TEMP debug: proves the −/+ / input actually update state and re-render.
+  useEffect(() => { bpmRef.current = draft; console.log("[bpm] value =", draft); }, [draft]);
 
   const clamp = (n: number) => Math.max(BPM_MIN, Math.min(BPM_MAX, n));
 
@@ -4039,9 +4040,11 @@ function TempoPanel({ bpm, canEdit, onSave }: {
     // currentTime stays 0/frozen and nothing is audible until resume() RESOLVES.
     // Await it and confirm "running" BEFORE scheduling, then anchor the schedule
     // to the post-resume clock — otherwise ticks land in the past and are silent.
+    console.log("[metronome] state before resume:", ctx.state);
     if (ctx.state !== "running") {
-      try { await ctx.resume(); } catch { /* ignore */ }
+      try { await ctx.resume(); } catch (err) { console.log("[metronome] resume error:", err); }
     }
+    console.log("[metronome] state after resume:", ctx.state, "bpm:", bpmRef.current);
     if (ctx.state !== "running") return;   // still blocked — leave toggle on "play"
     const LOOKAHEAD = 0.1;   // schedule ticks up to 100ms ahead
     const INTERVAL = 25;     // check every ~25ms
@@ -4099,22 +4102,33 @@ function TempoPanel({ bpm, canEdit, onSave }: {
   return (
     <div onMouseDown={(e) => e.stopPropagation()}
       className="fixed inset-x-2 bottom-2 z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
-      <div className="flex items-center gap-3 px-1">
-        <button type="button" onClick={() => step(-1)} aria-label="Decrease BPM"
-          className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors">
+      <div className="flex items-center gap-2 px-1">
+        {/* −/+ use onMouseDown (+ stop/prevent) to match the Key/Capo pickers:
+            inside these popovers the outside-click mousedown-closer races with
+            onClick, so onClick handlers get lost. */}
+        <button type="button" aria-label="Decrease BPM"
+          onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); step(-1); }}
+          className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors shrink-0">
           −
         </button>
-        <div className="w-16 text-center">
-          <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 tabular-nums">{draft}</div>
+        {/* Tap to type a value directly; clamps to 20–300 on blur. */}
+        <div className="w-16 text-center shrink-0">
+          <input type="number" inputMode="numeric" min={BPM_MIN} max={BPM_MAX} value={draft}
+            onMouseDown={(e) => e.stopPropagation()}
+            onChange={(e) => { const n = parseInt(e.target.value, 10); setDraft(Number.isNaN(n) ? 0 : n); }}
+            onBlur={() => setDraft((d) => clamp(d))}
+            className="w-full text-center text-2xl font-bold text-indigo-600 dark:text-indigo-400 tabular-nums bg-transparent outline-none rounded-md focus:ring-2 focus:ring-indigo-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
           <div className="text-[10px] text-slate-400 uppercase tracking-wider">BPM</div>
         </div>
-        <button type="button" onClick={() => step(1)} aria-label="Increase BPM"
-          className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors">
+        <button type="button" aria-label="Increase BPM"
+          onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); step(1); }}
+          className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors shrink-0">
           +
         </button>
-        <button type="button" onClick={toggle} aria-pressed={playing}
+        <button type="button" aria-pressed={playing}
+          onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); toggle(); }}
           aria-label={playing ? "Stop metronome" : "Start metronome"}
-          className={"w-10 h-10 rounded-full flex items-center justify-center transition-colors " + (playing
+          className={"w-10 h-10 rounded-full flex items-center justify-center transition-colors shrink-0 " + (playing
             ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-600/30"
             : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600")}>
           {playing
@@ -4122,8 +4136,9 @@ function TempoPanel({ bpm, canEdit, onSave }: {
             : <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>}
         </button>
         {canEdit && (
-          <button type="button" onClick={() => onSave(clamp(draft))}
-            className="h-10 px-4 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-600/30">
+          <button type="button"
+            onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); onSave(clamp(draft)); }}
+            className="h-10 px-4 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-600/30 shrink-0">
             Save
           </button>
         )}
