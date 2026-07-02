@@ -2544,6 +2544,29 @@ export default function SongEditor({
               )}
             </div>
           </span>
+          {/* BPM chip — sits next to the Key chip. Shows in the read/performance
+              view whenever bpm is set; in edit mode also shows a "Tempo" entry when
+              unset so a value can be added. Tapping opens the local metronome panel. */}
+          {(song.bpm != null || !readOnly) && (
+            <>
+              <span className="text-slate-300 dark:text-slate-600">·</span>
+              <div className="relative">
+                <button type="button" onClick={() => { setTempoPanelOpen(o => !o); setKeyPickerOpen(false); setCapoPickerOpen(false); }}
+                  title="Tempo & metronome"
+                  className="inline-flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 px-1.5 py-0.5 rounded-md transition-colors">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 13.8"/></svg>
+                  {song.bpm != null ? `${song.bpm} BPM` : "Tempo"}
+                </button>
+                {tempoPanelOpen && (
+                  <TempoPanel
+                    bpm={song.bpm}
+                    canEdit={canEdit}
+                    onSave={(v) => { onSaveBpm(v); setTempoPanelOpen(false); }}
+                  />
+                )}
+              </div>
+            </>
+          )}
           <span className="text-slate-300 dark:text-slate-600">·</span>
           <div className="relative">
             <button type="button" onClick={() => { setCapoPickerOpen(o => !o); setKeyPickerOpen(false); }}
@@ -2571,29 +2594,6 @@ export default function SongEditor({
               </div>
             )}
           </div>
-          {/* BPM: a quiet chip when set (both modes); in edit mode a "Tempo" entry
-              even when unset. Tapping opens the local metronome tempo panel. The
-              read-only/performance surface shows nothing when bpm is null. */}
-          {(song.bpm != null || !readOnly) && (
-            <>
-              <span className="text-slate-300 dark:text-slate-600">·</span>
-              <div className="relative">
-                <button type="button" onClick={() => { setTempoPanelOpen(o => !o); setKeyPickerOpen(false); setCapoPickerOpen(false); }}
-                  title="Tempo & metronome"
-                  className="inline-flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 px-1.5 py-0.5 rounded-md transition-colors">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 13.8"/></svg>
-                  {song.bpm != null ? `${song.bpm} BPM` : "Tempo"}
-                </button>
-                {tempoPanelOpen && (
-                  <TempoPanel
-                    bpm={song.bpm}
-                    canEdit={canEdit}
-                    onSave={(v) => { onSaveBpm(v); setTempoPanelOpen(false); }}
-                  />
-                )}
-              </div>
-            </>
-          )}
           {(song.capo ?? 0) > 0 && (
             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 text-xs font-medium border border-indigo-200 dark:border-indigo-900"
               title="Capo shifts the displayed chord shapes down; the sounding key is unchanged.">
@@ -3919,8 +3919,9 @@ function TempoPanel({ bpm, canEdit, onSave }: {
     setPlaying(false);
   };
 
-  const startMetronome = () => {
-    // Create/resume on the user gesture to satisfy mobile autoplay policy.
+  const startMetronome = async () => {
+    // Create the context on the user gesture (mobile autoplay policy). resume()
+    // is invoked synchronously within this gesture-initiated call.
     let ctx = ctxRef.current;
     if (!ctx) {
       const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -3928,10 +3929,17 @@ function TempoPanel({ bpm, canEdit, onSave }: {
       ctx = new Ctor();
       ctxRef.current = ctx;
     }
-    void ctx.resume();
+    // Mobile Chrome/Safari (and sometimes desktop) start the context "suspended";
+    // currentTime stays 0/frozen and nothing is audible until resume() RESOLVES.
+    // Await it and confirm "running" BEFORE scheduling, then anchor the schedule
+    // to the post-resume clock — otherwise ticks land in the past and are silent.
+    if (ctx.state !== "running") {
+      try { await ctx.resume(); } catch { /* ignore */ }
+    }
+    if (ctx.state !== "running") return;   // still blocked — leave toggle on "play"
     const LOOKAHEAD = 0.1;   // schedule ticks up to 100ms ahead
     const INTERVAL = 25;     // check every ~25ms
-    nextNoteRef.current = ctx.currentTime + 0.06;
+    nextNoteRef.current = ctx.currentTime + 0.1;
     const scheduleClick = (time: number) => {
       const c = ctxRef.current;
       if (!c) return;
@@ -3946,7 +3954,7 @@ function TempoPanel({ bpm, canEdit, onSave }: {
     };
     timerRef.current = window.setInterval(() => {
       const c = ctxRef.current;
-      if (!c) return;
+      if (!c || c.state !== "running") return;
       while (nextNoteRef.current < c.currentTime + LOOKAHEAD) {
         scheduleClick(nextNoteRef.current);
         nextNoteRef.current += 60 / bpmRef.current;
@@ -3956,7 +3964,7 @@ function TempoPanel({ bpm, canEdit, onSave }: {
     setPlaying(true);
   };
 
-  const toggle = () => { if (playing) stopMetronome(); else startMetronome(); };
+  const toggle = () => { if (playing) stopMetronome(); else void startMetronome(); };
   const step = (delta: number) => setDraft((d) => clamp(d + delta));
 
   // Returning to the foreground: resume the (possibly OS-suspended) context and
