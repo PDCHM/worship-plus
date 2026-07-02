@@ -120,6 +120,9 @@ type Props = {
   onSave: () => void;
   onSaveAsCopy: (title: string, song: Song) => void;
   onDelete: () => void;
+  // Persist just the BPM (from the tempo panel). Updates + saves the song with
+  // the given tempo; owner/editor only (RLS enforces, panel hides Save for members).
+  onSaveBpm: (bpm: number) => void;
   // Permission lock for team content: false when a plain team member opens a
   // shared song they can't edit. Forces read-only, hides the edit toggle / Save
   // / Delete, and leaves "Save as copy" (duplicate to my library) available.
@@ -913,6 +916,7 @@ export default function SongEditor({
   onSave,
   onSaveAsCopy,
   onDelete,
+  onSaveBpm,
   canEdit = true,
   autoGenerateChords,
   onAutoGenerateConsumed,
@@ -976,6 +980,7 @@ export default function SongEditor({
   const [previewOpen, setPreviewOpen] = useState(false);
   const [keyPickerOpen, setKeyPickerOpen] = useState(false);
   const [capoPickerOpen, setCapoPickerOpen] = useState(false);
+  const [tempoPanelOpen, setTempoPanelOpen] = useState(false);
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [markupMode, setMarkupMode] = useState(false);
   // Markup CREATION needs a connection (view-only offline). Entry is disabled
@@ -1202,11 +1207,13 @@ export default function SongEditor({
   }, [sectionPickerLine]);
 
   useEffect(() => {
-    if (!keyPickerOpen && !capoPickerOpen) return;
-    const close = () => { setKeyPickerOpen(false); setCapoPickerOpen(false); };
+    if (!keyPickerOpen && !capoPickerOpen && !tempoPanelOpen) return;
+    // Closing the tempo panel unmounts it, which stops the metronome via its
+    // cleanup — so an outside click also stops any ticking.
+    const close = () => { setKeyPickerOpen(false); setCapoPickerOpen(false); setTempoPanelOpen(false); };
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
-  }, [keyPickerOpen, capoPickerOpen]);
+  }, [keyPickerOpen, capoPickerOpen, tempoPanelOpen]);
 
   // Markup is a play-view-only mode; leaving read-only exits it.
   useEffect(() => {
@@ -2564,6 +2571,29 @@ export default function SongEditor({
               </div>
             )}
           </div>
+          {/* BPM: a quiet chip when set (both modes); in edit mode a "Tempo" entry
+              even when unset. Tapping opens the local metronome tempo panel. The
+              read-only/performance surface shows nothing when bpm is null. */}
+          {(song.bpm != null || !readOnly) && (
+            <>
+              <span className="text-slate-300 dark:text-slate-600">·</span>
+              <div className="relative">
+                <button type="button" onClick={() => { setTempoPanelOpen(o => !o); setKeyPickerOpen(false); setCapoPickerOpen(false); }}
+                  title="Tempo & metronome"
+                  className="inline-flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 px-1.5 py-0.5 rounded-md transition-colors">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 13.8"/></svg>
+                  {song.bpm != null ? `${song.bpm} BPM` : "Tempo"}
+                </button>
+                {tempoPanelOpen && (
+                  <TempoPanel
+                    bpm={song.bpm}
+                    canEdit={canEdit}
+                    onSave={(v) => { onSaveBpm(v); setTempoPanelOpen(false); }}
+                  />
+                )}
+              </div>
+            </>
+          )}
           {(song.capo ?? 0) > 0 && (
             <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 text-xs font-medium border border-indigo-200 dark:border-indigo-900"
               title="Capo shifts the displayed chord shapes down; the sounding key is unchanged.">
@@ -3830,6 +3860,121 @@ export default function SongEditor({
         </div>
       )}
 
+    </div>
+  );
+}
+
+/* ─── TempoPanel ──────────────────────────────────────────────────────────────
+   Small popover: −/+ stepper (clamp 20–300), number readout, a local metronome
+   (Web Audio, lookahead scheduler), and Save. Single-device only — no time
+   signature, accent, count-in, or sync. Unmounts when the panel closes or the
+   editor unmounts, and its cleanup stops the metronome + closes the AudioContext,
+   so nothing ticks in the background. */
+const BPM_MIN = 20;
+const BPM_MAX = 300;
+const BPM_DEFAULT = 120;
+
+function TempoPanel({ bpm, canEdit, onSave }: {
+  bpm: number | null;
+  canEdit: boolean;
+  onSave: (bpm: number) => void;
+}) {
+  const [draft, setDraft] = useState<number>(bpm ?? BPM_DEFAULT);
+  const [playing, setPlaying] = useState(false);
+
+  const ctxRef = useRef<AudioContext | null>(null);
+  const timerRef = useRef<number | null>(null);
+  const nextNoteRef = useRef(0);
+  const bpmRef = useRef(draft);
+  // Scheduler reads tempo from a ref so −/+ retune the click live while playing.
+  useEffect(() => { bpmRef.current = draft; }, [draft]);
+
+  const clamp = (n: number) => Math.max(BPM_MIN, Math.min(BPM_MAX, n));
+
+  const stopMetronome = () => {
+    if (timerRef.current != null) { clearInterval(timerRef.current); timerRef.current = null; }
+    setPlaying(false);
+  };
+
+  const startMetronome = () => {
+    // Create/resume on the user gesture to satisfy mobile autoplay policy.
+    let ctx = ctxRef.current;
+    if (!ctx) {
+      const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctor) return;
+      ctx = new Ctor();
+      ctxRef.current = ctx;
+    }
+    void ctx.resume();
+    const LOOKAHEAD = 0.1;   // schedule ticks up to 100ms ahead
+    const INTERVAL = 25;     // check every ~25ms
+    nextNoteRef.current = ctx.currentTime + 0.06;
+    const scheduleClick = (time: number) => {
+      const c = ctxRef.current;
+      if (!c) return;
+      const osc = c.createOscillator();
+      const gain = c.createGain();
+      osc.frequency.value = 1000;                    // plain tick, no accent
+      gain.gain.setValueAtTime(0.0001, time);
+      gain.gain.exponentialRampToValueAtTime(0.5, time + 0.002);   // ~2ms attack
+      gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.03); // ~30ms decay
+      osc.connect(gain); gain.connect(c.destination);
+      osc.start(time); osc.stop(time + 0.05);
+    };
+    timerRef.current = window.setInterval(() => {
+      const c = ctxRef.current;
+      if (!c) return;
+      while (nextNoteRef.current < c.currentTime + LOOKAHEAD) {
+        scheduleClick(nextNoteRef.current);
+        nextNoteRef.current += 60 / bpmRef.current;
+      }
+    }, INTERVAL);
+    setPlaying(true);
+  };
+
+  const toggle = () => { if (playing) stopMetronome(); else startMetronome(); };
+  const step = (delta: number) => setDraft((d) => clamp(d + delta));
+
+  // On unmount (panel close OR navigating away from the song): kill the
+  // scheduler and release the AudioContext — no background ticking.
+  useEffect(() => () => {
+    if (timerRef.current != null) clearInterval(timerRef.current);
+    const c = ctxRef.current;
+    if (c) void c.close();
+  }, []);
+
+  return (
+    <div onMouseDown={(e) => e.stopPropagation()}
+      className="fixed inset-x-2 bottom-2 z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
+      <div className="flex items-center gap-3 px-1">
+        <button type="button" onClick={() => step(-1)} aria-label="Decrease BPM"
+          className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors">
+          −
+        </button>
+        <div className="w-16 text-center">
+          <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 tabular-nums">{draft}</div>
+          <div className="text-[10px] text-slate-400 uppercase tracking-wider">BPM</div>
+        </div>
+        <button type="button" onClick={() => step(1)} aria-label="Increase BPM"
+          className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors">
+          +
+        </button>
+        <button type="button" onClick={toggle} aria-pressed={playing}
+          aria-label={playing ? "Stop metronome" : "Start metronome"}
+          className={"w-10 h-10 rounded-full flex items-center justify-center transition-colors " + (playing
+            ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-600/30"
+            : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600")}>
+          {playing
+            ? <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+            : <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>}
+        </button>
+        {canEdit && (
+          <button type="button" onClick={() => onSave(clamp(draft))}
+            className="h-10 px-4 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-600/30">
+            Save
+          </button>
+        )}
+      </div>
     </div>
   );
 }

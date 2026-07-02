@@ -2605,6 +2605,7 @@ export default function Home() {
               onSave={() => { const s = songs.find(x => view.kind === "editor" && x.id === (view as { kind: "editor"; songId: string }).songId); if (s) void saveSong(s); }}
               onSaveAsCopy={(title, liveSong) => { void saveAsCopy(liveSong, title); }}
               onDelete={() => { void deleteSong(activeSong.id); }}
+              onSaveBpm={(bpm) => { const updated = { ...activeSong, bpm, updatedAt: Date.now() }; upsertSong(updated); void saveSong(updated); }}
               canEdit={canEditSong(activeSong)}
               songLinks={songLinks.filter((l) => l.songId === activeSong.id)}
               onAddLink={addSongLink}
