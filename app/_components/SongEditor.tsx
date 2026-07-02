@@ -3874,6 +3874,10 @@ const BPM_MIN = 20;
 const BPM_MAX = 300;
 const BPM_DEFAULT = 120;
 
+// Minimal structural type for the Screen Wake Lock sentinel — avoids depending
+// on lib.dom's WakeLock types, which aren't present in all TS configs.
+type WakeLockLike = { release: () => Promise<void> };
+
 function TempoPanel({ bpm, canEdit, onSave }: {
   bpm: number | null;
   canEdit: boolean;
@@ -3886,13 +3890,32 @@ function TempoPanel({ bpm, canEdit, onSave }: {
   const timerRef = useRef<number | null>(null);
   const nextNoteRef = useRef(0);
   const bpmRef = useRef(draft);
+  const wakeLockRef = useRef<WakeLockLike | null>(null);
   // Scheduler reads tempo from a ref so −/+ retune the click live while playing.
   useEffect(() => { bpmRef.current = draft; }, [draft]);
 
   const clamp = (n: number) => Math.max(BPM_MIN, Math.min(BPM_MAX, n));
 
+  // Screen Wake Lock: keep the display awake while the metronome plays so the OS
+  // doesn't lock the screen and suspend audio mid-practice. Silent no-op where
+  // unsupported (older iOS, non-HTTPS). The lock auto-releases when the tab is
+  // hidden, so we re-request it on return to foreground (visibilitychange below).
+  const requestWakeLock = async () => {
+    try {
+      const wl = (navigator as unknown as { wakeLock?: { request: (t: "screen") => Promise<WakeLockLike> } }).wakeLock;
+      if (!wl) return;
+      wakeLockRef.current = await wl.request("screen");
+    } catch { /* unsupported or denied — ignore */ }
+  };
+  const releaseWakeLock = () => {
+    const w = wakeLockRef.current;
+    wakeLockRef.current = null;
+    if (w) void w.release().catch(() => {});
+  };
+
   const stopMetronome = () => {
     if (timerRef.current != null) { clearInterval(timerRef.current); timerRef.current = null; }
+    releaseWakeLock();
     setPlaying(false);
   };
 
@@ -3929,16 +3952,32 @@ function TempoPanel({ bpm, canEdit, onSave }: {
         nextNoteRef.current += 60 / bpmRef.current;
       }
     }, INTERVAL);
+    void requestWakeLock();
     setPlaying(true);
   };
 
   const toggle = () => { if (playing) stopMetronome(); else startMetronome(); };
   const step = (delta: number) => setDraft((d) => clamp(d + delta));
 
+  // Returning to the foreground: resume the (possibly OS-suspended) context and
+  // re-acquire the wake lock, which is auto-released while the tab is hidden.
+  useEffect(() => {
+    if (!playing) return;
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      void ctxRef.current?.resume();
+      void requestWakeLock();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [playing]);
+
   // On unmount (panel close OR navigating away from the song): kill the
-  // scheduler and release the AudioContext — no background ticking.
+  // scheduler, release the wake lock, and release the AudioContext — no
+  // background ticking and no lingering screen lock.
   useEffect(() => () => {
     if (timerRef.current != null) clearInterval(timerRef.current);
+    releaseWakeLock();
     const c = ctxRef.current;
     if (c) void c.close();
   }, []);
