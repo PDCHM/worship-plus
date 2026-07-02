@@ -2577,39 +2577,17 @@ export default function SongEditor({
               {song.capo ? "Capo " + song.capo : "Capo"}
             </button>
             {capoPickerOpen && (
-              <div onMouseDown={(e) => e.stopPropagation()} className="fixed inset-x-2 bottom-2 z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 sm:w-80 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
-                {/* Tap-to-select fret picker (proven path): every button's
-                    onMouseDown calls handleCapoChange → update() → song.capo,
-                    which the pill (playKey) and chart (capoChord) read back. */}
-                <div className="flex items-center justify-center gap-3 px-1 mb-2.5">
-                  <button type="button" aria-label="Fewer frets"
-                    onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); handleCapoChange((song.capo ?? 0) <= 1 ? null : (song.capo ?? 0) - 1); }}
-                    className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors">
-                    −
-                  </button>
-                  <div className="w-14 text-center">
-                    <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 tabular-nums">{song.capo ?? 0}</div>
-                    <div className="text-[10px] text-slate-400 uppercase tracking-wider">CAPO</div>
-                  </div>
-                  <button type="button" aria-label="More frets"
-                    onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); handleCapoChange(Math.min(7, (song.capo ?? 0) + 1)); }}
-                    className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors">
-                    +
-                  </button>
-                </div>
-                <div className="grid grid-cols-8 gap-1.5">
-                  {[0, 1, 2, 3, 4, 5, 6, 7].map((f) => (
-                    <button key={f} type="button"
-                      aria-pressed={(song.capo ?? 0) === f}
-                      title={f === 0 ? "No capo" : `Capo fret ${f}`}
-                      onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); handleCapoChange(f === 0 ? null : f); setCapoPickerOpen(false); }}
-                      className={"h-9 rounded-lg text-sm font-semibold transition-all " + ((song.capo ?? 0) === f
-                        ? "bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/40 scale-105"
-                        : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300")}>
-                      {f}
-                    </button>
-                  ))}
-                </div>
+              <div onMouseDown={(e) => e.stopPropagation()} className="fixed inset-x-2 bottom-2 z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 sm:w-44 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
+                <div className="text-[10px] text-slate-400 uppercase tracking-wider text-center mb-1.5">Capo</div>
+                {/* Rolling wheel → the centred fret is applied via the EXISTING
+                    reshape path: handleCapoChange → update() → song.capo, read back
+                    by the pill (playKey) and the chart (capoChord/displayChord). */}
+                <WheelPicker
+                  values={CAPO_VALUES}
+                  value={song.capo ?? 0}
+                  onChange={(f) => handleCapoChange(f === 0 ? null : f)}
+                  ariaLabel="Capo fret"
+                />
                 <div className="mt-2 text-[10px] text-slate-400 dark:text-slate-500 text-center">0 = no capo</div>
               </div>
             )}
@@ -3884,6 +3862,153 @@ export default function SongEditor({
   );
 }
 
+/* ─── WheelPicker ─────────────────────────────────────────────────────────────
+   One iOS-style rolling drum picker used for BOTH capo and tempo. CSS scroll-snap
+   (no library): a fixed-height overflow-scroll column, each row snap-aligned to
+   centre, with a centre highlight band and mask-faded/scaled neighbours. Touch
+   flick and trackpad/mouse-wheel scroll natively; mouse click-drag is handled via
+   pointer events; tapping a visible row scrolls+selects it. On settle (debounced
+   scroll / drag end / tap) it snaps to the nearest row and calls onChange with
+   that row's value — the ONLY output. It never re-centres from the `value` prop
+   after mount, so committing can't fight the user's scroll. */
+const WHEEL_ITEM_H = 40;               // px per row
+const WHEEL_VISIBLE = 5;               // rows shown (odd → one centred)
+const WHEEL_PAD = WHEEL_ITEM_H * ((WHEEL_VISIBLE - 1) / 2);
+
+function WheelPicker({ values, value, onChange, ariaLabel, width = 84 }: {
+  values: number[];
+  value: number;
+  onChange: (v: number) => void;
+  ariaLabel: string;
+  width?: number;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const settleRef = useRef<number | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const dragRef = useRef<{ y: number; top: number; id: number } | null>(null);
+  const suppressClickRef = useRef(false);
+  const committedRef = useRef(value);
+
+  const clampIdx = (i: number) => Math.max(0, Math.min(values.length - 1, i));
+
+  // Fade + shrink rows by distance from centre (windowed for the 281-row tempo
+  // wheel; off-window rows are hidden by the mask anyway). Direct DOM writes.
+  const paint = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const frac = el.scrollTop / WHEEL_ITEM_H;
+    const kids = el.children;
+    const lo = clampIdx(Math.floor(frac) - 3);
+    const hi = clampIdx(Math.ceil(frac) + 3);
+    for (let i = lo; i <= hi; i++) {
+      const row = kids[i] as HTMLElement;
+      const dist = Math.abs(i - frac);
+      row.style.opacity = String(Math.max(0.15, 1 - dist * 0.32));
+      row.style.transform = `scale(${Math.max(0.6, 1 - dist * 0.16)})`;
+    }
+  };
+
+  const commit = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const idx = clampIdx(Math.round(el.scrollTop / WHEEL_ITEM_H));
+    const target = idx * WHEEL_ITEM_H;
+    if (Math.abs(el.scrollTop - target) > 0.5) el.scrollTop = target;  // hard snap
+    const v = values[idx];
+    if (v !== committedRef.current) { committedRef.current = v; onChange(v); }
+  };
+
+  // Centre the current value on mount only (never re-centre from prop → no fight).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = clampIdx(values.indexOf(value)) * WHEEL_ITEM_H;
+    committedRef.current = value;
+    paint();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => () => {
+    if (settleRef.current != null) clearTimeout(settleRef.current);
+    if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+  }, []);
+
+  const scheduleSettle = () => {
+    if (settleRef.current != null) window.clearTimeout(settleRef.current);
+    settleRef.current = window.setTimeout(commit, 120);
+  };
+  const onScroll = () => {
+    if (rafRef.current == null) rafRef.current = window.requestAnimationFrame(() => { rafRef.current = null; paint(); });
+    scheduleSettle();
+  };
+
+  // Mouse/pen click-drag → scroll (touch uses native scrolling directly).
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType === "touch") return;
+    const el = scrollRef.current;
+    if (!el) return;
+    dragRef.current = { y: e.clientY, top: el.scrollTop, id: e.pointerId };
+    el.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = dragRef.current, el = scrollRef.current;
+    if (!d || !el) return;
+    if (Math.abs(e.clientY - d.y) > 3) suppressClickRef.current = true;  // it's a drag, not a click
+    el.scrollTop = d.top - (e.clientY - d.y);
+  };
+  const endDrag = () => {
+    const d = dragRef.current, el = scrollRef.current;
+    if (!d) return;
+    dragRef.current = null;
+    if (el) { try { el.releasePointerCapture(d.id); } catch { /* already released */ } }
+    scheduleSettle();
+  };
+
+  // Tap a visible row to select it (desktop click + a11y). Suppressed right after
+  // a drag so releasing a drag over a row doesn't hijack the landing position.
+  const onRowClick = (idx: number) => {
+    if (suppressClickRef.current) { suppressClickRef.current = false; return; }
+    const el = scrollRef.current;
+    if (el) el.scrollTo({ top: idx * WHEEL_ITEM_H, behavior: "smooth" });
+    const v = values[idx];
+    if (v !== committedRef.current) { committedRef.current = v; onChange(v); }
+  };
+
+  return (
+    <div className="relative select-none mx-auto" style={{ height: WHEEL_ITEM_H * WHEEL_VISIBLE, width }} aria-label={ariaLabel}>
+      {/* centre selection band (behind the numbers) */}
+      <div className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 z-0 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 border-y border-indigo-200 dark:border-indigo-800"
+        style={{ height: WHEEL_ITEM_H }} />
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        className="relative z-[1] h-full overflow-y-scroll overscroll-contain touch-pan-y cursor-grab active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
+        style={{
+          scrollbarWidth: "none",
+          scrollSnapType: "y mandatory",
+          paddingTop: WHEEL_PAD,
+          paddingBottom: WHEEL_PAD,
+          WebkitOverflowScrolling: "touch",
+          WebkitMaskImage: "linear-gradient(to bottom, transparent, #000 32%, #000 68%, transparent)",
+          maskImage: "linear-gradient(to bottom, transparent, #000 32%, #000 68%, transparent)",
+        }}
+      >
+        {values.map((v, i) => (
+          <div key={v} onClick={() => onRowClick(i)}
+            className="flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-300 tabular-nums will-change-transform cursor-pointer"
+            style={{ height: WHEEL_ITEM_H, scrollSnapAlign: "center", fontSize: 22 }}>
+            {v}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ─── TempoPanel ──────────────────────────────────────────────────────────────
    Small popover: −/+ / tap-to-type BPM (clamp 20–300) + a local metronome
    (Web Audio, lookahead scheduler). Single-device only — no time signature,
@@ -3896,6 +4021,8 @@ const BPM_MIN = 20;
 const BPM_MAX = 300;
 const BPM_DEFAULT = 120;
 const clampBpm = (n: number) => Math.max(BPM_MIN, Math.min(BPM_MAX, n));
+const BPM_VALUES = Array.from({ length: BPM_MAX - BPM_MIN + 1 }, (_, i) => BPM_MIN + i);
+const CAPO_VALUES = [0, 1, 2, 3, 4, 5, 6, 7];
 
 // Minimal structural type for the Screen Wake Lock sentinel — avoids depending
 // on lib.dom's WakeLock types, which aren't present in all TS configs.
@@ -4026,28 +4153,19 @@ function TempoPanel({ bpm, canEdit, onBpmChange }: {
   return (
     <div onMouseDown={(e) => e.stopPropagation()}
       className="fixed inset-x-2 bottom-2 z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
-      <div className="flex items-center gap-2 px-1">
-        {/* −/+ and the input drive LOCAL tempo (always work). onMouseDown (+
-            stop/prevent) matches the Key/Capo pickers so the outside-click
-            mousedown-closer can't swallow the interaction. */}
-        <button type="button" aria-label="Decrease BPM"
-          onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); applyBpm(tempo - 1); }}
-          className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors shrink-0">
-          −
-        </button>
-        <div className="w-16 text-center shrink-0">
-          <input type="number" inputMode="numeric" min={BPM_MIN} max={BPM_MAX} value={tempo}
-            onMouseDown={(e) => e.stopPropagation()}
-            onChange={(e) => { const n = parseInt(e.target.value, 10); if (!Number.isNaN(n)) { setTempo(n); if (canEdit) onBpmChange(n); } }}
-            onBlur={(e) => { const n = parseInt(e.target.value, 10); applyBpm(Number.isNaN(n) ? BPM_DEFAULT : n); }}
-            className="w-full text-center text-2xl font-bold text-indigo-600 dark:text-indigo-400 tabular-nums bg-transparent outline-none rounded-md focus:ring-2 focus:ring-indigo-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
-          <div className="text-[10px] text-slate-400 uppercase tracking-wider">BPM</div>
+      <div className="flex items-center gap-3 px-1">
+        {/* The rolling wheel IS the BPM control (Apple pattern — no −/+). Its
+            centred value drives local `tempo`; editors also persist to song.bpm.
+            The metronome reads `tempo` live via bpmRef. */}
+        <div className="text-center">
+          <WheelPicker
+            values={BPM_VALUES}
+            value={tempo}
+            onChange={applyBpm}
+            ariaLabel="Beats per minute"
+          />
+          <div className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">BPM</div>
         </div>
-        <button type="button" aria-label="Increase BPM"
-          onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); applyBpm(tempo + 1); }}
-          className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors shrink-0">
-          +
-        </button>
         <button type="button" aria-pressed={playing}
           onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); toggle(); }}
           aria-label={playing ? "Stop metronome" : "Start metronome"}
