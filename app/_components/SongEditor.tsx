@@ -2574,37 +2574,11 @@ export default function SongEditor({
               {song.capo ? "Capo " + song.capo : "Capo"}
             </button>
             {capoPickerOpen && (
-              <div onMouseDown={(e) => e.stopPropagation()} className="fixed inset-x-2 bottom-2 z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 sm:min-w-[320px] bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
-                {/* −/+ nudge for fine steps, clamped to the 0–7 fret range. */}
-                <div className="flex items-center justify-center gap-3 px-1 mb-2.5">
-                  <button type="button"
-                    onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); handleCapoChange((song.capo ?? 0) <= 1 ? null : (song.capo ?? 0) - 1); }}
-                    className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors">
-                    −
-                  </button>
-                  <div className="w-14 text-center">
-                    <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 tabular-nums">{song.capo ? song.capo : "0"}</div>
-                    <div className="text-[10px] text-slate-400 uppercase tracking-wider">CAPO</div>
-                  </div>
-                  <button type="button"
-                    onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); handleCapoChange(Math.min(7, (song.capo ?? 0) + 1)); }}
-                    className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors">
-                    +
-                  </button>
-                </div>
-                {/* Direct fret picker: any fret 0–7 in one tap, freely changeable.
-                    0 = no capo (stored as null, clears the capo pill). */}
-                <div className="grid grid-cols-8 gap-1.5">
-                  {[0, 1, 2, 3, 4, 5, 6, 7].map((f) => (
-                    <button key={f} type="button"
-                      onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); handleCapoChange(f === 0 ? null : f); setCapoPickerOpen(false); }}
-                      className={"h-9 rounded-lg text-sm font-semibold transition-all " + ((song.capo ?? 0) === f
-                        ? "bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/40 scale-105"
-                        : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300")}>
-                      {f}
-                    </button>
-                  ))}
-                </div>
+              <div onMouseDown={(e) => e.stopPropagation()} className="fixed inset-x-2 bottom-2 z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 sm:w-44 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
+                <div className="text-[10px] text-slate-400 uppercase tracking-wider text-center mb-1.5">Capo</div>
+                {/* iOS-style rolling wheel: scroll/flick/drag; the fret in the
+                    centre band is applied on settle. 0 = no capo (→ null). */}
+                <CapoWheel value={song.capo ?? 0} onChange={(f) => handleCapoChange(f === 0 ? null : f)} />
                 <div className="mt-2 text-[10px] text-slate-400 dark:text-slate-500 text-center">0 = no capo</div>
               </div>
             )}
@@ -3875,6 +3849,123 @@ export default function SongEditor({
         </div>
       )}
 
+    </div>
+  );
+}
+
+/* ─── CapoWheel ───────────────────────────────────────────────────────────────
+   iPhone-style drum-roll fret picker (0–7), CSS scroll-snap — no library. A
+   fixed-height overflow-scroll column with scroll-snap-align:center per fret and
+   a centre highlight band; touch flick / trackpad / mouse-wheel scroll natively,
+   mouse click-drag is handled via pointer events. Per-item opacity+scale is
+   painted on scroll (rAF-throttled) for the faded/shrinking edges. The fret that
+   settles in the centre is applied (debounced) via onChange — value only; the
+   capo/transpose math is untouched. */
+const CAPO_FRETS = [0, 1, 2, 3, 4, 5, 6, 7];
+const CAPO_ITEM_H = 40;              // px per fret row
+const CAPO_PAD = CAPO_ITEM_H * 2;    // top/bottom padding so 0 and 7 can centre
+
+function CapoWheel({ value, onChange }: { value: number; onChange: (fret: number) => void }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const settleRef = useRef<number | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const dragRef = useRef<{ y: number; top: number; id: number } | null>(null);
+  const lastRef = useRef(value);
+
+  // Fade + shrink each row by its distance from the centre. Direct DOM writes
+  // (no React re-render) keep scrolling smooth.
+  const paint = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const frac = el.scrollTop / CAPO_ITEM_H;
+    for (let i = 0; i < el.children.length; i++) {
+      const row = el.children[i] as HTMLElement;
+      const dist = Math.abs(i - frac);
+      row.style.opacity = String(Math.max(0.2, 1 - dist * 0.34));
+      row.style.transform = `scale(${Math.max(0.66, 1 - dist * 0.14)})`;
+    }
+  };
+
+  const commit = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const idx = Math.max(0, Math.min(7, Math.round(el.scrollTop / CAPO_ITEM_H)));
+    if (idx !== lastRef.current) { lastRef.current = idx; onChange(idx); }
+  };
+
+  // Centre the current value when the wheel opens (mount).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = value * CAPO_ITEM_H;
+    paint();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => () => {
+    if (settleRef.current != null) clearTimeout(settleRef.current);
+    if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
+  }, []);
+
+  const onScroll = () => {
+    if (rafRef.current == null) {
+      rafRef.current = window.requestAnimationFrame(() => { rafRef.current = null; paint(); });
+    }
+    // Apply once motion settles (fires after flick/scroll momentum stops).
+    if (settleRef.current != null) window.clearTimeout(settleRef.current);
+    settleRef.current = window.setTimeout(commit, 130);
+  };
+
+  // Mouse click-drag → scroll (touch/pen/trackpad use native scrolling directly).
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType !== "mouse") return;
+    const el = scrollRef.current;
+    if (!el) return;
+    dragRef.current = { y: e.clientY, top: el.scrollTop, id: e.pointerId };
+    el.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = dragRef.current, el = scrollRef.current;
+    if (!d || !el) return;
+    el.scrollTop = d.top - (e.clientY - d.y);   // onScroll repaints + schedules commit
+  };
+  const endDrag = () => {
+    const el = scrollRef.current, d = dragRef.current;
+    dragRef.current = null;
+    if (el && d) { try { el.releasePointerCapture(d.id); } catch { /* already released */ } }
+  };
+
+  return (
+    <div className="relative select-none mx-auto" style={{ height: CAPO_ITEM_H * 5, width: 96 }}>
+      {/* centre selection band (behind the numbers) */}
+      <div className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 z-0 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 border-y border-indigo-200 dark:border-indigo-800"
+        style={{ height: CAPO_ITEM_H }} />
+      <div
+        ref={scrollRef}
+        onScroll={onScroll}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        className="relative z-[1] h-full overflow-y-scroll overscroll-contain touch-pan-y cursor-grab active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
+        style={{
+          scrollbarWidth: "none",
+          scrollSnapType: "y mandatory",
+          paddingTop: CAPO_PAD,
+          paddingBottom: CAPO_PAD,
+          WebkitOverflowScrolling: "touch",
+          WebkitMaskImage: "linear-gradient(to bottom, transparent, #000 30%, #000 70%, transparent)",
+          maskImage: "linear-gradient(to bottom, transparent, #000 30%, #000 70%, transparent)",
+        }}
+      >
+        {CAPO_FRETS.map((f) => (
+          <div key={f}
+            className="flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-300 tabular-nums will-change-transform"
+            style={{ height: CAPO_ITEM_H, scrollSnapAlign: "center", fontSize: 22 }}>
+            {f}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
