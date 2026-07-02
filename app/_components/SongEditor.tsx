@@ -2600,6 +2600,8 @@ export default function SongEditor({
                 <div className="grid grid-cols-8 gap-1.5">
                   {[0, 1, 2, 3, 4, 5, 6, 7].map((f) => (
                     <button key={f} type="button"
+                      aria-pressed={(song.capo ?? 0) === f}
+                      title={f === 0 ? "No capo" : `Capo fret ${f}`}
                       onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); handleCapoChange(f === 0 ? null : f); setCapoPickerOpen(false); }}
                       className={"h-9 rounded-lg text-sm font-semibold transition-all " + ((song.capo ?? 0) === f
                         ? "bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/40 scale-105"
