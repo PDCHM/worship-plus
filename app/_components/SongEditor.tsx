@@ -1204,9 +1204,18 @@ export default function SongEditor({
 
   useEffect(() => {
     if (!keyPickerOpen && !capoPickerOpen && !tempoPanelOpen) return;
-    // Closing the tempo panel unmounts it, which stops the metronome via its
-    // cleanup — so an outside click also stops any ticking.
-    const close = () => { setKeyPickerOpen(false); setCapoPickerOpen(false); setTempoPanelOpen(false); };
+    // Target-based outside-close: ignore any interaction that originates INSIDE
+    // an open picker (marked data-picker-popover). This must not rely on the
+    // popover's stopPropagation — the tempo wheel uses setPointerCapture, which
+    // can retarget the compatibility mousedown so stopPropagation never runs, and
+    // the wheel would otherwise be treated as "outside" and dismiss the panel
+    // (killing the Play button). Closing the tempo panel unmounts it, stopping
+    // the metronome via cleanup, so an outside click also stops any ticking.
+    const close = (e: MouseEvent) => {
+      const t = e.target as Element | null;
+      if (t && t.closest("[data-picker-popover]")) return;
+      setKeyPickerOpen(false); setCapoPickerOpen(false); setTempoPanelOpen(false);
+    };
     document.addEventListener("mousedown", close);
     return () => document.removeEventListener("mousedown", close);
   }, [keyPickerOpen, capoPickerOpen, tempoPanelOpen]);
@@ -2533,7 +2542,7 @@ export default function SongEditor({
                 {song.key}
               </button>
               {keyPickerOpen && (
-                <div onMouseDown={(e) => e.stopPropagation()} className="fixed inset-x-2 bottom-2 z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 sm:min-w-[300px] bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
+                <div data-picker-popover onMouseDown={(e) => e.stopPropagation()} className="fixed inset-x-2 bottom-2 z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 sm:min-w-[300px] bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
                   <div className="grid grid-cols-6 gap-1.5">
                     {KEYS.map(k => (
                       <button key={k} type="button"
@@ -2577,7 +2586,7 @@ export default function SongEditor({
               {song.capo ? "Capo " + song.capo : "Capo"}
             </button>
             {capoPickerOpen && (
-              <div onMouseDown={(e) => e.stopPropagation()} className="fixed inset-x-2 bottom-2 z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 sm:w-44 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
+              <div data-picker-popover onMouseDown={(e) => e.stopPropagation()} className="fixed inset-x-2 bottom-2 z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 sm:w-44 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
                 <div className="text-[10px] text-slate-400 uppercase tracking-wider text-center mb-1.5">Capo</div>
                 {/* Rolling wheel → the centred fret is applied via the EXISTING
                     reshape path: handleCapoChange → update() → song.capo, read back
@@ -4181,7 +4190,7 @@ function TempoPanel({ bpm, canEdit, onBpmChange }: {
   }, []);
 
   return (
-    <div onMouseDown={(e) => e.stopPropagation()}
+    <div data-picker-popover onMouseDown={(e) => e.stopPropagation()}
       className="fixed inset-x-2 bottom-2 z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
       <div className="flex items-center gap-3 px-1">
         {/* The rolling wheel IS the BPM control (Apple pattern — no −/+). Its
