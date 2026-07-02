@@ -977,6 +977,12 @@ export default function SongEditor({
   const [keyPickerOpen, setKeyPickerOpen] = useState(false);
   const [capoPickerOpen, setCapoPickerOpen] = useState(false);
   const [tempoPanelOpen, setTempoPanelOpen] = useState(false);
+  // Metronome tempo + engine live HERE (song-view level), above the tempo popover,
+  // so playback survives the panel opening/closing. The panel's play button and
+  // the floating corner pill both drive this one metronome. Seeded from the song's
+  // saved bpm (SongEditor is keyed by song id, so this re-seeds per song).
+  const [bpm, setBpm] = useState<number>(song.bpm ?? BPM_DEFAULT);
+  const metronome = useMetronome(bpm);
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [markupMode, setMarkupMode] = useState(false);
   // Markup CREATION needs a connection (view-only offline). Entry is disabled
@@ -1817,11 +1823,18 @@ export default function SongEditor({
     update((s) => ({ ...s, capo: value }));
   };
 
-  // BPM is wired exactly like capo: one source of truth (song.bpm) updated via
-  // update(), which flows through onChange → the page's song state → re-render.
-  // The tempo panel's −/+ / input call this; the readout reads song.bpm back.
+  // Persist bpm to the song (editors only; RLS blocks members anyway).
   const handleBpmChange = (value: number) => {
     update((s) => ({ ...s, bpm: value }));
+  };
+
+  // The wheel/pill call this: always update the live tempo (drives the metronome
+  // + pill for everyone, including members practicing), and persist to the song
+  // when the user can edit it.
+  const changeBpm = (value: number) => {
+    const c = clampBpm(value);
+    setBpm(c);
+    if (canEdit) handleBpmChange(c);
   };
 
   // Capo display: stored chords are the SOUNDING chords; the chart shows the
@@ -2416,6 +2429,12 @@ export default function SongEditor({
       onTouchEnd={onSwipeEnd}
       onTouchCancel={() => { swipeStartRef.current = null; }}
     >
+      {/* Persistent metronome control — fixed bottom-right, reachable at any
+          scroll position without reopening the tempo panel. Shows when a tempo is
+          set or the metronome is running (both view + edit mode). */}
+      {(song.bpm != null || metronome.playing) && (
+        <MetronomePill bpm={bpm} playing={metronome.playing} onToggle={metronome.toggle} />
+      )}
       {setlistContext && (
         <div className="mb-3 -mt-2 print:hidden">
           <div className="flex items-center justify-between gap-2 rounded-lg bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 px-3 py-1.5">
@@ -2571,9 +2590,10 @@ export default function SongEditor({
                 </button>
                 {tempoPanelOpen && (
                   <TempoPanel
-                    bpm={song.bpm}
-                    canEdit={canEdit}
-                    onBpmChange={handleBpmChange}
+                    bpm={bpm}
+                    playing={metronome.playing}
+                    onBpmChange={changeBpm}
+                    onToggle={metronome.toggle}
                   />
                 )}
               </div>
@@ -4067,52 +4087,50 @@ function makeClickDataUri(): string {
 let _clickSrc: string | null = null;
 const clickSrc = () => (_clickSrc ??= makeClickDataUri());
 
-function TempoPanel({ bpm, canEdit, onBpmChange }: {
-  bpm: number | null;
-  canEdit: boolean;
-  onBpmChange: (bpm: number) => void;
-}) {
-  // Standalone metronome tempo. LOCAL state is the single source of truth for the
-  // control + the click, so −/+ always re-render — independent of edit permission
-  // or the song-save path. Seeded from the song's saved bpm each time the panel
-  // opens; editors also persist changes to song.bpm (chip + save).
-  const [tempo, setTempo] = useState<number>(bpm ?? BPM_DEFAULT);
-  const [playing, setPlaying] = useState(false);
+export type Metronome = {
+  playing: boolean;
+  toggle: () => void;
+  stop: () => void;
+};
 
+/* useMetronome — the HTML5 <Audio> click loop, lifted to the SONG-VIEW level so
+   it OUTLIVES the tempo popover (which unmounts on close). Playback state and the
+   loop live here; opening/closing the panel is pure UI and never touches sound.
+   The panel's play button and the corner pill both call the same toggle(), so
+   there's one source of truth for isPlaying. Reads the live bpm via a ref so the
+   wheel retunes without restarting. The interval is a plain setTimeout — nothing
+   to do with scroll/visibility — so scrolling never stutters the click. */
+function useMetronome(bpm: number): Metronome {
+  const [playing, setPlaying] = useState(false);
+  const bpmRef = useRef(bpm);
   const timerRef = useRef<number | null>(null);
-  const bpmRef = useRef(tempo);
-  const wakeLockRef = useRef<WakeLockLike | null>(null);
-  // A small pool of <Audio> elements so rapid ticks can overlap without cutting
-  // each other off (round-robin). Created client-side on mount.
   const poolRef = useRef<HTMLAudioElement[]>([]);
   const poolIdxRef = useRef(0);
-  // The loop reads tempo from a ref so the wheel retunes the click live.
-  useEffect(() => { bpmRef.current = tempo; }, [tempo]);
+  const wakeLockRef = useRef<WakeLockLike | null>(null);
 
+  useEffect(() => { bpmRef.current = bpm; }, [bpm]);
+
+  // Pool of 3 <Audio> elements (round-robin) so rapid clicks don't cut each other
+  // off. Created client-side on mount; torn down when the song view unmounts.
   useEffect(() => {
     const src = clickSrc();
-    const pool = Array.from({ length: 3 }, () => {
+    poolRef.current = Array.from({ length: 3 }, () => {
       const a = new Audio(src);
       a.volume = 0.7;
       a.preload = "auto";
       return a;
     });
-    poolRef.current = pool;
-    return () => { pool.forEach((a) => { try { a.pause(); } catch { /* ignore */ } }); poolRef.current = []; };
+    return () => {
+      if (timerRef.current != null) { clearTimeout(timerRef.current); timerRef.current = null; }
+      poolRef.current.forEach((a) => { try { a.pause(); } catch { /* ignore */ } });
+      poolRef.current = [];
+      const w = wakeLockRef.current; wakeLockRef.current = null;
+      if (w) void w.release().catch(() => {});
+    };
   }, []);
 
-  // Always update local tempo (guaranteed re-render); editors also persist to
-  // song.bpm so the header chip + save reflect it.
-  const applyBpm = (n: number) => {
-    const c = clampBpm(n);
-    setTempo(c);
-    if (canEdit) onBpmChange(c);
-  };
-
-  // Screen Wake Lock: keep the display awake while the metronome plays so the OS
-  // doesn't lock the screen and suspend audio mid-practice. Silent no-op where
-  // unsupported (older iOS, non-HTTPS). The lock auto-releases when the tab is
-  // hidden, so we re-request it on return to foreground (visibilitychange below).
+  // Screen Wake Lock: keep the display awake while playing so the OS doesn't lock
+  // the screen and suspend audio. Silent no-op where unsupported.
   const requestWakeLock = async () => {
     try {
       const wl = (navigator as unknown as { wakeLock?: { request: (t: "screen") => Promise<WakeLockLike> } }).wakeLock;
@@ -4126,14 +4144,6 @@ function TempoPanel({ bpm, canEdit, onBpmChange }: {
     if (w) void w.release().catch(() => {});
   };
 
-  const stopMetronome = () => {
-    if (timerRef.current != null) { clearTimeout(timerRef.current); timerRef.current = null; }
-    releaseWakeLock();
-    setPlaying(false);
-  };
-
-  // Play one click via the next pooled element (round-robin so a still-ringing
-  // click isn't cut off). currentTime = 0 restarts from the top.
   const playClick = () => {
     const pool = poolRef.current;
     if (!pool.length) return;
@@ -4141,72 +4151,69 @@ function TempoPanel({ bpm, canEdit, onBpmChange }: {
     poolIdxRef.current++;
     try { a.currentTime = 0; void a.play(); } catch { /* ignore */ }
   };
-
-  // Self-scheduling loop reading the live BPM ref → interval = 60/bpm seconds.
   const scheduleNext = () => {
     timerRef.current = window.setTimeout(() => {
       playClick();
-      scheduleNext();
+      scheduleNext();               // interval = 60/bpm sec, read live each tick
     }, (60 / bpmRef.current) * 1000);
   };
 
-  const startMetronome = () => {
+  const stop = () => {
+    if (timerRef.current != null) { clearTimeout(timerRef.current); timerRef.current = null; }
+    releaseWakeLock();
+    setPlaying(false);
+  };
+  const start = () => {
     const pool = poolRef.current;
     if (!pool.length) return;
-    // Unlock iOS INSIDE the user gesture: the first .play() must be synchronous
-    // (no await before it). Element 0 plays the audible downbeat now; the extras
-    // are unlocked silently (muted play→pause) so later round-robin plays work.
+    // Unlock iOS INSIDE the user gesture: the first .play() is synchronous (no
+    // await before it). Element 0 plays the audible downbeat; the extras unlock
+    // silently (muted play→pause) so later round-robin plays are authorized.
     pool.forEach((a, i) => {
       if (i === 0) return;
       a.muted = true;
       a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { a.muted = false; });
     });
     poolIdxRef.current = 0;
-    playClick();          // audible first click, synchronous within the gesture
-    scheduleNext();       // subsequent clicks every 60/bpm sec
+    playClick();
+    scheduleNext();
     void requestWakeLock();
     setPlaying(true);
   };
+  const toggle = () => { if (playing) stop(); else start(); };
 
-  const toggle = () => { if (playing) stopMetronome(); else startMetronome(); };
-
-  // Returning to the foreground: re-acquire the wake lock, which is auto-released
-  // while the tab is hidden.
+  // Re-acquire the wake lock on return to foreground (it auto-releases when hidden).
   useEffect(() => {
     if (!playing) return;
-    const onVisible = () => {
-      if (document.visibilityState !== "visible") return;
-      void requestWakeLock();
-    };
+    const onVisible = () => { if (document.visibilityState === "visible") void requestWakeLock(); };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [playing]);
 
-  // On unmount (panel close OR navigating away from the song): stop the loop and
-  // release the wake lock — no background ticking, no lingering screen lock.
-  useEffect(() => () => {
-    if (timerRef.current != null) clearTimeout(timerRef.current);
-    releaseWakeLock();
-  }, []);
+  return { playing, toggle, stop };
+}
 
+/* TempoPanel — pure UI. Wheel + play/stop, both driving SHARED state passed in.
+   No audio here: sound lives in useMetronome above the popover, so closing the
+   panel never stops playback. */
+function TempoPanel({ bpm, playing, onBpmChange, onToggle }: {
+  bpm: number;
+  playing: boolean;
+  onBpmChange: (bpm: number) => void;
+  onToggle: () => void;
+}) {
   return (
     <div data-picker-popover onMouseDown={(e) => e.stopPropagation()}
       className="fixed inset-x-2 bottom-2 z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
       <div className="flex items-center gap-3 px-1">
-        {/* The rolling wheel IS the BPM control (Apple pattern — no −/+). Its
-            centred value drives local `tempo`; editors also persist to song.bpm.
-            The metronome reads `tempo` live via bpmRef. */}
+        {/* Rolling wheel IS the BPM control. Its centred value drives the shared
+            tempo; the metronome reads it live. */}
         <div className="text-center">
-          <WheelPicker
-            values={BPM_VALUES}
-            value={tempo}
-            onChange={applyBpm}
-            ariaLabel="Beats per minute"
-          />
+          <WheelPicker values={BPM_VALUES} value={bpm} onChange={onBpmChange} ariaLabel="Beats per minute" />
           <div className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">BPM</div>
         </div>
         <button type="button" aria-pressed={playing}
-          onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); toggle(); }}
+          onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); onToggle(); }}
           aria-label={playing ? "Stop metronome" : "Start metronome"}
           className={"w-10 h-10 rounded-full flex items-center justify-center transition-colors shrink-0 " + (playing
             ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-600/30"
@@ -4217,5 +4224,33 @@ function TempoPanel({ bpm, canEdit, onBpmChange }: {
         </button>
       </div>
     </div>
+  );
+}
+
+/* MetronomePill — persistent floating control, pinned bottom-right of the song
+   view (fixed → stays put through scroll). Reads/controls the SAME metronome as
+   the panel's play button. Quiet when stopped; accent-filled + beat-pulsing when
+   playing. Tap toggles play/stop. */
+function MetronomePill({ bpm, playing, onToggle }: {
+  bpm: number;
+  playing: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button type="button"
+      onPointerDown={(e) => { e.preventDefault(); onToggle(); }}
+      aria-pressed={playing}
+      aria-label={playing ? `Stop metronome, ${bpm} BPM` : `Start metronome, ${bpm} BPM`}
+      style={{ bottom: "calc(env(safe-area-inset-bottom) + 5rem)" }}
+      className={"fixed right-4 z-40 print:hidden flex items-center gap-1.5 h-9 pl-2.5 pr-3 rounded-full text-sm font-semibold tabular-nums transition-colors " + (playing
+        ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30"
+        : "bg-white/90 dark:bg-slate-900/90 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 shadow-md backdrop-blur")}>
+      <span className="inline-flex" style={playing ? { animation: `mp-beat ${(60 / bpm).toFixed(3)}s ease-in-out infinite` } : undefined}>
+        {playing
+          ? <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+          : <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>}
+      </span>
+      {bpm}
+    </button>
   );
 }
