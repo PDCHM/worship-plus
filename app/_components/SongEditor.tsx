@@ -3906,20 +3906,28 @@ function TempoPanel({ bpm, canEdit, onBpmChange }: {
   canEdit: boolean;
   onBpmChange: (bpm: number) => void;
 }) {
-  // Source of truth is song.bpm (via the prop); no local draft. A null bpm shows
-  // the default in the readout, and the first −/+ / edit writes a real value.
-  const value = bpm ?? BPM_DEFAULT;
+  // Standalone metronome tempo. LOCAL state is the single source of truth for the
+  // control + the click, so −/+ always re-render — independent of edit permission
+  // or the song-save path. Seeded from the song's saved bpm each time the panel
+  // opens; editors also persist changes to song.bpm (chip + save).
+  const [tempo, setTempo] = useState<number>(bpm ?? BPM_DEFAULT);
   const [playing, setPlaying] = useState(false);
 
   const ctxRef = useRef<AudioContext | null>(null);
   const timerRef = useRef<number | null>(null);
   const nextNoteRef = useRef(0);
-  const bpmRef = useRef(value);
+  const bpmRef = useRef(tempo);
   const wakeLockRef = useRef<WakeLockLike | null>(null);
-  // Keep the scheduler's tempo in sync with song.bpm so −/+ retune live.
-  useEffect(() => { bpmRef.current = value; }, [value]);
+  // Scheduler reads tempo from a ref so −/+ retune the click live while playing.
+  useEffect(() => { bpmRef.current = tempo; }, [tempo]);
 
-  const setBpm = (n: number) => { if (canEdit) onBpmChange(clampBpm(n)); };
+  // Always update local tempo (guaranteed re-render); editors also persist to
+  // song.bpm so the header chip + save reflect it.
+  const applyBpm = (n: number) => {
+    const c = clampBpm(n);
+    setTempo(c);
+    if (canEdit) onBpmChange(c);
+  };
 
   // Screen Wake Lock: keep the display awake while the metronome plays so the OS
   // doesn't lock the screen and suspend audio mid-practice. Silent no-op where
@@ -4019,37 +4027,27 @@ function TempoPanel({ bpm, canEdit, onBpmChange }: {
     <div onMouseDown={(e) => e.stopPropagation()}
       className="fixed inset-x-2 bottom-2 z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
       <div className="flex items-center gap-2 px-1">
-        {/* −/+ and the input write song.bpm via onBpmChange (same update() path as
-            capo). onMouseDown (+ stop/prevent) matches the Key/Capo pickers so the
-            outside-click mousedown-closer can't swallow the interaction. Members
-            (canEdit false) see a static readout but can still play the metronome. */}
-        {canEdit ? (
-          <>
-            <button type="button" aria-label="Decrease BPM"
-              onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); setBpm(value - 1); }}
-              className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors shrink-0">
-              −
-            </button>
-            <div className="w-16 text-center shrink-0">
-              <input type="number" inputMode="numeric" min={BPM_MIN} max={BPM_MAX} value={value}
-                onMouseDown={(e) => e.stopPropagation()}
-                onChange={(e) => { const n = parseInt(e.target.value, 10); if (!Number.isNaN(n)) onBpmChange(n); }}
-                onBlur={(e) => { const n = parseInt(e.target.value, 10); onBpmChange(clampBpm(Number.isNaN(n) ? BPM_DEFAULT : n)); }}
-                className="w-full text-center text-2xl font-bold text-indigo-600 dark:text-indigo-400 tabular-nums bg-transparent outline-none rounded-md focus:ring-2 focus:ring-indigo-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
-              <div className="text-[10px] text-slate-400 uppercase tracking-wider">BPM</div>
-            </div>
-            <button type="button" aria-label="Increase BPM"
-              onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); setBpm(value + 1); }}
-              className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors shrink-0">
-              +
-            </button>
-          </>
-        ) : (
-          <div className="w-16 text-center shrink-0">
-            <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400 tabular-nums">{value}</div>
-            <div className="text-[10px] text-slate-400 uppercase tracking-wider">BPM</div>
-          </div>
-        )}
+        {/* −/+ and the input drive LOCAL tempo (always work). onMouseDown (+
+            stop/prevent) matches the Key/Capo pickers so the outside-click
+            mousedown-closer can't swallow the interaction. */}
+        <button type="button" aria-label="Decrease BPM"
+          onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); applyBpm(tempo - 1); }}
+          className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors shrink-0">
+          −
+        </button>
+        <div className="w-16 text-center shrink-0">
+          <input type="number" inputMode="numeric" min={BPM_MIN} max={BPM_MAX} value={tempo}
+            onMouseDown={(e) => e.stopPropagation()}
+            onChange={(e) => { const n = parseInt(e.target.value, 10); if (!Number.isNaN(n)) { setTempo(n); if (canEdit) onBpmChange(n); } }}
+            onBlur={(e) => { const n = parseInt(e.target.value, 10); applyBpm(Number.isNaN(n) ? BPM_DEFAULT : n); }}
+            className="w-full text-center text-2xl font-bold text-indigo-600 dark:text-indigo-400 tabular-nums bg-transparent outline-none rounded-md focus:ring-2 focus:ring-indigo-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+          <div className="text-[10px] text-slate-400 uppercase tracking-wider">BPM</div>
+        </div>
+        <button type="button" aria-label="Increase BPM"
+          onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); applyBpm(tempo + 1); }}
+          className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 flex items-center justify-center text-lg font-semibold transition-colors shrink-0">
+          +
+        </button>
         <button type="button" aria-pressed={playing}
           onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); toggle(); }}
           aria-label={playing ? "Stop metronome" : "Start metronome"}
