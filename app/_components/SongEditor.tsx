@@ -125,6 +125,10 @@ type Props = {
   // / Delete, and leaves "Save as copy" (duplicate to my library) available.
   // RLS is the real gate; this is UI convenience. Defaults to true.
   canEdit?: boolean;
+  // True while a bottom-left offline indicator (Offline / Saving for offline… /
+  // Offline ready) is showing, so the metronome pill lifts above it — they share
+  // the bottom-left corner otherwise.
+  offlineIndicatorActive?: boolean;
   // When true (set by the "AI Chords" flow after a lyrics paste), the editor
   // auto-opens the Generate Chords sheet once, then calls onAutoGenerateConsumed.
   autoGenerateChords?: boolean;
@@ -914,6 +918,7 @@ export default function SongEditor({
   onSaveAsCopy,
   onDelete,
   canEdit = true,
+  offlineIndicatorActive = false,
   autoGenerateChords,
   onAutoGenerateConsumed,
   canUseAiChords,
@@ -2424,16 +2429,21 @@ export default function SongEditor({
         // lines don't stretch absurdly on very wide desktop monitors. Edit mode
         // keeps the narrower, comfortable editing width.
         (readOnly ? "max-w-[1600px]" : "max-w-5xl")}
-      style={{ "--lyric-font-size": `${lyricCeiling}px` } as React.CSSProperties}
+      style={{
+        "--lyric-font-size": `${lyricCeiling}px`,
+        // When the pill is visible, pad the bottom so the last lyric/section
+        // scrolls clear of the fixed pill instead of hiding behind it.
+        ...((song.bpm != null || metronome.playing) ? { paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 7.5rem)" } : {}),
+      } as React.CSSProperties}
       onTouchStart={onSwipeStart}
       onTouchEnd={onSwipeEnd}
       onTouchCancel={() => { swipeStartRef.current = null; }}
     >
-      {/* Persistent metronome control — fixed bottom-right, reachable at any
-          scroll position without reopening the tempo panel. Shows when a tempo is
-          set or the metronome is running (both view + edit mode). */}
+      {/* Persistent metronome control — fixed bottom-LEFT, reachable at any scroll
+          position without reopening the tempo panel. Lifts above the offline
+          indicator (same corner) when it's showing. Both view + edit mode. */}
       {(song.bpm != null || metronome.playing) && (
-        <MetronomePill bpm={bpm} playing={metronome.playing} onToggle={metronome.toggle} />
+        <MetronomePill bpm={bpm} playing={metronome.playing} onToggle={metronome.toggle} raised={offlineIndicatorActive} />
       )}
       {setlistContext && (
         <div className="mb-3 -mt-2 print:hidden">
@@ -4231,17 +4241,18 @@ function TempoPanel({ bpm, playing, onBpmChange, onToggle }: {
    view (fixed → stays put through scroll). Reads/controls the SAME metronome as
    the panel's play button. Quiet when stopped; accent-filled + beat-pulsing when
    playing. Tap toggles play/stop. */
-function MetronomePill({ bpm, playing, onToggle }: {
+function MetronomePill({ bpm, playing, onToggle, raised }: {
   bpm: number;
   playing: boolean;
   onToggle: () => void;
+  raised?: boolean;   // lift above the bottom-left offline indicator when it's showing
 }) {
   return (
     <button type="button"
       onPointerDown={(e) => { e.preventDefault(); onToggle(); }}
       aria-pressed={playing}
       aria-label={playing ? `Stop metronome, ${bpm} BPM` : `Start metronome, ${bpm} BPM`}
-      style={{ bottom: "calc(env(safe-area-inset-bottom) + 5rem)" }}
+      style={{ bottom: `calc(env(safe-area-inset-bottom) + ${raised ? "8rem" : "5rem"})`, transition: "bottom 0.2s ease" }}
       className={"fixed left-4 z-40 print:hidden flex items-center gap-1.5 h-9 pl-2.5 pr-3 rounded-full text-sm font-semibold tabular-nums transition-colors " + (playing
         ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30"
         : "bg-white/90 dark:bg-slate-900/90 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 shadow-md backdrop-blur")}>

@@ -2606,6 +2606,7 @@ export default function Home() {
               onSaveAsCopy={(title, liveSong) => { void saveAsCopy(liveSong, title); }}
               onDelete={() => { void deleteSong(activeSong.id); }}
               canEdit={canEditSong(activeSong)}
+              offlineIndicatorActive={!online || (!!offlineCache && offlineCache.total > 0 && (offlineCache.cached < offlineCache.total || offlineReadyFlash))}
               songLinks={songLinks.filter((l) => l.songId === activeSong.id)}
               onAddLink={addSongLink}
               onUpdateLink={updateSongLink}
