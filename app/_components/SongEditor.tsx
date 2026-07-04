@@ -2670,6 +2670,7 @@ export default function SongEditor({
             className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
           </button>
+          <ViewToggle viewMode={viewMode} onChange={switchView} />
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
           {canGenerateChords && (
@@ -3708,17 +3709,6 @@ export default function SongEditor({
                   {item.label}
                 </button>
               ))}
-              {/* Column layout — a set-once preference, so it lives in the menu
-                  rather than the always-visible control row. Works identically. */}
-              <div className="w-full min-h-[48px] px-5 flex items-center justify-between gap-3.5 text-[15px] text-slate-700 dark:text-slate-200">
-                <span className="flex items-center gap-3.5">
-                  <span className="text-slate-500 dark:text-slate-400 shrink-0 w-5 flex justify-center">
-                    <svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="8" height="18" rx="1.5"/><rect x="13" y="3" width="8" height="18" rx="1.5"/></svg>
-                  </span>
-                  Columns
-                </span>
-                <ViewToggle viewMode={viewMode} onChange={switchView} />
-              </div>
               {canEdit && (
                 <>
                   <div className="my-1 border-t border-slate-200 dark:border-slate-700" />
