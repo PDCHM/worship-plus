@@ -2617,11 +2617,22 @@ export default function SongEditor({
             </>
           )}
           <span className="text-slate-300 dark:text-slate-600">·</span>
+          {/* Capo stated ONCE: when set, the "Sounding … · Capo N · Play Y" pill IS
+              the control (tap to change); when unset, a compact "Capo" button to add
+              one. Both open the same wheel picker anchored here — no duplicate. */}
           <div className="relative">
-            <button type="button" onClick={() => { setCapoPickerOpen(o => !o); setKeyPickerOpen(false); }}
-              className="font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 px-1.5 py-0.5 rounded-md transition-colors">
-              {song.capo ? "Capo " + song.capo : "Capo"}
-            </button>
+            {(song.capo ?? 0) > 0 ? (
+              <button type="button" onClick={() => { setCapoPickerOpen(o => !o); setKeyPickerOpen(false); }}
+                title="Capo shifts the displayed chord shapes down; the sounding key is unchanged. Tap to change."
+                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 text-xs font-medium border border-indigo-200 dark:border-indigo-900 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors">
+                Sounding {song.key} · Capo {song.capo} · Play {playKey(song.key, song.capo)}
+              </button>
+            ) : (
+              <button type="button" onClick={() => { setCapoPickerOpen(o => !o); setKeyPickerOpen(false); }}
+                className="font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 px-1.5 py-0.5 rounded-md transition-colors">
+                Capo
+              </button>
+            )}
             {capoPickerOpen && (
               <div data-picker-popover onMouseDown={(e) => e.stopPropagation()} className="fixed inset-x-2 bottom-2 z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 sm:w-44 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
                 <div className="text-[10px] text-slate-400 uppercase tracking-wider text-center mb-1.5">Capo</div>
@@ -2638,12 +2649,6 @@ export default function SongEditor({
               </div>
             )}
           </div>
-          {(song.capo ?? 0) > 0 && (
-            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 text-xs font-medium border border-indigo-200 dark:border-indigo-900"
-              title="Capo shifts the displayed chord shapes down; the sounding key is unchanged.">
-              Sounding {song.key} · Capo {song.capo} · Play {playKey(song.key, song.capo)}
-            </span>
-          )}
           {clipboard && !readOnly && (
             <span className="inline-flex items-center gap-2 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-xs border border-amber-200 dark:border-amber-900 print:hidden">
               <span className="font-medium">{clipboard.label}</span> copied
@@ -2665,7 +2670,6 @@ export default function SongEditor({
             className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
           </button>
-          <ViewToggle viewMode={viewMode} onChange={switchView} />
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
           {canGenerateChords && (
@@ -2727,7 +2731,7 @@ export default function SongEditor({
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
               <span className="hidden sm:inline">Save copy</span>
             </button>
-          ) : (
+          ) : !readOnly ? (
           <div ref={saveMenuRef} className="relative flex">
             <button
               type="button"
@@ -2772,7 +2776,7 @@ export default function SongEditor({
               </div>
             )}
           </div>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -3704,6 +3708,17 @@ export default function SongEditor({
                   {item.label}
                 </button>
               ))}
+              {/* Column layout — a set-once preference, so it lives in the menu
+                  rather than the always-visible control row. Works identically. */}
+              <div className="w-full min-h-[48px] px-5 flex items-center justify-between gap-3.5 text-[15px] text-slate-700 dark:text-slate-200">
+                <span className="flex items-center gap-3.5">
+                  <span className="text-slate-500 dark:text-slate-400 shrink-0 w-5 flex justify-center">
+                    <svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="8" height="18" rx="1.5"/><rect x="13" y="3" width="8" height="18" rx="1.5"/></svg>
+                  </span>
+                  Columns
+                </span>
+                <ViewToggle viewMode={viewMode} onChange={switchView} />
+              </div>
               {canEdit && (
                 <>
                   <div className="my-1 border-t border-slate-200 dark:border-slate-700" />
