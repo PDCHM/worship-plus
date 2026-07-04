@@ -461,6 +461,14 @@ export function transposeChord(
   semitones: number,
   preferFlat: boolean,
 ): string {
+  // Bracketed chords — "(G)", "(G/B)", "(Gsus4)" — are the app's passing/optional
+  // chord notation, stored WITH their parens. They must transpose/capo like any
+  // chord, just keeping the wrapper: strip a full "( … )" wrap, transpose the
+  // inside via this same function (which handles the root, quality and slash), then
+  // re-wrap. Internal parens like "G7(#9)" are NOT wrapping the whole token, so
+  // they don't match here and fall through to the normal path as part of `rest`.
+  const wrapped = chord.match(/^\((.+)\)$/);
+  if (wrapped) return "(" + transposeChord(wrapped[1], semitones, preferFlat) + ")";
   return chord
     .split("/")
     .map((part) => {
