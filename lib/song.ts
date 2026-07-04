@@ -163,6 +163,8 @@ export type Settings = {
   printColumns: 1 | 2 | 3;
   printOrientation: "portrait" | "landscape";
   showChords: boolean;
+  // Whether the floating metronome pill renders on songs with a saved BPM.
+  showMetronomePill: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -177,6 +179,7 @@ export const DEFAULT_SETTINGS: Settings = {
   printColumns: 1,
   printOrientation: "portrait",
   showChords: true,
+  showMetronomePill: true,
 };
 
 export function uid(): string {

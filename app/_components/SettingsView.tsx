@@ -79,6 +79,26 @@ export default function SettingsView({ settings, onChange, plan, onUpgrade }: Pr
         </Row>
       </Section>
 
+      {/* ── Playback ── */}
+      <Section title="Playback">
+        <Row label="Show metronome pill" hint="The floating tempo control on songs with a saved BPM. Turn off to hide it everywhere.">
+          <button
+            type="button"
+            onClick={() => update({ showMetronomePill: !settings.showMetronomePill })}
+            role="switch"
+            aria-checked={settings.showMetronomePill}
+            aria-label="Toggle metronome pill"
+            className={`relative w-12 h-7 rounded-full transition-colors ${
+              settings.showMetronomePill ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
+            }`}
+          >
+            <span className={`absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-white shadow-md transition-transform ${
+              settings.showMetronomePill ? "translate-x-5" : "translate-x-0"
+            }`} />
+          </button>
+        </Row>
+      </Section>
+
       {/* ── Print ── */}
       <Section title="Print">
         <Row label="Page size">

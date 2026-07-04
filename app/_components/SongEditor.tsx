@@ -2422,6 +2422,12 @@ export default function SongEditor({
     else setlistContext.onPrev?.();
   };
 
+  // Floating metronome pill: shown on songs with a tempo (or while playing), but
+  // globally suppressible via the "Show metronome pill" setting. Hiding it never
+  // touches bpm or the metronome — the tempo panel stays reachable via the header
+  // "{N} BPM" chip and the ⋯ menu.
+  const showMetronomePill = settings.showMetronomePill && (song.bpm != null || metronome.playing);
+
   return (
     <div className={"relative w-full mx-auto px-4 sm:px-6 py-6 md:py-8 transition-[max-width] duration-200 " +
         // Read-only performance/view mode goes full-bleed (fills the width freed
@@ -2433,7 +2439,7 @@ export default function SongEditor({
         "--lyric-font-size": `${lyricCeiling}px`,
         // When the pill is visible, pad the bottom so the last lyric/section
         // scrolls clear of the fixed pill instead of hiding behind it.
-        ...((song.bpm != null || metronome.playing) ? { paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 7.5rem)" } : {}),
+        ...(showMetronomePill ? { paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 7.5rem)" } : {}),
       } as React.CSSProperties}
       onTouchStart={onSwipeStart}
       onTouchEnd={onSwipeEnd}
@@ -2441,8 +2447,9 @@ export default function SongEditor({
     >
       {/* Persistent metronome control — fixed bottom-LEFT, reachable at any scroll
           position without reopening the tempo panel. Lifts above the offline
-          indicator (same corner) when it's showing. Both view + edit mode. */}
-      {(song.bpm != null || metronome.playing) && (
+          indicator (same corner) when it's showing. Both view + edit mode.
+          Hidden entirely when the user's "Show metronome pill" setting is off. */}
+      {showMetronomePill && (
         <MetronomePill bpm={bpm} playing={metronome.playing} onToggle={metronome.toggle} raised={offlineIndicatorActive} />
       )}
       {setlistContext && (
@@ -2588,7 +2595,7 @@ export default function SongEditor({
           {/* BPM chip — sits next to the Key chip. Shows in the read/performance
               view whenever bpm is set; in edit mode also shows a "Tempo" entry when
               unset so a value can be added. Tapping opens the local metronome panel. */}
-          {(song.bpm != null || !readOnly) && (
+          {(song.bpm != null || !readOnly || tempoPanelOpen) && (
             <>
               <span className="text-slate-300 dark:text-slate-600">·</span>
               <div className="relative">
@@ -3678,6 +3685,7 @@ export default function SongEditor({
             <div className="flex justify-center pt-2.5 pb-1"><div className="w-9 h-1 rounded-full bg-slate-300 dark:bg-slate-700" /></div>
             <div className="py-1">
               {([
+                { label: "Tempo & metronome", onClick: () => { setTempoPanelOpen(true); setKeyPickerOpen(false); setCapoPickerOpen(false); }, icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 13.8"/></svg> },
                 { label: "Section styles", onClick: () => setStylesPanelOpen(true), icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg> },
                 { label: "Print", onClick: () => setPreviewOpen(true), icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> },
                 { label: "Export / Share", onClick: onExport, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> },
