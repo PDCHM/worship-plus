@@ -3926,6 +3926,10 @@ export default function SongEditor({
 const WHEEL_ITEM_H = 40;               // px per row
 const WHEEL_VISIBLE = 5;               // rows shown (odd → one centred)
 const WHEEL_PAD = WHEEL_ITEM_H * ((WHEEL_VISIBLE - 1) / 2);
+// `scrollend` fires exactly when scrolling (momentum + snap) fully settles — the
+// reliable "the wheel stopped here" signal. Where unsupported (older iOS/Safari),
+// we fall back to a debounced scroll timer.
+const HAS_SCROLLEND = typeof window !== "undefined" && "onscrollend" in window;
 
 function WheelPicker({ values, value, onChange, ariaLabel, width = 84 }: {
   values: number[];
@@ -3960,6 +3964,8 @@ function WheelPicker({ values, value, onChange, ariaLabel, width = 84 }: {
     }
   };
 
+  // The roll-settle commit: snap to the nearest row and apply that value. This is
+  // the ONLY thing needed to select — no click. Guard makes it idempotent.
   const commit = () => {
     const el = scrollRef.current;
     if (!el) return;
@@ -3969,6 +3975,10 @@ function WheelPicker({ values, value, onChange, ariaLabel, width = 84 }: {
     const v = values[idx];
     if (v !== committedRef.current) { committedRef.current = v; onChange(v); }
   };
+  // Keep a live ref so the (once-attached) scrollend listener always calls the
+  // latest closure (fresh onChange).
+  const commitRef = useRef(commit);
+  commitRef.current = commit;
 
   // Centre the current value on mount only (never re-centre from prop → no fight).
   useEffect(() => {
@@ -3980,6 +3990,17 @@ function WheelPicker({ values, value, onChange, ariaLabel, width = 84 }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Commit when the scroll fully settles (after flick momentum + snap). This is
+  // what makes rolling alone apply the value on touch, where the debounced scroll
+  // timer can otherwise mis-fire during iOS momentum.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !HAS_SCROLLEND) return;
+    const onEnd = () => commitRef.current();
+    el.addEventListener("scrollend", onEnd);
+    return () => el.removeEventListener("scrollend", onEnd);
+  }, []);
+
   useEffect(() => () => {
     if (settleRef.current != null) clearTimeout(settleRef.current);
     if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
@@ -3987,11 +4008,12 @@ function WheelPicker({ values, value, onChange, ariaLabel, width = 84 }: {
 
   const scheduleSettle = () => {
     if (settleRef.current != null) window.clearTimeout(settleRef.current);
-    settleRef.current = window.setTimeout(commit, 120);
+    settleRef.current = window.setTimeout(commit, 140);
   };
   const onScroll = () => {
     if (rafRef.current == null) rafRef.current = window.requestAnimationFrame(() => { rafRef.current = null; paint(); });
-    scheduleSettle();
+    // With scrollend support, that event drives the commit; otherwise debounce.
+    if (!HAS_SCROLLEND) scheduleSettle();
   };
 
   // Mouse/pen click-drag → scroll (touch uses native scrolling directly).
