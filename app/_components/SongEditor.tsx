@@ -3941,8 +3941,7 @@ function WheelPicker({ values, value, onChange, ariaLabel, width = 84 }: {
   const scrollRef = useRef<HTMLDivElement>(null);
   const settleRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
-  const dragRef = useRef<{ y: number; top: number; id: number } | null>(null);
-  const suppressClickRef = useRef(false);
+  const startRef = useRef<{ y: number; top: number; id: number; moved: boolean; mouse: boolean } | null>(null);
   const committedRef = useRef(value);
 
   const clampIdx = (i: number) => Math.max(0, Math.min(values.length - 1, i));
@@ -4018,35 +4017,48 @@ function WheelPicker({ values, value, onChange, ariaLabel, width = 84 }: {
 
   // Mouse/pen click-drag → scroll (touch uses native scrolling directly).
   const onPointerDown = (e: React.PointerEvent) => {
-    if (e.pointerType === "touch") return;
     const el = scrollRef.current;
     if (!el) return;
-    dragRef.current = { y: e.clientY, top: el.scrollTop, id: e.pointerId };
-    el.setPointerCapture(e.pointerId);
+    const mouse = e.pointerType !== "touch";
+    startRef.current = { y: e.clientY, top: el.scrollTop, id: e.pointerId, moved: false, mouse };
+    // Mouse/pen drag-to-scroll needs pointer capture; touch uses native scrolling.
+    if (mouse) el.setPointerCapture(e.pointerId);
   };
   const onPointerMove = (e: React.PointerEvent) => {
-    const d = dragRef.current, el = scrollRef.current;
-    if (!d || !el) return;
-    if (Math.abs(e.clientY - d.y) > 3) suppressClickRef.current = true;  // it's a drag, not a click
-    el.scrollTop = d.top - (e.clientY - d.y);
-  };
-  const endDrag = () => {
-    const d = dragRef.current, el = scrollRef.current;
-    if (!d) return;
-    dragRef.current = null;
-    if (el) { try { el.releasePointerCapture(d.id); } catch { /* already released */ } }
-    scheduleSettle();
+    const s = startRef.current, el = scrollRef.current;
+    if (!s || !el) return;
+    if (Math.abs(e.clientY - s.y) > 3) s.moved = true;
+    if (s.mouse) el.scrollTop = s.top - (e.clientY - s.y);   // touch: native scroll
   };
 
-  // Tap a visible row to select it (desktop click + a11y). Suppressed right after
-  // a drag so releasing a drag over a row doesn't hijack the landing position.
-  const onRowClick = (idx: number) => {
-    if (suppressClickRef.current) { suppressClickRef.current = false; return; }
+  // Tap → snap the tapped row to the centre and commit it. The row is derived from
+  // the tap's Y (not from a row's own click, which the scale/fade + gaps make
+  // unreliable): scale transforms keep each row's CENTRE at its layout position,
+  // so round((tapY − containerCentre) / itemH) maps a tap anywhere to the nearest
+  // row, then we add the currently-centred index.
+  const selectFromTap = (clientY: number) => {
     const el = scrollRef.current;
-    if (el) el.scrollTo({ top: idx * WHEEL_ITEM_H, behavior: "smooth" });
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const centerY = rect.top + rect.height / 2;
+    const centerIdx = clampIdx(Math.round(el.scrollTop / WHEEL_ITEM_H));
+    const idx = clampIdx(centerIdx + Math.round((clientY - centerY) / WHEEL_ITEM_H));
+    el.scrollTo({ top: idx * WHEEL_ITEM_H, behavior: "smooth" });
     const v = values[idx];
     if (v !== committedRef.current) { committedRef.current = v; onChange(v); }
   };
+  const onPointerUp = (e: React.PointerEvent) => {
+    const s = startRef.current, el = scrollRef.current;
+    startRef.current = null;
+    if (!s) return;
+    if (el && s.mouse) { try { el.releasePointerCapture(s.id); } catch { /* already released */ } }
+    if (!s.moved) selectFromTap(e.clientY);   // a tap (no drag) → select tapped row
+    else if (s.mouse) scheduleSettle();        // mouse drag end → commit on settle
+    // touch flick (moved) settles via scrollend / debounce
+  };
+  // A touch that turns into a native scroll fires pointercancel (never pointerup),
+  // so it's correctly NOT treated as a tap — the flick commits via scrollend.
+  const onPointerCancel = () => { startRef.current = null; };
 
   return (
     <div className="relative select-none mx-auto" style={{ height: WHEEL_ITEM_H * WHEEL_VISIBLE, width }} aria-label={ariaLabel}>
@@ -4058,8 +4070,8 @@ function WheelPicker({ values, value, onChange, ariaLabel, width = 84 }: {
         onScroll={onScroll}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
-        onPointerUp={endDrag}
-        onPointerCancel={endDrag}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
         className="relative z-[1] h-full overflow-y-scroll overscroll-contain touch-pan-y cursor-grab active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
         style={{
           scrollbarWidth: "none",
@@ -4071,8 +4083,8 @@ function WheelPicker({ values, value, onChange, ariaLabel, width = 84 }: {
           maskImage: "linear-gradient(to bottom, transparent, #000 32%, #000 68%, transparent)",
         }}
       >
-        {values.map((v, i) => (
-          <div key={v} onClick={() => onRowClick(i)}
+        {values.map((v) => (
+          <div key={v}
             className="flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-300 tabular-nums will-change-transform cursor-pointer"
             style={{ height: WHEEL_ITEM_H, scrollSnapAlign: "center", fontSize: 22 }}>
             {v}
