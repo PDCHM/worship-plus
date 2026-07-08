@@ -720,7 +720,12 @@ export const FONT_MAX_PX = 40;
 // changed the number but not the text. Chords track 2px smaller.
 export const LYRIC_FONT_CLAMP = `clamp(${FONT_MIN_PX}px, var(--lyric-font-size, 17px), ${FONT_MAX_PX}px)`;
 export const CHORD_FONT_CLAMP = `clamp(${FONT_MIN_PX - 1}px, calc(var(--lyric-font-size, 17px) - 2px), ${FONT_MAX_PX - 2}px)`;
-export const LINE_SPACING: Record<EditorPrefs["lineSpacing"], number> = { compact: 1.25, normal: 1.55, relaxed: 1.95 };
+// `normal` (the default) tightened 1.55 → 1.4 (~10%) for better screen coverage
+// while staying comfortable. Line-height also sets the chord→lyric gap (the
+// lyric's top half-leading = (lineHeight − 1) × fontSize / 2), which stays > 0 at
+// every font size, so the chord row never touches the lyric row. compact/relaxed
+// keep the same relative range for users who pick them.
+export const LINE_SPACING: Record<EditorPrefs["lineSpacing"], number> = { compact: 1.25, normal: 1.4, relaxed: 1.95 };
 export const EDITOR_FONT_FAMILY: Record<EditorPrefs["fontFamily"], string> = {
   mono: "ui-monospace, Menlo, Consolas, 'Courier New', monospace",
   sans: "ui-sans-serif, system-ui, -apple-system, sans-serif",
