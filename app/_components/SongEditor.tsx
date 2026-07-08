@@ -75,6 +75,32 @@ function markTipSeen(id: TipId) {
     /* localStorage unavailable — tip just won't persist as seen */
   }
 }
+
+// Per-song view preferences (column layout + font zoom) kept PER USER PER DEVICE
+// in localStorage, keyed by song id — so a member's font/column choice on a
+// shared/setlist song never changes it for the rest of the team, and it survives
+// navigating away and back (library or setlist). Not a song-record field for that
+// reason. Map shape: { [songId]: { viewMode, zoomOffset } }.
+const SONG_VIEW_KEY = "wp-song-view-v1";
+type SongViewPrefs = { viewMode?: ViewMode; zoomOffset?: number };
+function readSongView(songId: string): SongViewPrefs {
+  try {
+    const all = JSON.parse(localStorage.getItem(SONG_VIEW_KEY) || "{}") as Record<string, SongViewPrefs>;
+    const p = all?.[songId];
+    return p && typeof p === "object" ? p : {};
+  } catch {
+    return {};
+  }
+}
+function writeSongView(songId: string, prefs: SongViewPrefs) {
+  try {
+    const all = JSON.parse(localStorage.getItem(SONG_VIEW_KEY) || "{}") as Record<string, SongViewPrefs>;
+    all[songId] = { ...(all[songId] || {}), ...prefs };
+    localStorage.setItem(SONG_VIEW_KEY, JSON.stringify(all));
+  } catch {
+    /* localStorage unavailable — prefs just won't persist */
+  }
+}
 // Edit / Markup toggle icons — exact path data lifted from Lucide's `square-pen`
 // and `highlighter` glyphs (ISC-licensed), inlined to match this codebase's
 // inline-SVG convention rather than pull in the lucide-react dependency.
@@ -976,7 +1002,9 @@ export default function SongEditor({
     x: number;
     y: number;
   } | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>("standard");
+  // Seeded from this song's saved view prefs (SongEditor is keyed by song id, so
+  // this runs per song). Defaults when none saved.
+  const [viewMode, setViewMode] = useState<ViewMode>(() => readSongView(song.id).viewMode ?? "standard");
   const sectionsRef = useRef<HTMLDivElement>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [keyPickerOpen, setKeyPickerOpen] = useState(false);
@@ -996,7 +1024,7 @@ export default function SongEditor({
   const online = useOnlineStatus();
   const [autoScrolling, setAutoScrolling] = useState(false);
   const [scrollSpeed, setScrollSpeed] = useState(3);
-  const [zoomOffset, setZoomOffset] = useState(0);
+  const [zoomOffset, setZoomOffset] = useState(() => readSongView(song.id).zoomOffset ?? 0);
   // Opt-in performance layout: "scroll" (default — continuous scroll + autoscroll,
   // unchanged) vs "fit" (fit-to-screen multi-column). Only relevant in read-only
   // performance mode; persisted per user in localStorage.
@@ -1155,6 +1183,14 @@ export default function SongEditor({
   const zoomMax = FONT_MAX_PX - lyricBase;
   const adjustZoom = (dir: 1 | -1) =>
     setZoomOffset((z) => Math.min(zoomMax, Math.max(zoomMin, z + dir * FONT_ZOOM_STEP)));
+
+  // Persist this song's column layout + font zoom whenever they change (and on
+  // mount, re-saving the loaded values is harmless). Keyed by song id, so opening
+  // it again — from the library or by navigating within a setlist — restores them.
+  useEffect(() => {
+    writeSongView(song.id, { viewMode, zoomOffset });
+  }, [song.id, viewMode, zoomOffset]);
+
   const baseFontSize = Math.min(FONT_MAX_PX, Math.max(FONT_MIN_PX, lyricBase + zoomOffset));
   // Ceiling for the fluid clamp() (the --lyric-font-size CSS var). The split-3
   // column view keeps its tighter size by lowering the ceiling; clamp then
