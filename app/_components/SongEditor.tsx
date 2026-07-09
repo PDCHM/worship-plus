@@ -185,6 +185,12 @@ type Props = {
   onReadOnlyChange?: (readOnly: boolean) => void;
   // Markup mode is a focused drawing mode; the shell hides the bottom nav while on.
   onMarkupModeChange?: (markupOn: boolean) => void;
+  // Fullscreen present-mode lifted state. SongEditor is keyed by song id, so it
+  // REMOUNTS when present mode crosses to the next setlist song — this pair keeps
+  // "presenting" alive across that remount: the parent stores it and re-seeds the
+  // fresh mount so the reader stays fullscreen. Null/absent for standalone use.
+  initialPresenting?: boolean;
+  onPresentChange?: (presenting: boolean) => void;
 };
 
 // Small chord-name input used both when adding a chord to a word and when
@@ -965,6 +971,8 @@ export default function SongEditor({
   onBack,
   onReadOnlyChange,
   onMarkupModeChange,
+  initialPresenting = false,
+  onPresentChange,
 }: Props) {
   const [moreOpen, setMoreOpen] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -1014,12 +1022,18 @@ export default function SongEditor({
   // toggles a full-bleed, chrome-free view over the SAME chart; `presentControls`
   // is the tap-revealed slim overlay (auto-hides). presentSection is the corner
   // "Verse 1" indicator. rootRef is the fullscreen target + scroll container.
-  const [presenting, setPresenting] = useState(false);
+  // Seed from the lifted prop so a cross-song remount stays in present mode.
+  const [presenting, setPresenting] = useState(initialPresenting);
   const [presentControls, setPresentControls] = useState(false);
   const [presentSection, setPresentSection] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
   const controlsTimerRef = useRef<number | null>(null);
   const tapStartRef = useRef<{ x: number; y: number; t: number } | null>(null);
+  // True only when THIS mount actually acquired the real Fullscreen API. Guards
+  // the fullscreenchange→exit handler so the exit fired by the OUTGOING song's
+  // element (during a cross-song remount) doesn't kick the incoming song out of
+  // present mode. On a crossed-in mount we never re-requested, so this stays false.
+  const enteredRealFsRef = useRef(false);
   // Metronome tempo + engine live HERE (song-view level), above the tempo popover,
   // so playback survives the panel opening/closing. The panel's play button and
   // the floating corner pill both drive this one metronome. Seeded from the song's
@@ -1513,13 +1527,14 @@ export default function SongEditor({
   const enterPresent = () => {
     setPresentControls(false);
     setPresenting(true);
+    onPresentChange?.(true);
     // Prefer the real Fullscreen API (fills the screen, hides ALL browser/app
     // chrome). Falls back to the full-viewport overlay (presenting=true styling)
     // when unavailable — e.g. iOS Safari/PWA, where requestFullscreen is limited.
     const el = rootRef.current as (HTMLDivElement & { webkitRequestFullscreen?: () => void }) | null;
     try {
-      if (el?.requestFullscreen) void el.requestFullscreen().catch(() => {});
-      else el?.webkitRequestFullscreen?.();
+      if (el?.requestFullscreen) el.requestFullscreen().then(() => { enteredRealFsRef.current = true; }).catch(() => {});
+      else if (el?.webkitRequestFullscreen) { el.webkitRequestFullscreen(); enteredRealFsRef.current = true; }
     } catch { /* overlay fallback covers it */ }
   };
   const exitPresent = () => {
@@ -1528,20 +1543,31 @@ export default function SongEditor({
       if (doc.fullscreenElement) void document.exitFullscreen().catch(() => {});
       else if (doc.webkitFullscreenElement) doc.webkitExitFullscreen?.();
     } catch { /* ignore */ }
+    enteredRealFsRef.current = false;
     setPresentControls(false);
     setPresenting(false);
+    onPresentChange?.(false);
   };
 
-  // Clean, named nav entry points — later stages (foot pedal, setlist crossing)
-  // will call these SAME functions. Stage 1: move within the current song by ~one
-  // screen. At the ends the browser simply clamps the scroll (no-op).
+  // Clean, named nav entry points — BOTH the on-screen Prev/Next and the eventual
+  // foot pedal (Stage 2) route through these, so setlist crossing works for both.
+  // Within a song: move ~one screen. At the song's END/START, if this song was
+  // opened FROM A SETLIST (setlistContext present), cross to the adjacent song —
+  // which remounts SongEditor still in present mode (see initialPresenting) at the
+  // top. Standalone songs (no setlistContext) just clamp — Stage 1 behavior.
   const goNext = () => {
     const el = rootRef.current;
-    if (el) el.scrollBy({ top: Math.round(el.clientHeight * 0.85), behavior: "smooth" });
+    if (!el) return;
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 4;
+    if (atBottom && setlistContext?.onNext) { setlistContext.onNext(); return; }
+    el.scrollBy({ top: Math.round(el.clientHeight * 0.85), behavior: "smooth" });
   };
   const goPrev = () => {
     const el = rootRef.current;
-    if (el) el.scrollBy({ top: -Math.round(el.clientHeight * 0.85), behavior: "smooth" });
+    if (!el) return;
+    const atTop = el.scrollTop <= 4;
+    if (atTop && setlistContext?.onPrev) { setlistContext.onPrev(); return; }
+    el.scrollBy({ top: -Math.round(el.clientHeight * 0.85), behavior: "smooth" });
   };
 
   // Slim controls: reveal + auto-hide after 3s; tapping the chart toggles them.
@@ -1580,7 +1606,14 @@ export default function SongEditor({
   useEffect(() => {
     if (!presenting) return;
     const doc = document as Document & { webkitFullscreenElement?: Element };
-    const onFsChange = () => { if (!doc.fullscreenElement && !doc.webkitFullscreenElement) setPresenting(false); };
+    // Only honor a fullscreen-exit event if THIS mount actually acquired real
+    // fullscreen. During a cross-song remount the outgoing element's teardown
+    // fires fullscreenchange; without this guard it would drop the incoming song
+    // (which is in overlay mode, enteredRealFsRef=false) out of present mode.
+    const onFsChange = () => {
+      if (!enteredRealFsRef.current) return;
+      if (!doc.fullscreenElement && !doc.webkitFullscreenElement) { enteredRealFsRef.current = false; setPresenting(false); onPresentChange?.(false); }
+    };
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") exitPresent(); };
     document.addEventListener("fullscreenchange", onFsChange);
     document.addEventListener("webkitfullscreenchange", onFsChange);
@@ -2651,7 +2684,12 @@ export default function SongEditor({
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
                   Prev
                 </button>
-                <span className="min-w-0 text-xs text-white/70 truncate px-2">{presentSection || " "}</span>
+                <span className="min-w-0 text-xs text-white/70 truncate px-2 text-center flex flex-col leading-tight">
+                  <span className="truncate">{presentSection || " "}</span>
+                  {setlistContext && (
+                    <span className="text-[10px] text-white/50">Song {setlistContext.currentIndex + 1} / {setlistContext.total}</span>
+                  )}
+                </span>
                 <button type="button" onClick={() => { goNext(); revealControls(); }}
                   className="flex items-center gap-1 h-10 px-3 rounded-lg hover:bg-white/10 text-sm font-medium">
                   Next
