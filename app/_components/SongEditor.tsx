@@ -1542,9 +1542,16 @@ export default function SongEditor({
     // chrome). Falls back to the full-viewport overlay (presenting=true styling)
     // when unavailable — e.g. iOS Safari/PWA, where requestFullscreen is limited.
     const el = rootRef.current as (HTMLDivElement & { webkitRequestFullscreen?: () => void }) | null;
+    // Move focus INTO the present root. In real fullscreen the OS dispatches key
+    // events to the fullscreen element (or a focused descendant); the button that
+    // triggered this is about to be hidden, so without an explicit focus, focus
+    // lands on <body> — outside the fullscreen element — and the browser swallows
+    // the arrow/space/page keys. Focus again once the fullscreen transition (which
+    // can reset focus) settles.
+    el?.focus?.();
     try {
-      if (el?.requestFullscreen) el.requestFullscreen().then(() => { enteredRealFsRef.current = true; }).catch(() => {});
-      else if (el?.webkitRequestFullscreen) { el.webkitRequestFullscreen(); enteredRealFsRef.current = true; }
+      if (el?.requestFullscreen) el.requestFullscreen().then(() => { enteredRealFsRef.current = true; el?.focus?.(); }).catch(() => {});
+      else if (el?.webkitRequestFullscreen) { el.webkitRequestFullscreen(); enteredRealFsRef.current = true; el?.focus?.(); }
     } catch { /* overlay fallback covers it */ }
   };
   const exitPresent = () => {
@@ -1646,7 +1653,14 @@ export default function SongEditor({
     };
     document.addEventListener("fullscreenchange", onFsChange);
     document.addEventListener("webkitfullscreenchange", onFsChange);
+    // ONE keydown listener, on document. The fix for real fullscreen is focus, not
+    // the target: with the present root focused (below), keydown is dispatched into
+    // the fullscreen element and BUBBLES to document. Also listening on the root too
+    // would double-fire (root listener + bubbled document listener → goNext twice).
     document.addEventListener("keydown", onKey);
+    // Focus the root so keys land in the fullscreen element. Covers re-entry and a
+    // cross-song remount where enterPresent's own focus() call didn't run.
+    rootRef.current?.focus?.();
     return () => {
       document.removeEventListener("fullscreenchange", onFsChange);
       document.removeEventListener("webkitfullscreenchange", onFsChange);
@@ -2676,10 +2690,14 @@ export default function SongEditor({
   return (
     <div
       ref={rootRef}
+      // Focusable (programmatically only, not in the tab order) so the present
+      // root can hold focus in real fullscreen and receive arrow/space/page keys;
+      // no focus ring since focus here is a plumbing detail, not a UI affordance.
+      tabIndex={presenting ? -1 : undefined}
       className={presenting
         // Fullscreen performance mode: full-bleed, its own scroll container, over
         // all chrome (fixed inset-0 also fills the real-fullscreen viewport).
-        ? "fixed inset-0 z-[9999] w-full overflow-y-auto bg-white dark:bg-slate-950"
+        ? "fixed inset-0 z-[9999] w-full overflow-y-auto bg-white dark:bg-slate-950 focus:outline-none"
         : ("relative w-full mx-auto px-4 sm:px-6 py-6 md:py-8 transition-[max-width] duration-200 " +
           // Read-only performance/view mode goes full-bleed (fills the width freed
           // by the auto-collapsed nav — important on tablet), capped at 1600px so
