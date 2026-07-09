@@ -1034,6 +1034,11 @@ export default function SongEditor({
   // element (during a cross-song remount) doesn't kick the incoming song out of
   // present mode. On a crossed-in mount we never re-requested, so this stays false.
   const enteredRealFsRef = useRef(false);
+  // Tracks the currently-mounted song id so we can detect an IN-PLACE song swap
+  // (present-mode setlist crossing keeps this instance mounted; the parent pins
+  // the React key). On a real remount this re-inits at mount, so the swap effect
+  // no-ops. See the effect below.
+  const lastSongIdRef = useRef(song.id);
   // Metronome tempo + engine live HERE (song-view level), above the tempo popover,
   // so playback survives the panel opening/closing. The panel's play button and
   // the floating corner pill both drive this one metronome. Seeded from the song's
@@ -1211,9 +1216,14 @@ export default function SongEditor({
   // Persist this song's column layout + font zoom whenever they change (and on
   // mount, re-saving the loaded values is harmless). Keyed by song id, so opening
   // it again — from the library or by navigating within a setlist — restores them.
+  // Deliberately NOT keyed on song.id: during a present-mode in-place song swap we
+  // preserve the reader's current layout for visual continuity, but must not write
+  // it into the NEXT song's stored prefs (that would mutate a song you only passed
+  // through). Genuine layout changes still write to the current song.id.
   useEffect(() => {
     writeSongView(song.id, { viewMode, zoomOffset });
-  }, [song.id, viewMode, zoomOffset]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, zoomOffset]);
 
   const baseFontSize = Math.min(FONT_MAX_PX, Math.max(FONT_MIN_PX, lyricBase + zoomOffset));
   // Ceiling for the fluid clamp() (the --lyric-font-size CSS var). The split-3
@@ -1646,6 +1656,25 @@ export default function SongEditor({
     el.addEventListener("scroll", compute, { passive: true });
     return () => el.removeEventListener("scroll", compute);
   }, [presenting, song.sections]);
+
+  // In-place song swap: when present mode crosses to another setlist song, the
+  // parent keeps THIS instance mounted (pinned key) and just hands us a new `song`.
+  // Re-seed the per-song engine state and jump to the top, but PRESERVE the
+  // reader's font size + column layout (viewMode/zoomOffset) so the slideshow
+  // doesn't reflow song-to-song. A genuine remount hits neither branch (the ref
+  // initialises to the mounted song, so the guard returns early).
+  useEffect(() => {
+    if (lastSongIdRef.current === song.id) return;
+    lastSongIdRef.current = song.id;
+    setBpm(song.bpm ?? BPM_DEFAULT);
+    setGenKey(song.key);
+    setPresentSection("");
+    setActiveFlowId(null);
+    setAutoScrolling(false);
+    const el = rootRef.current;
+    if (el) el.scrollTop = 0;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [song.id]);
 
   const update = (updater: (s: Song) => Song) =>
     onChange({ ...updater(song), updatedAt: Date.now() });

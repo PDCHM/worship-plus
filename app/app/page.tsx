@@ -452,10 +452,21 @@ export default function Home() {
   // The active editor's read-only (performance/view) state, reported up by SongEditor.
   const [editorReadOnly, setEditorReadOnly] = useState(false);
   const [editorMarkup, setEditorMarkup] = useState(false);
-  // Fullscreen present mode is lifted here (not owned by SongEditor) so it
-  // survives the editor REMOUNT when present mode crosses to the next/previous
-  // setlist song — the fresh SongEditor re-seeds from this (see initialPresenting).
+  // Fullscreen present mode is lifted here (not owned by SongEditor). Crossing to
+  // another setlist song must NOT tear down the present overlay / real-fullscreen
+  // session, so during present mode we PIN the editor's React key to the song it
+  // was entered on (presentKeyRef): subsequent song changes then swap the `song`
+  // prop IN PLACE on the same mounted instance instead of remounting.
   const [presentActive, setPresentActive] = useState(false);
+  const presentKeyRef = useRef<string | null>(null);
+  const handlePresentChange = (p: boolean) => {
+    if (p) {
+      if (presentKeyRef.current == null && view.kind === "editor") presentKeyRef.current = view.songId;
+    } else {
+      presentKeyRef.current = null;
+    }
+    setPresentActive(p);
+  };
   // Auto-collapse the nav ONLY on entering performance mode, and restore the
   // prior state on leaving — so we never fight a user who re-opens the nav while
   // playing. wasInPerfRef tracks the edge; navBeforePerfRef remembers the state.
@@ -477,7 +488,7 @@ export default function Home() {
   // Clear the reported read-only flag when no song is open, so a stale value
   // can't momentarily trip performance mode when the next editor view mounts.
   useEffect(() => {
-    if (view.kind !== "editor") { setEditorReadOnly(false); setEditorMarkup(false); setPresentActive(false); }
+    if (view.kind !== "editor") { setEditorReadOnly(false); setEditorMarkup(false); setPresentActive(false); presentKeyRef.current = null; }
   }, [view.kind]);
   const [libraryView, setLibraryView] = useState<LibraryView>("grid");
   const [dirtyIds, setDirtyIds] = useState<Set<string>>(new Set());
@@ -2429,7 +2440,7 @@ export default function Home() {
 
   const activeSong = view.kind === "editor" ? songs.find((s) => s.id === view.songId) : null;
 
-  const setlistContext = (() => {
+  const setlistNav = (() => {
     if (view.kind !== "editor" || !view.setlistId) return null;
     const folder = folders.find((f) => f.id === view.setlistId);
     if (!folder) return null;
@@ -2439,20 +2450,33 @@ export default function Home() {
       .map((fs) => fs.songId);
     const currentIndex = orderedIds.indexOf(view.songId);
     if (currentIndex === -1) return null;
-    const setlistId = folder.id;
-    return {
-      setlistId,
-      setlistName: folder.name,
-      total: orderedIds.length,
-      currentIndex,
-      onPrev: currentIndex > 0
-        ? () => openSong(orderedIds[currentIndex - 1], { setlistId })
-        : null,
-      onNext: currentIndex < orderedIds.length - 1
-        ? () => openSong(orderedIds[currentIndex + 1], { setlistId })
-        : null,
-    };
+    return { folder, orderedIds, currentIndex };
   })();
+  const setlistContext = setlistNav
+    ? {
+        setlistId: setlistNav.folder.id,
+        setlistName: setlistNav.folder.name,
+        total: setlistNav.orderedIds.length,
+        currentIndex: setlistNav.currentIndex,
+        onPrev: setlistNav.currentIndex > 0
+          ? () => openSong(setlistNav.orderedIds[setlistNav.currentIndex - 1], { setlistId: setlistNav.folder.id })
+          : null,
+        onNext: setlistNav.currentIndex < setlistNav.orderedIds.length - 1
+          ? () => openSong(setlistNav.orderedIds[setlistNav.currentIndex + 1], { setlistId: setlistNav.folder.id })
+          : null,
+      }
+    : null;
+
+  // In present mode, prefetch the adjacent setlist songs' content (cache-first
+  // when offline) so crossing to them is INSTANT — the in-place swap never hits
+  // the hydration spinner or a blank-chart flash mid-performance.
+  const presentSongId = view.kind === "editor" ? view.songId : null;
+  useEffect(() => {
+    if (!presentActive || !setlistNav) return;
+    const { orderedIds, currentIndex } = setlistNav;
+    [orderedIds[currentIndex - 1], orderedIds[currentIndex + 1]].forEach((id) => { if (id) void hydrateSong(id); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presentActive, presentSongId]);
 
   if (!authChecked || !user) return <LoadingScreen />;
   const authedUser = user;
@@ -2589,14 +2613,14 @@ export default function Home() {
               onBulkAddToSetlist={bulkAddSongsToSetlist}
             />
           )}
-          {view.kind === "editor" && activeSong && hydratingId === view.songId && activeSong.sections.length === 0 && (
+          {view.kind === "editor" && activeSong && hydratingId === view.songId && activeSong.sections.length === 0 && !presentActive && (
             <div className="flex items-center justify-center py-24">
               <div className="w-6 h-6 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
             </div>
           )}
-          {view.kind === "editor" && activeSong && !(hydratingId === view.songId && activeSong.sections.length === 0) && (
+          {view.kind === "editor" && activeSong && (presentActive || !(hydratingId === view.songId && activeSong.sections.length === 0)) && (
             <SongEditor
-              key={activeSong.id}
+              key={presentActive && presentKeyRef.current ? presentKeyRef.current : activeSong.id}
               song={activeSong}
               onChange={upsertSong}
               settings={settings}
@@ -2628,7 +2652,7 @@ export default function Home() {
               onReadOnlyChange={setEditorReadOnly}
               onMarkupModeChange={setEditorMarkup}
               initialPresenting={presentActive}
-              onPresentChange={setPresentActive}
+              onPresentChange={handlePresentChange}
               bubbleAuthors={bubbleAuthors}
               sectionStyles={sectionStyles}
               onSectionStylesChange={(next) => { sectionStylesTouched.current = true; setSectionStyles(next); }}
