@@ -1579,6 +1579,14 @@ export default function SongEditor({
     if (atTop && setlistContext?.onPrev) { setlistContext.onPrev(); return; }
     el.scrollBy({ top: -Math.round(el.clientHeight * 0.85), behavior: "smooth" });
   };
+  // The present-mode keydown listener is subscribed once per session (deps:
+  // [presenting]); route it through these refs so it always invokes the CURRENT
+  // goNext/goPrev — otherwise, after an in-place setlist crossing swapped in a new
+  // setlistContext, the listener would keep calling a stale closure.
+  const goNextRef = useRef(goNext);
+  const goPrevRef = useRef(goPrev);
+  goNextRef.current = goNext;
+  goPrevRef.current = goPrev;
 
   // Slim controls: reveal + auto-hide after 3s; tapping the chart toggles them.
   const revealControls = () => {
@@ -1624,7 +1632,18 @@ export default function SongEditor({
       if (!enteredRealFsRef.current) return;
       if (!doc.fullscreenElement && !doc.webkitFullscreenElement) { enteredRealFsRef.current = false; setPresenting(false); onPresentChange?.(false); }
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") exitPresent(); };
+    // Keyboard / page-turner navigation (desktop + Bluetooth pedals that emulate
+    // PageUp/PageDown). All routed through goNext/goPrev (scroll + setlist cross).
+    // preventDefault stops the browser also scrolling the page on Space/arrows.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { exitPresent(); return; }
+      if (e.key === "ArrowRight" || e.key === "ArrowDown" || e.key === "PageDown" || e.key === " " || e.key === "Spacebar") {
+        e.preventDefault(); goNextRef.current(); return;
+      }
+      if (e.key === "ArrowLeft" || e.key === "ArrowUp" || e.key === "PageUp") {
+        e.preventDefault(); goPrevRef.current(); return;
+      }
+    };
     document.addEventListener("fullscreenchange", onFsChange);
     document.addEventListener("webkitfullscreenchange", onFsChange);
     document.addEventListener("keydown", onKey);
@@ -2616,7 +2635,9 @@ export default function SongEditor({
 
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const onSwipeStart: React.TouchEventHandler<HTMLDivElement> = (e) => {
-    if (!setlistContext) return;
+    // Track a swipe when navigation could result: a setlist song (normal view) or
+    // ANY song in present mode (present swipe scrolls / crosses via goNext/goPrev).
+    if (!setlistContext && !presenting) return;
     const target = e.target as HTMLElement | null;
     if (target?.closest('button, input, textarea, select, [contenteditable], [data-chip-id], [data-row-song-id], [data-chord-id]')) return;
     const t = e.touches[0];
@@ -2625,14 +2646,25 @@ export default function SongEditor({
   const onSwipeEnd: React.TouchEventHandler<HTMLDivElement> = (e) => {
     const start = swipeStartRef.current;
     swipeStartRef.current = null;
-    if (!start || !setlistContext) return;
+    if (!start) return;
     const t = e.changedTouches[0];
     const dx = t.clientX - start.x;
     const dy = t.clientY - start.y;
+    // Only a clearly-HORIZONTAL swipe navigates: far enough sideways (≥50px) AND
+    // more horizontal than vertical. A mostly-vertical drag falls through here and
+    // scrolls the song normally; a tap (tiny movement) is handled by the pointer
+    // tap-toggle path. Never preventDefault, so vertical scrolling stays native.
     if (Math.abs(dx) < 50) return;
     if (Math.abs(dx) < Math.abs(dy)) return;
-    if (dx < 0) setlistContext.onNext?.();
-    else setlistContext.onPrev?.();
+    if (presenting) {
+      // Present mode: route through goNext/goPrev (in-song scroll + setlist cross).
+      if (dx < 0) goNext();
+      else goPrev();
+    } else if (setlistContext) {
+      // Normal view: setlist song crossing.
+      if (dx < 0) setlistContext.onNext?.();
+      else setlistContext.onPrev?.();
+    }
   };
 
   // Floating metronome pill: shown on songs with a tempo (or while playing), but
