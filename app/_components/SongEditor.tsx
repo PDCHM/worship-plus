@@ -1010,6 +1010,16 @@ export default function SongEditor({
   const [keyPickerOpen, setKeyPickerOpen] = useState(false);
   const [capoPickerOpen, setCapoPickerOpen] = useState(false);
   const [tempoPanelOpen, setTempoPanelOpen] = useState(false);
+  // Fullscreen performance mode (Stage 1: scroll + on-screen nav). `presenting`
+  // toggles a full-bleed, chrome-free view over the SAME chart; `presentControls`
+  // is the tap-revealed slim overlay (auto-hides). presentSection is the corner
+  // "Verse 1" indicator. rootRef is the fullscreen target + scroll container.
+  const [presenting, setPresenting] = useState(false);
+  const [presentControls, setPresentControls] = useState(false);
+  const [presentSection, setPresentSection] = useState("");
+  const rootRef = useRef<HTMLDivElement>(null);
+  const controlsTimerRef = useRef<number | null>(null);
+  const tapStartRef = useRef<{ x: number; y: number; t: number } | null>(null);
   // Metronome tempo + engine live HERE (song-view level), above the tempo popover,
   // so playback survives the panel opening/closing. The panel's play button and
   // the floating corner pill both drive this one metronome. Seeded from the song's
@@ -1498,6 +1508,111 @@ export default function SongEditor({
     setContextMenu(null);
     setViewMode(mode);
   };
+
+  // ── Fullscreen performance mode ─────────────────────────────────────────────
+  const enterPresent = () => {
+    setPresentControls(false);
+    setPresenting(true);
+    // Prefer the real Fullscreen API (fills the screen, hides ALL browser/app
+    // chrome). Falls back to the full-viewport overlay (presenting=true styling)
+    // when unavailable — e.g. iOS Safari/PWA, where requestFullscreen is limited.
+    const el = rootRef.current as (HTMLDivElement & { webkitRequestFullscreen?: () => void }) | null;
+    try {
+      if (el?.requestFullscreen) void el.requestFullscreen().catch(() => {});
+      else el?.webkitRequestFullscreen?.();
+    } catch { /* overlay fallback covers it */ }
+  };
+  const exitPresent = () => {
+    const doc = document as Document & { webkitFullscreenElement?: Element; webkitExitFullscreen?: () => void };
+    try {
+      if (doc.fullscreenElement) void document.exitFullscreen().catch(() => {});
+      else if (doc.webkitFullscreenElement) doc.webkitExitFullscreen?.();
+    } catch { /* ignore */ }
+    setPresentControls(false);
+    setPresenting(false);
+  };
+
+  // Clean, named nav entry points — later stages (foot pedal, setlist crossing)
+  // will call these SAME functions. Stage 1: move within the current song by ~one
+  // screen. At the ends the browser simply clamps the scroll (no-op).
+  const goNext = () => {
+    const el = rootRef.current;
+    if (el) el.scrollBy({ top: Math.round(el.clientHeight * 0.85), behavior: "smooth" });
+  };
+  const goPrev = () => {
+    const el = rootRef.current;
+    if (el) el.scrollBy({ top: -Math.round(el.clientHeight * 0.85), behavior: "smooth" });
+  };
+
+  // Slim controls: reveal + auto-hide after 3s; tapping the chart toggles them.
+  const revealControls = () => {
+    setPresentControls(true);
+    if (controlsTimerRef.current != null) clearTimeout(controlsTimerRef.current);
+    controlsTimerRef.current = window.setTimeout(() => setPresentControls(false), 3000);
+  };
+  const toggleControls = () => {
+    if (presentControls) {
+      setPresentControls(false);
+      if (controlsTimerRef.current != null) clearTimeout(controlsTimerRef.current);
+    } else {
+      revealControls();
+    }
+  };
+  // Distinguish a clean TAP (toggles controls) from a scroll/drag (scrolls the
+  // song): a scroll fires pointercancel (cleared), a tap fires pointerup with
+  // little movement over a short time.
+  const onPresentPointerDown = (e: React.PointerEvent) => {
+    if (!presenting) return;
+    tapStartRef.current = { x: e.clientX, y: e.clientY, t: Date.now() };
+  };
+  const onPresentPointerUp = (e: React.PointerEvent) => {
+    const s = tapStartRef.current;
+    tapStartRef.current = null;
+    if (!presenting || !s) return;
+    if (Math.abs(e.clientX - s.x) < 10 && Math.abs(e.clientY - s.y) < 10 && Date.now() - s.t < 350) {
+      toggleControls();
+    }
+  };
+  const onPresentPointerCancel = () => { tapStartRef.current = null; };
+
+  // Exit when the browser leaves fullscreen (Esc / OS gesture); also Esc directly
+  // for the overlay fallback (where no fullscreenchange fires).
+  useEffect(() => {
+    if (!presenting) return;
+    const doc = document as Document & { webkitFullscreenElement?: Element };
+    const onFsChange = () => { if (!doc.fullscreenElement && !doc.webkitFullscreenElement) setPresenting(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") exitPresent(); };
+    document.addEventListener("fullscreenchange", onFsChange);
+    document.addEventListener("webkitfullscreenchange", onFsChange);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFsChange);
+      document.removeEventListener("webkitfullscreenchange", onFsChange);
+      document.removeEventListener("keydown", onKey);
+      if (controlsTimerRef.current != null) clearTimeout(controlsTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presenting]);
+
+  // Corner section indicator: the last section whose top has passed a reference
+  // line near the top of the present viewport.
+  useEffect(() => {
+    if (!presenting) return;
+    const el = rootRef.current;
+    if (!el) return;
+    const compute = () => {
+      const refLine = el.getBoundingClientRect().top + 96;
+      let bestTop = -Infinity, label = "";
+      for (const [id, secEl] of sectionRefs.current) {
+        const top = secEl.getBoundingClientRect().top;
+        if (top <= refLine && top > bestTop) { bestTop = top; label = song.sections.find((s) => s.id === id)?.label ?? ""; }
+      }
+      setPresentSection(label);
+    };
+    compute();
+    el.addEventListener("scroll", compute, { passive: true });
+    return () => el.removeEventListener("scroll", compute);
+  }, [presenting, song.sections]);
 
   const update = (updater: (s: Song) => Song) =>
     onChange({ ...updater(song), updatedAt: Date.now() });
@@ -2465,30 +2580,96 @@ export default function SongEditor({
   const showMetronomePill = settings.showMetronomePill && (song.bpm != null || metronome.playing);
 
   return (
-    <div className={"relative w-full mx-auto px-4 sm:px-6 py-6 md:py-8 transition-[max-width] duration-200 " +
-        // Read-only performance/view mode goes full-bleed (fills the width freed
-        // by the auto-collapsed nav — important on tablet), capped at 1600px so
-        // lines don't stretch absurdly on very wide desktop monitors. Edit mode
-        // keeps the narrower, comfortable editing width.
-        (readOnly ? "max-w-[1600px]" : "max-w-5xl")}
-      style={{
-        "--lyric-font-size": `${lyricCeiling}px`,
-        // When the pill is visible, pad the bottom so the last lyric/section
-        // scrolls clear of the fixed pill instead of hiding behind it.
-        ...(showMetronomePill ? { paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 7.5rem)" } : {}),
-      } as React.CSSProperties}
+    <div
+      ref={rootRef}
+      className={presenting
+        // Fullscreen performance mode: full-bleed, its own scroll container, over
+        // all chrome (fixed inset-0 also fills the real-fullscreen viewport).
+        ? "fixed inset-0 z-[9999] w-full overflow-y-auto bg-white dark:bg-slate-950"
+        : ("relative w-full mx-auto px-4 sm:px-6 py-6 md:py-8 transition-[max-width] duration-200 " +
+          // Read-only performance/view mode goes full-bleed (fills the width freed
+          // by the auto-collapsed nav — important on tablet), capped at 1600px so
+          // lines don't stretch absurdly on very wide desktop monitors. Edit mode
+          // keeps the narrower, comfortable editing width.
+          (readOnly ? "max-w-[1600px]" : "max-w-5xl"))}
+      style={presenting
+        ? {
+            "--lyric-font-size": `${lyricCeiling}px`,
+            paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.75rem)",
+            paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)",
+            paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.75rem)",
+            paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.75rem)",
+          } as React.CSSProperties
+        : {
+            "--lyric-font-size": `${lyricCeiling}px`,
+            // When the pill is visible, pad the bottom so the last lyric/section
+            // scrolls clear of the fixed pill instead of hiding behind it.
+            ...(showMetronomePill ? { paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 7.5rem)" } : {}),
+          } as React.CSSProperties}
       onTouchStart={onSwipeStart}
       onTouchEnd={onSwipeEnd}
       onTouchCancel={() => { swipeStartRef.current = null; }}
+      onPointerDown={onPresentPointerDown}
+      onPointerUp={onPresentPointerUp}
+      onPointerCancel={onPresentPointerCancel}
     >
+      {/* ── Fullscreen performance-mode overlay UI (over the same chart) ── */}
+      {presenting && (
+        <>
+          {/* Corner section indicator — small, unobtrusive, never blocks a tap. */}
+          {presentSection && (
+            <div className="fixed z-[1] pointer-events-none rounded-full bg-slate-900/70 dark:bg-slate-100/80 text-white dark:text-slate-900 text-xs font-semibold px-2.5 py-1 backdrop-blur-sm shadow"
+              style={{ top: "calc(env(safe-area-inset-top, 0px) + 0.5rem)", left: "calc(env(safe-area-inset-left, 0px) + 0.5rem)" }}>
+              {presentSection}
+            </div>
+          )}
+          {presentControls && (
+            <>
+              {/* Top bar: Exit · title · columns quick-action. stopPropagation so
+                  tapping a control does its action, not toggle-controls. */}
+              <div onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}
+                className="fixed inset-x-0 top-0 z-[2] flex items-center gap-2 bg-slate-900/85 text-white backdrop-blur-md"
+                style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.4rem)", paddingBottom: "0.4rem", paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.6rem)", paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.6rem)" }}>
+                <button type="button" onClick={exitPresent}
+                  className="flex items-center gap-0.5 h-9 pl-1 pr-2.5 rounded-lg hover:bg-white/10 text-sm font-medium shrink-0">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                  Exit
+                </button>
+                <span className="flex-1 min-w-0 text-center text-sm font-semibold truncate">{song.title || "Untitled Song"}</span>
+                <button type="button" title="Column layout" aria-label="Cycle column layout"
+                  onClick={() => { switchView(viewMode === "standard" ? "split-2" : viewMode === "split-2" ? "split-3" : "standard"); revealControls(); }}
+                  className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-white/10 shrink-0">
+                  <svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="8" height="18" rx="1.5"/><rect x="13" y="3" width="8" height="18" rx="1.5"/></svg>
+                </button>
+              </div>
+              {/* Bottom bar: Prev · position · Next. */}
+              <div onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}
+                className="fixed inset-x-0 bottom-0 z-[2] flex items-center justify-between gap-2 bg-slate-900/85 text-white backdrop-blur-md"
+                style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.4rem)", paddingTop: "0.4rem", paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.6rem)", paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.6rem)" }}>
+                <button type="button" onClick={() => { goPrev(); revealControls(); }}
+                  className="flex items-center gap-1 h-10 px-3 rounded-lg hover:bg-white/10 text-sm font-medium">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+                  Prev
+                </button>
+                <span className="min-w-0 text-xs text-white/70 truncate px-2">{presentSection || " "}</span>
+                <button type="button" onClick={() => { goNext(); revealControls(); }}
+                  className="flex items-center gap-1 h-10 px-3 rounded-lg hover:bg-white/10 text-sm font-medium">
+                  Next
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+              </div>
+            </>
+          )}
+        </>
+      )}
       {/* Persistent metronome control — fixed bottom-LEFT, reachable at any scroll
           position without reopening the tempo panel. Lifts above the offline
           indicator (same corner) when it's showing. Both view + edit mode.
           Hidden entirely when the user's "Show metronome pill" setting is off. */}
-      {showMetronomePill && (
+      {!presenting && showMetronomePill && (
         <MetronomePill bpm={bpm} playing={metronome.playing} onToggle={metronome.toggle} raised={offlineIndicatorActive} />
       )}
-      {setlistContext && (
+      {!presenting && setlistContext && (
         <div className="mb-3 -mt-2 print:hidden">
           <div className="flex items-center justify-between gap-2 rounded-lg bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 px-3 py-1.5">
             <div className="text-xs text-indigo-700 dark:text-indigo-300 truncate min-w-0 flex-1">
@@ -2522,7 +2703,7 @@ export default function SongEditor({
         ))}
       </datalist>
 
-      <div className="mb-5">
+      <div className={"mb-5" + (presenting ? " hidden" : "")}>
         {editingTitle && !readOnly ? (
           <input
             autoFocus
@@ -2700,13 +2881,17 @@ export default function SongEditor({
         </div>
       </div>
 
-      <div className="mb-5 flex items-center justify-between gap-3 flex-wrap print:hidden">
+      <div className={"mb-5 flex items-center justify-between gap-3 flex-wrap print:hidden" + (presenting ? " hidden" : "")}>
         <div className="flex items-center gap-2">
           <button type="button" onClick={onBack} title="Back" aria-label="Back"
             className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
           </button>
           <ViewToggle viewMode={viewMode} onChange={switchView} />
+          <button type="button" onClick={enterPresent} title="Fullscreen performance mode" aria-label="Fullscreen performance mode"
+            className="w-9 h-9 shrink-0 rounded-lg flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+          </button>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
           {canGenerateChords && (
@@ -2817,17 +3002,19 @@ export default function SongEditor({
         </div>
       </div>
 
-      <SongFlowBar
-        sections={song.sections}
-        sectionStyles={sectionStyles}
-        activeId={activeFlowId}
-        readOnly={readOnly}
-        onScrollTo={scrollToSection}
-        onReorder={reorderSections}
-        onRename={renameSection}
-        onDuplicate={duplicateSection}
-        onDelete={deleteSection}
-      />
+      {!presenting && (
+        <SongFlowBar
+          sections={song.sections}
+          sectionStyles={sectionStyles}
+          activeId={activeFlowId}
+          readOnly={readOnly}
+          onScrollTo={scrollToSection}
+          onReorder={reorderSections}
+          onRename={renameSection}
+          onDuplicate={duplicateSection}
+          onDelete={deleteSection}
+        />
+      )}
 
       {stylesPanelOpen && (
         <SectionStylesPanel
@@ -3503,7 +3690,7 @@ export default function SongEditor({
       </div>
 
       {/* Feature 3 — chord progression info card, shown after AI generation. */}
-      {progressionInfo && (
+      {!presenting && progressionInfo && (
         <div className="mt-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 px-4 py-3 print:hidden">
           <div className="flex items-center justify-between gap-3 mb-2">
             <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
@@ -3527,19 +3714,21 @@ export default function SongEditor({
         </div>
       )}
 
-      <SongReferences
-        songId={song.id}
-        links={songLinks}
-        canEdit={canEdit}
-        online={online}
-        onAdd={onAddLink}
-        onUpdate={onUpdateLink}
-        onDelete={onDeleteLink}
-        onReorder={onReorderLinks}
-        showToast={showToast}
-      />
+      {!presenting && (
+        <SongReferences
+          songId={song.id}
+          links={songLinks}
+          canEdit={canEdit}
+          online={online}
+          onAdd={onAddLink}
+          onUpdate={onUpdateLink}
+          onDelete={onDeleteLink}
+          onReorder={onReorderLinks}
+          showToast={showToast}
+        />
+      )}
 
-      <div className="mt-5 text-xs text-slate-500 dark:text-slate-400 px-1 leading-relaxed space-y-1 print:hidden">
+      <div className={"mt-5 text-xs text-slate-500 dark:text-slate-400 px-1 leading-relaxed space-y-1 print:hidden" + (presenting ? " hidden" : "")}>
         {readOnly ? (
           <p>
             Read-only{" "}
