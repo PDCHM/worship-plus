@@ -2584,13 +2584,7 @@ export default function Home() {
           onCreateSetlist={(name) => createFolder(name, "setlist", null)}
           onCreateTeam={gatedCreateTeam}
         />
-        {/* overflow-x-CLIP (not -hidden): still contains any wide-chart horizontal
-            overflow, but — unlike `hidden`, which computes overflow-y to `auto` and
-            makes <main> a scroll container — `clip` leaves <main> a non-scroll box.
-            That keeps the document the vertical scroller so `position: sticky`
-            descendants (the performance-view song-title strip) pin against the
-            viewport instead of being trapped by a non-scrolling ancestor. */}
-        <main className={"w-full overflow-x-clip pb-20 md:pb-0 transition-[padding] duration-200 " + (navCollapsed ? "md:pl-0" : "md:pl-[240px]")}>
+        <main className={"w-full overflow-x-hidden pb-20 md:pb-0 transition-[padding] duration-200 " + (navCollapsed ? "md:pl-0" : "md:pl-[240px]")}>
           {view.kind === "library" && !songsLoaded && (
             <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 py-12 text-sm text-slate-400 dark:text-slate-500">
               Loading library…

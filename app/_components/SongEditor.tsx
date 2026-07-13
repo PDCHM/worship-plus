@@ -3143,21 +3143,22 @@ export default function SongEditor({
         />
       )}
 
-      {/* Always-visible song title — position:sticky so it stays pinned at ANY
-          scroll position (the bug: once scrolled past the first section the title
-          was gone). Shown in performance view AND fullscreen present mode; the big
-          header above scrolls away, this slim strip does not. Opaque, surface-
-          matched background + a stacking context (z) so chords scrolling beneath
-          never bleed through the text. Reads the live `song`, so it updates when
-          present mode crosses to the next/previous setlist song. Sticky offset is
-          mode-specific: just below the 56px sticky app header in the normal view;
-          at the safe-area top inside the fullscreen scroll container in present
-          mode (kept under the tap-revealed control bars, which sit at z-[2]). */}
-      {(readOnly || presenting) && (
+      {/* Persistent song title — PRESENT MODE ONLY. The normal performance view
+          already shows the title in its header block above (line ~2823), so adding
+          this there duplicated it: the big header sits in normal flow and scrolls
+          away, so on first render the reader saw two titles stacked top-left, then
+          just this one after scrolling. In fullscreen present mode that header is
+          hidden, so a persistent title IS needed here — position:sticky keeps it
+          pinned as the chart scrolls beneath (rootRef is the scroll container).
+          Background matches the present-mode surface (white / slate-950), so the
+          strip itself is invisible — only the muted title text shows — while still
+          preventing chords from bleeding through as they scroll under it. Reads the
+          live `song`, so it updates when present mode crosses setlist songs. Sits at
+          the safe-area top, under the tap-revealed control bars (z-[2]). */}
+      {presenting && (
         <div
-          className={"sticky z-[1] w-full py-1.5 px-8 text-center text-sm font-semibold text-slate-500 dark:text-slate-400 truncate " +
-            (presenting ? "bg-white dark:bg-slate-950" : "bg-slate-50 dark:bg-slate-950")}
-          style={{ top: presenting ? "calc(env(safe-area-inset-top, 0px) + 0.25rem)" : "3.5rem" }}
+          className="sticky z-[1] w-full py-1.5 px-8 text-center text-sm font-semibold text-slate-500 dark:text-slate-400 truncate bg-white dark:bg-slate-950"
+          style={{ top: "calc(env(safe-area-inset-top, 0px) + 0.25rem)" }}
         >
           {song.title || "Untitled Song"}
         </div>
