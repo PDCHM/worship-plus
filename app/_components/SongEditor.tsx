@@ -2728,13 +2728,10 @@ export default function SongEditor({
       {/* ── Fullscreen performance-mode overlay UI (over the same chart) ── */}
       {presenting && (
         <>
-          {/* Corner section indicator — small, unobtrusive, never blocks a tap. */}
-          {presentSection && (
-            <div className="fixed z-[1] pointer-events-none rounded-full bg-slate-900/70 dark:bg-slate-100/80 text-white dark:text-slate-900 text-xs font-semibold px-2.5 py-1 backdrop-blur-sm shadow"
-              style={{ top: "calc(env(safe-area-inset-top, 0px) + 0.5rem)", left: "calc(env(safe-area-inset-left, 0px) + 0.5rem)" }}>
-              {presentSection}
-            </div>
-          )}
+          {/* (Removed the fixed top-left "corner section indicator" pill — it was a
+              dark rounded tab in the top-left of present mode. The current section
+              is still shown in the bottom control bar and by the chart's own section
+              headers, so nothing is lost.) */}
           {presentControls && (
             <>
               {/* Top bar: Exit · title · columns quick-action. stopPropagation so
