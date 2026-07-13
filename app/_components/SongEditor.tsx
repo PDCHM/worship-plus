@@ -2729,7 +2729,9 @@ export default function SongEditor({
       style={presenting
         ? {
             "--lyric-font-size": `${lyricCeiling}px`,
-            paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.75rem)",
+            // Clear the persistent top header (title + always-visible section
+            // flow-bar), which is fixed at the top of the present view.
+            paddingTop: "calc(env(safe-area-inset-top, 0px) + 5rem)",
             paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)",
             paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.75rem)",
             paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.75rem)",
@@ -2750,75 +2752,73 @@ export default function SongEditor({
       {/* ── Fullscreen performance-mode overlay UI (over the same chart) ── */}
       {presenting && (
         <>
-          {/* (Removed the fixed top-left "corner section indicator" pill — it was a
-              dark rounded tab in the top-left of present mode. The current section
-              is still shown in the bottom control bar and by the chart's own section
-              headers, so nothing is lost.) */}
+          {/* Persistent top header — song title + read-only section flow-bar,
+              ALWAYS visible (NOT tied to tap-to-reveal). Exit + column-layout
+              buttons appear only when controls are revealed; the chips never hide.
+              stopPropagation so tapping a chip/control navigates rather than
+              toggling controls. Subtle surface background (matches the chart, never
+              a dark tab). The root's paddingTop clears this fixed header. */}
+          <div onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}
+            className="fixed inset-x-0 top-0 z-[2] flex flex-col gap-1 bg-white/85 dark:bg-slate-950/85 backdrop-blur-md border-b border-slate-200/70 dark:border-slate-800/70"
+            style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.35rem)", paddingBottom: "0.3rem", paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.6rem)", paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.6rem)" }}>
+            <div className="flex items-center gap-2 min-h-[1.75rem]">
+              {presentControls ? (
+                <button type="button" onClick={exitPresent}
+                  className="flex items-center gap-0.5 h-7 pl-1 pr-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60 text-sm font-medium shrink-0">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                  Exit
+                </button>
+              ) : <span className="w-7 shrink-0" aria-hidden />}
+              <span className="flex-1 min-w-0 text-center text-sm font-semibold truncate text-slate-500 dark:text-slate-400">{song.title || "Untitled Song"}</span>
+              {presentControls ? (
+                <button type="button" title="Column layout" aria-label="Cycle column layout"
+                  onClick={() => { switchView(viewMode === "standard" ? "split-2" : viewMode === "split-2" ? "split-3" : "standard"); revealControls(); }}
+                  className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60 shrink-0">
+                  <svg width="15" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="8" height="18" rx="1.5"/><rect x="13" y="3" width="8" height="18" rx="1.5"/></svg>
+                </button>
+              ) : <span className="w-7 shrink-0" aria-hidden />}
+            </div>
+            {/* Read-only section flow-bar — navigation only. Reuses the shared
+                scrollToSection (sections carry a present-mode scroll-margin-top so
+                the target lands below this header). Updates automatically when
+                present mode crosses to the next setlist song (song.sections change). */}
+            {song.sections.length > 0 && (
+              <SongFlowBar
+                compact
+                readOnly
+                sections={song.sections}
+                sectionStyles={sectionStyles}
+                activeId={activeFlowId}
+                onScrollTo={scrollToSection}
+                onReorder={reorderSections}
+                onRename={renameSection}
+                onDuplicate={duplicateSection}
+                onDelete={deleteSection}
+              />
+            )}
+          </div>
+          {/* Bottom bar: Prev · position · Next — revealed on tap, auto-hides. */}
           {presentControls && (
-            <>
-              {/* Top bar: [Exit · title · columns] row, then a read-only section
-                  flow-bar row (chips jump to sections). Both live in ONE fixed
-                  container so the chips sit cleanly under the top row and reveal /
-                  auto-hide together with the rest of the controls. stopPropagation
-                  so tapping a control/chip does its action, not toggle-controls. */}
-              <div onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}
-                className="fixed inset-x-0 top-0 z-[2] flex flex-col gap-1 bg-slate-900/85 text-white backdrop-blur-md"
-                style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.4rem)", paddingBottom: "0.35rem", paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.6rem)", paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.6rem)" }}>
-                <div className="flex items-center gap-2">
-                  <button type="button" onClick={exitPresent}
-                    className="flex items-center gap-0.5 h-9 pl-1 pr-2.5 rounded-lg hover:bg-white/10 text-sm font-medium shrink-0">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                    Exit
-                  </button>
-                  <span className="flex-1 min-w-0 text-center text-sm font-semibold truncate">{song.title || "Untitled Song"}</span>
-                  <button type="button" title="Column layout" aria-label="Cycle column layout"
-                    onClick={() => { switchView(viewMode === "standard" ? "split-2" : viewMode === "split-2" ? "split-3" : "standard"); revealControls(); }}
-                    className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-white/10 shrink-0">
-                    <svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="8" height="18" rx="1.5"/><rect x="13" y="3" width="8" height="18" rx="1.5"/></svg>
-                  </button>
-                </div>
-                {/* Read-only section flow-bar — navigation only (jumps to a section
-                    in the current song via the shared scrollToSection). Reveals a
-                    tap-reset of the auto-hide timer so chip-tapping doesn't dismiss
-                    the controls. Updates automatically when present mode crosses to
-                    the next setlist song (song.sections changes → re-renders). */}
-                {song.sections.length > 0 && (
-                  <SongFlowBar
-                    compact
-                    readOnly
-                    sections={song.sections}
-                    sectionStyles={sectionStyles}
-                    activeId={activeFlowId}
-                    onScrollTo={(id) => { scrollToSection(id); revealControls(); }}
-                    onReorder={reorderSections}
-                    onRename={renameSection}
-                    onDuplicate={duplicateSection}
-                    onDelete={deleteSection}
-                  />
+            <div onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}
+              className="fixed inset-x-0 bottom-0 z-[2] flex items-center justify-between gap-2 bg-slate-900/85 text-white backdrop-blur-md"
+              style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.4rem)", paddingTop: "0.4rem", paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.6rem)", paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.6rem)" }}>
+              <button type="button" onClick={() => { goPrev(); revealControls(); }}
+                className="flex items-center gap-1 h-10 px-3 rounded-lg hover:bg-white/10 text-sm font-medium">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+                Prev
+              </button>
+              <span className="min-w-0 text-xs text-white/70 truncate px-2 text-center flex flex-col leading-tight">
+                <span className="truncate">{presentSection || " "}</span>
+                {setlistContext && (
+                  <span className="text-[10px] text-white/50">Song {setlistContext.currentIndex + 1} / {setlistContext.total}</span>
                 )}
-              </div>
-              {/* Bottom bar: Prev · position · Next. */}
-              <div onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}
-                className="fixed inset-x-0 bottom-0 z-[2] flex items-center justify-between gap-2 bg-slate-900/85 text-white backdrop-blur-md"
-                style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.4rem)", paddingTop: "0.4rem", paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.6rem)", paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.6rem)" }}>
-                <button type="button" onClick={() => { goPrev(); revealControls(); }}
-                  className="flex items-center gap-1 h-10 px-3 rounded-lg hover:bg-white/10 text-sm font-medium">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
-                  Prev
-                </button>
-                <span className="min-w-0 text-xs text-white/70 truncate px-2 text-center flex flex-col leading-tight">
-                  <span className="truncate">{presentSection || " "}</span>
-                  {setlistContext && (
-                    <span className="text-[10px] text-white/50">Song {setlistContext.currentIndex + 1} / {setlistContext.total}</span>
-                  )}
-                </span>
-                <button type="button" onClick={() => { goNext(); revealControls(); }}
-                  className="flex items-center gap-1 h-10 px-3 rounded-lg hover:bg-white/10 text-sm font-medium">
-                  Next
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                </button>
-              </div>
-            </>
+              </span>
+              <button type="button" onClick={() => { goNext(); revealControls(); }}
+                className="flex items-center gap-1 h-10 px-3 rounded-lg hover:bg-white/10 text-sm font-medium">
+                Next
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+            </div>
           )}
         </>
       )}
@@ -3219,26 +3219,9 @@ export default function SongEditor({
         />
       )}
 
-      {/* Persistent song title — PRESENT MODE ONLY. The normal performance view
-          already shows the title in its header block above (line ~2823), so adding
-          this there duplicated it: the big header sits in normal flow and scrolls
-          away, so on first render the reader saw two titles stacked top-left, then
-          just this one after scrolling. In fullscreen present mode that header is
-          hidden, so a persistent title IS needed here — position:sticky keeps it
-          pinned as the chart scrolls beneath (rootRef is the scroll container).
-          Background matches the present-mode surface (white / slate-950), so the
-          strip itself is invisible — only the muted title text shows — while still
-          preventing chords from bleeding through as they scroll under it. Reads the
-          live `song`, so it updates when present mode crosses setlist songs. Sits at
-          the safe-area top, under the tap-revealed control bars (z-[2]). */}
-      {presenting && (
-        <div
-          className="sticky z-[1] w-full py-1.5 px-8 text-center text-sm font-semibold text-slate-500 dark:text-slate-400 truncate bg-white dark:bg-slate-950"
-          style={{ top: "calc(env(safe-area-inset-top, 0px) + 0.25rem)" }}
-        >
-          {song.title || "Untitled Song"}
-        </div>
-      )}
+      {/* (The present-mode song title now lives in the persistent top header above,
+          alongside the always-visible section flow-bar — so the old sticky title
+          strip here was removed to avoid a duplicate title.) */}
 
       <div
         ref={fitWrapRef}
@@ -3289,7 +3272,10 @@ export default function SongEditor({
                 }}
                 data-section-id={section.id}
                 className={sectionClassName}
-                style={sectionInColumnStyle}
+                // In present mode, offset section-jump targets below the fixed top
+                // header (title + flow-bar) so scrollToSection doesn't land them
+                // underneath it. No effect in normal view.
+                style={presenting ? { ...sectionInColumnStyle, scrollMarginTop: "calc(env(safe-area-inset-top, 0px) + 5rem)" } : sectionInColumnStyle}
               >
                 <div className="flex items-center gap-2 mb-3 flex-wrap">
                   {editingSection === section.id && !readOnly ? (
