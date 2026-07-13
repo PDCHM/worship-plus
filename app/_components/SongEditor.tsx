@@ -402,7 +402,7 @@ function hexAlpha(hex: string, alpha: number): string {
 }
 
 function SongFlowBar({
-  sections, sectionStyles, activeId, readOnly, onScrollTo, onReorder, onRename, onDuplicate, onDelete,
+  sections, sectionStyles, activeId, readOnly, onScrollTo, onReorder, onRename, onDuplicate, onDelete, compact = false,
 }: {
   sections: Section[];
   sectionStyles: SectionStyles;
@@ -413,6 +413,9 @@ function SongFlowBar({
   onRename: (id: string, label: string) => void;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
+  // Drops the outer bottom margin — used when embedded in the present-mode
+  // revealed-controls top bar (which supplies its own spacing).
+  compact?: boolean;
 }) {
   const [dragId, setDragId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -558,7 +561,7 @@ function SongFlowBar({
   };
 
   return (
-    <div className="mb-4 print:hidden">
+    <div className={(compact ? "" : "mb-4") + " print:hidden"}>
       <div ref={containerRef} className="flex items-center gap-1.5 overflow-x-auto pb-1.5 -mx-1 px-1">
         {sections.map((s, i) => {
           const isActive = s.id === activeId;
@@ -2753,22 +2756,46 @@ export default function SongEditor({
               headers, so nothing is lost.) */}
           {presentControls && (
             <>
-              {/* Top bar: Exit · title · columns quick-action. stopPropagation so
-                  tapping a control does its action, not toggle-controls. */}
+              {/* Top bar: [Exit · title · columns] row, then a read-only section
+                  flow-bar row (chips jump to sections). Both live in ONE fixed
+                  container so the chips sit cleanly under the top row and reveal /
+                  auto-hide together with the rest of the controls. stopPropagation
+                  so tapping a control/chip does its action, not toggle-controls. */}
               <div onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}
-                className="fixed inset-x-0 top-0 z-[2] flex items-center gap-2 bg-slate-900/85 text-white backdrop-blur-md"
-                style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.4rem)", paddingBottom: "0.4rem", paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.6rem)", paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.6rem)" }}>
-                <button type="button" onClick={exitPresent}
-                  className="flex items-center gap-0.5 h-9 pl-1 pr-2.5 rounded-lg hover:bg-white/10 text-sm font-medium shrink-0">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                  Exit
-                </button>
-                <span className="flex-1 min-w-0 text-center text-sm font-semibold truncate">{song.title || "Untitled Song"}</span>
-                <button type="button" title="Column layout" aria-label="Cycle column layout"
-                  onClick={() => { switchView(viewMode === "standard" ? "split-2" : viewMode === "split-2" ? "split-3" : "standard"); revealControls(); }}
-                  className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-white/10 shrink-0">
-                  <svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="8" height="18" rx="1.5"/><rect x="13" y="3" width="8" height="18" rx="1.5"/></svg>
-                </button>
+                className="fixed inset-x-0 top-0 z-[2] flex flex-col gap-1 bg-slate-900/85 text-white backdrop-blur-md"
+                style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.4rem)", paddingBottom: "0.35rem", paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.6rem)", paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.6rem)" }}>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={exitPresent}
+                    className="flex items-center gap-0.5 h-9 pl-1 pr-2.5 rounded-lg hover:bg-white/10 text-sm font-medium shrink-0">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                    Exit
+                  </button>
+                  <span className="flex-1 min-w-0 text-center text-sm font-semibold truncate">{song.title || "Untitled Song"}</span>
+                  <button type="button" title="Column layout" aria-label="Cycle column layout"
+                    onClick={() => { switchView(viewMode === "standard" ? "split-2" : viewMode === "split-2" ? "split-3" : "standard"); revealControls(); }}
+                    className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-white/10 shrink-0">
+                    <svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="8" height="18" rx="1.5"/><rect x="13" y="3" width="8" height="18" rx="1.5"/></svg>
+                  </button>
+                </div>
+                {/* Read-only section flow-bar — navigation only (jumps to a section
+                    in the current song via the shared scrollToSection). Reveals a
+                    tap-reset of the auto-hide timer so chip-tapping doesn't dismiss
+                    the controls. Updates automatically when present mode crosses to
+                    the next setlist song (song.sections changes → re-renders). */}
+                {song.sections.length > 0 && (
+                  <SongFlowBar
+                    compact
+                    readOnly
+                    sections={song.sections}
+                    sectionStyles={sectionStyles}
+                    activeId={activeFlowId}
+                    onScrollTo={(id) => { scrollToSection(id); revealControls(); }}
+                    onReorder={reorderSections}
+                    onRename={renameSection}
+                    onDuplicate={duplicateSection}
+                    onDelete={deleteSection}
+                  />
+                )}
               </div>
               {/* Bottom bar: Prev · position · Next. */}
               <div onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}
