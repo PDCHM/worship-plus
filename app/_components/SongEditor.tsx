@@ -975,6 +975,9 @@ export default function SongEditor({
   onPresentChange,
 }: Props) {
   const [moreOpen, setMoreOpen] = useState(false);
+  // Header 🔗 references dropdown (relocated from the old bottom section).
+  const [refsOpen, setRefsOpen] = useState(false);
+  const refsMenuRef = useRef<HTMLDivElement>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   // Split Save button dropdown + the "Save as copy" title modal.
   const [saveMenuOpen, setSaveMenuOpen] = useState(false);
@@ -1708,6 +1711,22 @@ export default function SongEditor({
     if (el) el.scrollTop = 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [song.id]);
+
+  // Close the header 🔗 references popover on outside-tap or Esc. Only mounted
+  // while open, so it never affects the chart underneath.
+  useEffect(() => {
+    if (!refsOpen) return;
+    const onDown = (e: PointerEvent) => {
+      if (refsMenuRef.current && !refsMenuRef.current.contains(e.target as Node)) setRefsOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setRefsOpen(false); };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [refsOpen]);
 
   const update = (updater: (s: Song) => Song) =>
     onChange({ ...updater(song), updatedAt: Date.now() });
@@ -3052,6 +3071,39 @@ export default function SongEditor({
               <HighlighterIcon />
             </button>
           )}
+          {/* References 🔗 — badge with the link count when present; muted (add-only)
+              for owner/editor when there are none; hidden entirely for members with
+              no links to view. Tapping toggles a dropdown popover anchored below. */}
+          {(songLinks.length > 0 || canEdit) && (
+            <div ref={refsMenuRef} className="relative">
+              <button type="button" onClick={() => setRefsOpen((o) => !o)}
+                title="References" aria-label="References" aria-haspopup="menu" aria-expanded={refsOpen}
+                className={"relative h-9 w-9 rounded-lg flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors " +
+                  (songLinks.length > 0 ? "text-slate-600 dark:text-slate-300" : "text-slate-400 dark:text-slate-500")}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                {songLinks.length > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-indigo-600 text-white text-[10px] font-bold leading-none flex items-center justify-center">{songLinks.length}</span>
+                )}
+              </button>
+              {refsOpen && (
+                <div role="menu"
+                  className="absolute right-0 top-full mt-1 z-40 w-80 max-w-[88vw] max-h-[70vh] overflow-y-auto rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/20 p-3">
+                  <SongReferences
+                    variant="popover"
+                    songId={song.id}
+                    links={songLinks}
+                    canEdit={canEdit}
+                    online={online}
+                    onAdd={onAddLink}
+                    onUpdate={onUpdateLink}
+                    onDelete={onDeleteLink}
+                    onReorder={onReorderLinks}
+                    showToast={showToast}
+                  />
+                </div>
+              )}
+            </div>
+          )}
           <button type="button" onClick={() => setMoreOpen(true)} title="More" aria-label="More actions"
             className="h-9 w-9 rounded-lg flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
@@ -3849,19 +3901,7 @@ export default function SongEditor({
         </div>
       )}
 
-      {!presenting && (
-        <SongReferences
-          songId={song.id}
-          links={songLinks}
-          canEdit={canEdit}
-          online={online}
-          onAdd={onAddLink}
-          onUpdate={onUpdateLink}
-          onDelete={onDeleteLink}
-          onReorder={onReorderLinks}
-          showToast={showToast}
-        />
-      )}
+      {/* References moved to the header 🔗 button + popover (above). */}
 
       <div className={"mt-5 text-xs text-slate-500 dark:text-slate-400 px-1 leading-relaxed space-y-1 print:hidden" + (presenting ? " hidden" : "")}>
         {readOnly ? (

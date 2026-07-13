@@ -91,7 +91,7 @@ function PlayerModal({ videoId, title, onClose }: { videoId: string; title: stri
 type Editing = { id: string | null; url: string; title: string } | null;
 
 export default function SongReferences({
-  songId, links, canEdit, online, onAdd, onUpdate, onDelete, onReorder, showToast, autoAdd = false,
+  songId, links, canEdit, online, onAdd, onUpdate, onDelete, onReorder, showToast, autoAdd = false, variant = "section",
 }: {
   songId: string;
   links: SongLink[];
@@ -105,6 +105,11 @@ export default function SongReferences({
   // When opened via a "+ Link" affordance, start directly in the add form
   // (only meaningful for editors).
   autoAdd?: boolean;
+  // "section": the standalone block (top-margin + "No references yet" empty text)
+  // used inside the setlist references sheet. "popover": compact content for the
+  // header 🔗 dropdown — no outer margin, no empty-state paragraph (the header
+  // badge is the discoverability cue there).
+  variant?: "section" | "popover";
 }) {
   const [playing, setPlaying] = useState<{ videoId: string; title: string } | null>(null);
   // `editing.id === null` is the "add" form; a string id edits that row.
@@ -146,8 +151,10 @@ export default function SongReferences({
     await onReorder(songId, ids);
   };
 
+  const popover = variant === "popover";
+
   return (
-    <div className="mt-8 print:hidden">
+    <div className={popover ? "print:hidden" : "mt-8 print:hidden"}>
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-2">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
@@ -162,7 +169,7 @@ export default function SongReferences({
         )}
       </div>
 
-      {ordered.length === 0 && editing === null && (
+      {ordered.length === 0 && editing === null && !popover && (
         <p className="text-xs text-slate-400 dark:text-slate-500">No references yet. Add a YouTube link or any URL.</p>
       )}
 
@@ -181,7 +188,9 @@ export default function SongReferences({
                 <button type="button" onClick={() => openLink(link)} disabled={ytOffline}
                   title={ytOffline ? "Needs a connection to play" : isYt ? "Play inline" : "Open link"}
                   className={"min-w-0 flex-1 flex items-center gap-2.5 text-left " + (ytOffline ? "opacity-40 cursor-not-allowed" : "cursor-pointer")}>
-                  <span className="shrink-0">{isYt ? <YouTubeIcon /> : <LinkIcon />}</span>
+                  <span className={"shrink-0 w-9 h-9 rounded-lg flex items-center justify-center " + (isYt ? "bg-red-50 dark:bg-red-950/40" : "bg-slate-100 dark:bg-slate-800")}>
+                    {isYt ? <YouTubeIcon /> : <LinkIcon />}
+                  </span>
                   <span className="min-w-0">
                     <span className="block text-sm font-medium truncate">{label}</span>
                     {ytOffline
