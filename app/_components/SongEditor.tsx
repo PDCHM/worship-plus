@@ -3143,6 +3143,18 @@ export default function SongEditor({
         />
       )}
 
+      {/* Present-mode title anchor — small, quiet, above the chart. The normal
+          (non-fullscreen) view already shows the title in its header block, which
+          is hidden while presenting; this is the only always-on title in present
+          mode (the top control bar's title auto-hides). Centered so it clears the
+          fixed top-left section indicator. Updates on setlist song crossing since
+          it reads the live `song`. */}
+      {presenting && (
+        <div className="mb-2 px-8 text-center text-sm font-semibold text-slate-500 dark:text-slate-400 truncate">
+          {song.title || "Untitled Song"}
+        </div>
+      )}
+
       <div
         ref={fitWrapRef}
         // overscroll-x-none (NOT overscroll-none): `overflow-x-auto` makes this
