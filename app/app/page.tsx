@@ -54,7 +54,11 @@ type View =
   | { kind: "library"; filter: "all" | "favorites" | "recent" }
   | { kind: "editor"; songId: string; setlistId?: string }
   | { kind: "settings" }
-  | { kind: "folders"; subview: "all" | string }
+  // `tab` splits the overview (subview === "all") between the Folders bottom-nav
+  // tab (type='folder') and the Setlists tab (type='setlist'); undefined shows both
+  // (legacy / cross-navigation). It's carried through subview navigation so Back
+  // returns to the originating tab.
+  | { kind: "folders"; subview: "all" | string; tab?: "folders" | "setlists" }
   | { kind: "groups"; teamId?: string };
 
 const SETTINGS_KEY = "wp-settings-v1";
@@ -2687,6 +2691,7 @@ export default function Home() {
           {view.kind === "folders" && (
             <FoldersView
               subview={view.subview}
+              tab={view.kind === "folders" ? view.tab : undefined}
               folders={folders}
               folderSongs={folderSongs}
               songs={songs}
@@ -2694,7 +2699,7 @@ export default function Home() {
               teams={groups.filter(g => groupMembers.some(m => m.groupId === g.id && m.userId === user.id)).map(g => ({ id: g.id, name: g.name }))}
               currentUserId={user.id}
               onMoveToTeam={assignSetlistToTeam}
-              onNavigate={(to) => navigateTo({ kind: "folders", subview: to })}
+              onNavigate={(to) => navigateTo({ kind: "folders", subview: to, tab: view.kind === "folders" ? view.tab : undefined })}
               onCreate={createFolder}
               onRename={renameFolder}
               onDelete={deleteFolder}
@@ -3170,9 +3175,9 @@ function Sidebar({
           {creating === "folder" && (
             <NavCreateInput placeholder="Folder name" value={createValue} onChange={setCreateValue} onSubmit={submitCreate} onCancel={cancelCreate} />
           )}
-          <SidebarItem active={view.kind === "folders" && view.subview === "all"}
-            onClick={() => go({ kind: "folders", subview: "all" })}
-            icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>}>
+          <SidebarItem active={view.kind === "folders" && view.subview === "all" && view.tab === "folders"}
+            onClick={() => go({ kind: "folders", subview: "all", tab: "folders" })}
+            icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>}>
             All Folders
           </SidebarItem>
           {folderList.map((f) => (
@@ -3193,6 +3198,11 @@ function Sidebar({
           {creating === "setlist" && (
             <NavCreateInput placeholder="Setlist name" value={createValue} onChange={setCreateValue} onSubmit={submitCreate} onCancel={cancelCreate} />
           )}
+          <SidebarItem active={view.kind === "folders" && view.subview === "all" && view.tab === "setlists"}
+            onClick={() => go({ kind: "folders", subview: "all", tab: "setlists" })}
+            icon={<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>}>
+            All Setlists
+          </SidebarItem>
           {setlistList.length === 0 && creating !== "setlist" && <NavEmpty>No setlists yet</NavEmpty>}
           {setlistList.map((f) => (
             <SidebarItem key={f.id} active={isFolderActive(f.id)}
@@ -3301,7 +3311,9 @@ function BottomTabs({ view, onNavigate, onAdd }: { view: View; onNavigate: (v: V
     <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 dark:bg-slate-950/95 border-t border-slate-200 dark:border-slate-800 backdrop-blur-md flex items-stretch print:hidden">
       <BottomTab active={isSongsTab} onClick={() => onNavigate({ kind: "library", filter: "all" })} label="Songs"
         icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 17V5l12-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="15" r="3"/></svg>} />
-      <BottomTab active={view.kind === "folders"} onClick={() => onNavigate({ kind: "folders", subview: "all" })} label="Setlists"
+      <BottomTab active={view.kind === "folders" && view.tab === "folders"} onClick={() => onNavigate({ kind: "folders", subview: "all", tab: "folders" })} label="Folders"
+        icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>} />
+      <BottomTab active={view.kind === "folders" && view.tab !== "folders"} onClick={() => onNavigate({ kind: "folders", subview: "all", tab: "setlists" })} label="Setlists"
         icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>} />
       <BottomTab active={view.kind === "groups"} onClick={() => onNavigate({ kind: "groups" })} label="Teams"
         icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>} />
@@ -3319,12 +3331,15 @@ function BottomTab({ active, onClick, label, icon }: {
   active: boolean; onClick: () => void; label: string; icon: React.ReactNode;
 }) {
   return (
+    // flex-1 so all five tabs + the [+] share the width evenly. gap/label kept tight
+    // (text-[10px], leading-none, px-0.5) so labels never truncate on a ~360px phone;
+    // the whole tap target stays the full 64px-tall cell (well above the 44px min).
     <button type="button" onClick={onClick}
-      className={`flex-1 h-16 flex flex-col items-center justify-center gap-1 transition-colors ${
+      className={`flex-1 min-w-0 h-16 flex flex-col items-center justify-center gap-0.5 px-0.5 transition-colors ${
         active ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400"
       }`}>
       {icon}
-      <span className="text-[11px] font-medium">{label}</span>
+      <span className="text-[10px] font-medium leading-none">{label}</span>
     </button>
   );
 }

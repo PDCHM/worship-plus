@@ -39,6 +39,9 @@ export type TeamOption = { id: string; name: string };
 
 export type FoldersViewProps = {
   subview: "all" | string;
+  // Overview split: "folders" shows only type='folder', "setlists" only
+  // type='setlist', undefined shows both (legacy / cross-navigation).
+  tab?: "folders" | "setlists";
   folders: Folder[];
   folderSongs: FolderSong[];
   songs: Song[];
@@ -174,8 +177,12 @@ export default function FoldersView(props: FoldersViewProps) {
 
 function Overview({
   folders, folderSongs, teams, onNavigate, onCreate, onRename, onDelete, showToast, currentUserId, onMoveToTeam,
-  canUseSetlists, onRequireUpgrade,
+  canUseSetlists, onRequireUpgrade, tab,
 }: FoldersViewProps) {
+  // Which overview sections to show — driven by the bottom-nav tab. undefined
+  // (legacy / cross-nav) shows both.
+  const showFolders = tab !== "setlists";
+  const showSetlists = tab !== "folders";
   const [newFolderName, setNewFolderName] = useState("");
   const [newSetlistName, setNewSetlistName] = useState("");
   const [newSetlistTeam, setNewSetlistTeam] = useState<string>("");
@@ -247,6 +254,7 @@ function Overview({
         </div>
       </div>
       {/* Folders */}
+      {showFolders && (
       <section>
         <div className="flex items-center gap-2 mb-4 cursor-pointer group" onClick={() => setShowNewFolder(true)}>
           <h2 className="font-semibold text-base">Folders</h2>
@@ -300,8 +308,10 @@ function Overview({
           />
         )}
       </section>
+      )}
 
       {/* Setlists */}
+      {showSetlists && (
       <section>
         <div
           className="flex items-center gap-2 mb-4 cursor-pointer group"
@@ -405,6 +415,7 @@ function Overview({
           )
         )}
       </section>
+      )}
       {confirmDel && (
         <ConfirmDialog
           title={confirmDel.title}
