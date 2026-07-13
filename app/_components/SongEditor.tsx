@@ -3143,14 +3143,22 @@ export default function SongEditor({
         />
       )}
 
-      {/* Present-mode title anchor — small, quiet, above the chart. The normal
-          (non-fullscreen) view already shows the title in its header block, which
-          is hidden while presenting; this is the only always-on title in present
-          mode (the top control bar's title auto-hides). Centered so it clears the
-          fixed top-left section indicator. Updates on setlist song crossing since
-          it reads the live `song`. */}
-      {presenting && (
-        <div className="mb-2 px-8 text-center text-sm font-semibold text-slate-500 dark:text-slate-400 truncate">
+      {/* Always-visible song title — position:sticky so it stays pinned at ANY
+          scroll position (the bug: once scrolled past the first section the title
+          was gone). Shown in performance view AND fullscreen present mode; the big
+          header above scrolls away, this slim strip does not. Opaque, surface-
+          matched background + a stacking context (z) so chords scrolling beneath
+          never bleed through the text. Reads the live `song`, so it updates when
+          present mode crosses to the next/previous setlist song. Sticky offset is
+          mode-specific: just below the 56px sticky app header in the normal view;
+          at the safe-area top inside the fullscreen scroll container in present
+          mode (kept under the tap-revealed control bars, which sit at z-[2]). */}
+      {(readOnly || presenting) && (
+        <div
+          className={"sticky z-[1] w-full py-1.5 px-8 text-center text-sm font-semibold text-slate-500 dark:text-slate-400 truncate " +
+            (presenting ? "bg-white dark:bg-slate-950" : "bg-slate-50 dark:bg-slate-950")}
+          style={{ top: presenting ? "calc(env(safe-area-inset-top, 0px) + 0.25rem)" : "3.5rem" }}
+        >
           {song.title || "Untitled Song"}
         </div>
       )}
