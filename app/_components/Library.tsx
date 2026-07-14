@@ -335,8 +335,10 @@ export default function Library({
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5h9M11 9h6M11 13h3"/><path d="M4 17l3 3 3-3M7 4v16"/></svg>
                   <span className="hidden sm:inline">Sort</span>
                 </button>
+                {/* Popover: mobile = bottom sheet pinned within the viewport
+                    (inset-x-2, can't clip off either edge); sm+ = anchored dropdown. */}
                 {panel === "sort" && (
-                  <div role="menu" className="absolute right-0 top-full mt-1 z-40 w-48 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/20">
+                  <div role="menu" className="fixed inset-x-2 bottom-2 z-50 py-1 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xl shadow-slate-900/20 sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-full sm:mt-1 sm:w-48 sm:rounded-lg sm:shadow-xl sm:z-40">
                     <button type="button" role="menuitem" onClick={() => { setSortRecent(false); setSortCol("title"); setSortDir("asc"); setPanel(null); }}
                       className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
                       A–Z {!sortRecent && <CheckMark />}
@@ -357,8 +359,10 @@ export default function Library({
                   <span className="hidden sm:inline">Filter</span>
                   {filterCount > 0 && <span className="ml-0.5 min-w-[18px] h-[18px] px-1 rounded-full text-[11px] font-bold flex items-center justify-center bg-white/25 text-white">{filterCount}</span>}
                 </button>
+                {/* Popover: mobile = bottom sheet within the viewport (inset-x-2) so
+                    the key chips + labels get full width and never clip; sm+ = dropdown. */}
                 {panel === "filter" && (
-                  <div className="absolute right-0 top-full mt-1 z-40 w-64 p-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/20 space-y-3">
+                  <div className="fixed inset-x-2 bottom-2 z-50 p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xl shadow-slate-900/20 space-y-3 sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-full sm:mt-1 sm:w-64 sm:rounded-lg sm:shadow-xl sm:z-40">
                     <button type="button" onClick={() => setFavFilter((f) => !f)}
                       className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
                       <span className="flex items-center gap-2 text-sm font-medium">
