@@ -3399,6 +3399,17 @@ export default function SongEditor({
                     const visibleChords = line.chords.filter(
                       (ch) => ch.chord.trim() !== "" || editingChord === ch.id,
                     );
+                    // Collapse the empty chord slot above lyric lines that carry NO
+                    // chord — so chord-less lines pack tighter under the previous one
+                    // instead of each reserving a full (empty) chord row. Decided
+                    // per-LINE (not per-word) so word baselines stay aligned within a
+                    // line; lines WITH any chord keep the full slot, so a chord can
+                    // never overlap the line above. Kept full while a chord is being
+                    // added to this line, so the input has room to show.
+                    const lineChordSlot =
+                      visibleChords.length > 0 || addingChord?.lineId === line.id
+                        ? chordSlotHeight
+                        : "0px";
                     // Each unit: a draggable slot index, the word text below, and
                     // the chords sitting above it.
                     type WordUnit = { key: string; dragIndex: number; text: string; chords: Chord[]; tappable: boolean };
@@ -3580,7 +3591,7 @@ export default function SongEditor({
                                       // chord lands and stays where it's dropped.
                                       <span
                                         className="relative block leading-none"
-                                        style={{ minHeight: chordSlotHeight, width: "100%" }}
+                                        style={{ minHeight: lineChordSlot, width: "100%" }}
                                       >
                                         {u.chords.map((ch, idx) => (
                                           <span
