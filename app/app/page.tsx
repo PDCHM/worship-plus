@@ -43,6 +43,7 @@ import {
   mergeSectionStyles,
   parseSongText,
   parseSbp,
+  markSongOpened,
   uid,
   type Chord,
   type SectionStyles,
@@ -1728,7 +1729,7 @@ export default function Home() {
     setView(newView);
   };
 
-  const openSong = (id: string, opts?: { setlistId?: string }) => navigateTo({ kind: "editor", songId: id, setlistId: opts?.setlistId });
+  const openSong = (id: string, opts?: { setlistId?: string }) => { markSongOpened(id); navigateTo({ kind: "editor", songId: id, setlistId: opts?.setlistId }); };
 
   const handleImportPasted = (song: Song, aiIntent = false) => {
     if (!guardOnline()) return;

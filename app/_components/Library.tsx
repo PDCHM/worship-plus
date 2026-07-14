@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Song } from "@/lib/song";
+import { KEYS, readSongOpened, type Song } from "@/lib/song";
 import AddSongSheet from "@/app/_components/AddSongSheet";
 import ConfirmDialog from "@/app/_components/ConfirmDialog";
 
@@ -75,17 +75,54 @@ export default function Library({
   const [saveAsTarget, setSaveAsTarget] = useState<{ songId: string; title: string } | null>(null);
   const [sortCol, setSortCol] = useState<"title"|"artist"|"key"|null>("title");
   const [sortDir, setSortDir] = useState<"asc"|"desc">("asc");
+  // Sort A–Z (default, via sortCol="title") vs Recently used. Filters: by key +
+  // favourites (both compose with sort and with each other).
+  const [sortRecent, setSortRecent] = useState(false);
+  const [keyFilter, setKeyFilter] = useState<string | null>(null);
+  const [favFilter, setFavFilter] = useState(false);
+  // Which top-of-list dropdown is open ("sort" | "filter" | null).
+  const [panel, setPanel] = useState<"sort" | "filter" | null>(null);
+  // Per-device "last opened" map, read once on mount. The library unmounts when a
+  // song is opened (view → editor) and remounts on return, so this is fresh.
+  const [openedAt] = useState<Record<string, number>>(() => readSongOpened());
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const controlsRef = useRef<HTMLDivElement | null>(null);
 
   const toggleSort = (col: "title"|"artist"|"key") => {
+    setSortRecent(false);
     if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
     else { setSortCol(col); setSortDir("asc"); }
   };
 
   useEffect(() => {
+    setSortRecent(false);
     if (filter === "recent") { setSortCol(null); setSortDir("asc"); }
     else { setSortCol("title"); setSortDir("asc"); }
   }, [filter]);
+
+  // Available keys for the key filter — musical order (KEYS), any non-standard
+  // keys appended alphabetically. Drawn only from the songs actually present.
+  const availableKeys = useMemo(() => {
+    const present = new Set(songs.map((s) => s.key).filter(Boolean));
+    const inOrder = KEYS.filter((k) => present.has(k));
+    const extras = [...present].filter((k) => !KEYS.includes(k)).sort();
+    return [...inOrder, ...extras];
+  }, [songs]);
+
+  const anyFilter = favFilter || !!keyFilter;
+  const filterCount = (favFilter ? 1 : 0) + (keyFilter ? 1 : 0);
+
+  // Close the sort/filter dropdowns on outside-click or Esc.
+  useEffect(() => {
+    if (!panel) return;
+    const onDown = (e: MouseEvent) => {
+      if (controlsRef.current && !controlsRef.current.contains(e.target as Node)) setPanel(null);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setPanel(null); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [panel]);
 
   useEffect(() => {
     if (!menu) return;
@@ -121,6 +158,8 @@ export default function Library({
     } else if (filter === "recent") {
       list = [...list].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 12);
     }
+    if (favFilter) list = list.filter((s) => s.favorite);
+    if (keyFilter) list = list.filter((s) => s.key === keyFilter);
     const q = query.trim().toLowerCase();
     if (q) {
       list = list.filter(
@@ -130,15 +169,23 @@ export default function Library({
       );
     }
     return list;
-  }, [songs, query, filter]);
+  }, [songs, query, filter, favFilter, keyFilter]);
 
-  const sorted = (sortCol && !(filter === "recent" && sortCol === "title" && sortDir === "asc"))
-    ? [...filtered].sort((a,b) => {
-        const av = sortCol === "title" ? a.title : sortCol === "artist" ? (a.artist||"") : a.key;
-        const bv = sortCol === "title" ? b.title : sortCol === "artist" ? (b.artist||"") : b.key;
+  const sorted = useMemo(() => {
+    // Recently used: most-recently-opened first (openedAt), then updatedAt as a
+    // stable tiebreak for songs never opened on this device.
+    if (sortRecent) {
+      return [...filtered].sort((a, b) => (openedAt[b.id] ?? 0) - (openedAt[a.id] ?? 0) || b.updatedAt - a.updatedAt);
+    }
+    if (sortCol && !(filter === "recent" && sortCol === "title" && sortDir === "asc")) {
+      return [...filtered].sort((a, b) => {
+        const av = sortCol === "title" ? a.title : sortCol === "artist" ? (a.artist || "") : a.key;
+        const bv = sortCol === "title" ? b.title : sortCol === "artist" ? (b.artist || "") : b.key;
         return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
-      })
-    : filtered;
+      });
+    }
+    return filtered;
+  }, [filtered, sortRecent, sortCol, sortDir, openedAt, filter]);
 
   const heading =
     filter === "favorites"
@@ -225,6 +272,30 @@ export default function Library({
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             {filtered.length} {filtered.length === 1 ? "song" : "songs"}
           </p>
+          {/* Subtle active sort/filter state (A–Z is the default, so it's implied
+              and not shown). Each chip clears its own control. */}
+          {(sortRecent || anyFilter) && (
+            <div className="mt-1.5 flex items-center gap-1.5 flex-wrap text-xs">
+              {sortRecent && (
+                <button type="button" onClick={() => { setSortRecent(false); setSortCol("title"); setSortDir("asc"); }}
+                  className="inline-flex items-center gap-1 h-6 pl-2 pr-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 font-medium">
+                  Recently used <ChipX />
+                </button>
+              )}
+              {keyFilter && (
+                <button type="button" onClick={() => setKeyFilter(null)}
+                  className="inline-flex items-center gap-1 h-6 pl-2 pr-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 font-medium">
+                  Key of {keyFilter} <ChipX />
+                </button>
+              )}
+              {favFilter && (
+                <button type="button" onClick={() => setFavFilter(false)}
+                  className="inline-flex items-center gap-1 h-6 pl-2 pr-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 font-medium">
+                  Favourites <ChipX />
+                </button>
+              )}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {selectMode ? (
@@ -254,6 +325,68 @@ export default function Library({
               Select
             </button>
           ) : null}
+          {!selectMode && songs.length > 0 && (
+            <div ref={controlsRef} className="flex items-center gap-2">
+              {/* Sort — A–Z (default) / Recently used. Applies to grid AND list. */}
+              <div className="relative">
+                <button type="button" onClick={() => setPanel((p) => (p === "sort" ? null : "sort"))}
+                  aria-haspopup="menu" aria-expanded={panel === "sort"}
+                  className="h-10 px-3 rounded-lg text-sm font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 5h9M11 9h6M11 13h3"/><path d="M4 17l3 3 3-3M7 4v16"/></svg>
+                  <span className="hidden sm:inline">Sort</span>
+                </button>
+                {panel === "sort" && (
+                  <div role="menu" className="absolute right-0 top-full mt-1 z-40 w-48 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/20">
+                    <button type="button" role="menuitem" onClick={() => { setSortRecent(false); setSortCol("title"); setSortDir("asc"); setPanel(null); }}
+                      className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
+                      A–Z {!sortRecent && <CheckMark />}
+                    </button>
+                    <button type="button" role="menuitem" onClick={() => { setSortRecent(true); setPanel(null); }}
+                      className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
+                      Recently used {sortRecent && <CheckMark />}
+                    </button>
+                  </div>
+                )}
+              </div>
+              {/* Filter — by key + favourites (composes with sort). */}
+              <div className="relative">
+                <button type="button" onClick={() => setPanel((p) => (p === "filter" ? null : "filter"))}
+                  aria-haspopup="menu" aria-expanded={panel === "filter"}
+                  className={"h-10 px-3 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 " + (anyFilter ? "bg-indigo-600 text-white hover:bg-indigo-700" : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700")}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+                  <span className="hidden sm:inline">Filter</span>
+                  {filterCount > 0 && <span className="ml-0.5 min-w-[18px] h-[18px] px-1 rounded-full text-[11px] font-bold flex items-center justify-center bg-white/25 text-white">{filterCount}</span>}
+                </button>
+                {panel === "filter" && (
+                  <div className="absolute right-0 top-full mt-1 z-40 w-64 p-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/20 space-y-3">
+                    <button type="button" onClick={() => setFavFilter((f) => !f)}
+                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+                      <span className="flex items-center gap-2 text-sm font-medium">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill={favFilter ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={favFilter ? "text-amber-500" : ""}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                        Favourites
+                      </span>
+                      {favFilter && <CheckMark />}
+                    </button>
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5 px-1">Key</div>
+                      {availableKeys.length > 0 ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {availableKeys.map((k) => (
+                            <button key={k} type="button" onClick={() => setKeyFilter((cur) => (cur === k ? null : k))}
+                              className={"h-8 min-w-8 px-2 rounded-lg text-sm font-semibold transition-colors " + (keyFilter === k ? "bg-indigo-600 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600")}>{k}</button>
+                          ))}
+                        </div>
+                      ) : <p className="text-xs text-slate-400 px-1">No keys in your songs yet.</p>}
+                    </div>
+                    {anyFilter && (
+                      <button type="button" onClick={() => { setFavFilter(false); setKeyFilter(null); }}
+                        className="w-full h-9 rounded-lg text-sm font-medium bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 transition-colors">Clear filters</button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           <div
             className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden"
             role="group"
@@ -353,7 +486,7 @@ export default function Library({
         )
       ) : libraryView === "grid" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((song) => (
+          {sorted.map((song) => (
             <SongCard
               key={song.id}
               song={song}
@@ -776,6 +909,19 @@ function Checkbox({ checked }: { checked: boolean }) {
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
       )}
     </span>
+  );
+}
+
+// Active-option check for the Sort menu / Favourites toggle.
+function CheckMark() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-600 dark:text-indigo-400 shrink-0"><polyline points="20 6 9 17 4 12"/></svg>
+  );
+}
+// Small ✕ inside an active-filter chip.
+function ChipX() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" className="opacity-70"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
   );
 }
 

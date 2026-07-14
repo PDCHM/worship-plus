@@ -46,6 +46,32 @@ export const KEYS = [
 
 export const CAPO_OPTIONS: (number | null)[] = [null, 1, 2, 3, 4, 5, 6, 7];
 
+// ── "Recently used" tracking ────────────────────────────────────────────────
+// Per-user (per-device) last-opened timestamps, kept in localStorage rather than
+// a DB column: songs are shared across teams, so a column on `songs` couldn't be
+// personal ("my recent ≠ your recent"), and this needs no schema/RLS change. Keyed
+// by song id → epoch ms; written when a song is opened, read by the library sort.
+export const SONG_OPENED_KEY = "wp-song-opened-v1";
+export function readSongOpened(): Record<string, number> {
+  if (typeof window === "undefined") return {};
+  try {
+    const v = JSON.parse(localStorage.getItem(SONG_OPENED_KEY) || "{}");
+    return v && typeof v === "object" ? (v as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+export function markSongOpened(id: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    const m = readSongOpened();
+    m[id] = Date.now();
+    localStorage.setItem(SONG_OPENED_KEY, JSON.stringify(m));
+  } catch {
+    /* storage full / disabled — recency is best-effort */
+  }
+}
+
 export const PREFER_FLAT_KEYS = new Set([
   "F",
   "Bb",
