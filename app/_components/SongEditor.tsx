@@ -57,6 +57,12 @@ import {
 type ViewMode = "standard" | "split-2" | "split-3";
 type Complexity = "simple" | "standard" | "complex";
 
+// Minimum readable width per chart column. Below this a typical lyric line can't
+// fit and words wrap one-per-line (the broken, cramped look on narrow phones).
+// The rendered column count is capped to floor(containerWidth / MIN_COL_WIDTH),
+// so ~390px phone → 1 col, ~600px → 2, tablet/desktop → up to the chosen 3.
+const MIN_COL_WIDTH = 280;
+
 // Show-once new-user coachmarks. Each tip id is tracked in localStorage so it
 // fires at most once, ever, in context — never all at once.
 const TIPS_KEY = "wp-tips-seen-v1";
@@ -1071,6 +1077,12 @@ export default function SongEditor({
   const [fitHeight, setFitHeight] = useState<number | null>(null);
   // Bumped on resize / orientationchange to re-run the fit measurement.
   const [resizeTick, setResizeTick] = useState(0);
+  // Measured width of the chart's column container — drives the auto-cap on the
+  // rendered column count (a column narrower than MIN_COL_WIDTH can't hold a lyric
+  // line). Seeded from the viewport so first paint isn't wrong, then refined by a
+  // ResizeObserver on the actual container (accounts for max-width caps, the
+  // desktop nav, present-mode full-bleed, and rotation).
+  const [chartWidth, setChartWidth] = useState<number>(() => (typeof window !== "undefined" ? window.innerWidth : 1024));
   const fitWrapRef = useRef<HTMLDivElement>(null);
   const scrollRafRef = useRef<number | null>(null);
   const sectionRefs = useRef<Map<string, HTMLElement>>(new Map());
@@ -1193,14 +1205,20 @@ export default function SongEditor({
   // Lowest font size the fit pass will shrink to before it gives up and lets the
   // columns scroll. ~12px keeps lyrics legible at arm's length on a stage.
   const MIN_FIT_FONT = 12;
-  const columnView = viewMode !== "standard";
-  // Whichever path drives a multi-column flow: the editor's split view OR the
-  // performance fit-to-screen mode. Section break-inside/spacing keys off this.
-  const effColumnView = columnView || fitMode;
   const numCols = viewMode === "split-2" ? 2 : viewMode === "split-3" ? 3 : 1;
+  // Auto-cap the RENDERED columns to what actually fits the container width, so a
+  // 3-column choice can't produce cramped ~120px columns on a narrow phone. The
+  // user's viewMode preference is untouched (still stored as split-3); only the
+  // render is capped, and it re-expands when width grows (rotate / bigger screen /
+  // nav collapse / desktop). Always at least 1.
+  const effCols = Math.max(1, Math.min(numCols, Math.floor(chartWidth / MIN_COL_WIDTH)));
+  // Whichever path drives a multi-column flow: the editor's split view (once it
+  // actually fits >1 column) OR the performance fit-to-screen mode. Section
+  // break-inside/spacing keys off this, so a capped-to-1 song renders like standard.
+  const effColumnView = effCols > 1 || fitMode;
   // Grid gutter between columns. Word-block lines wrap on their own, so this is
   // purely visual spacing now — no chord-position math depends on it.
-  const colGapPx = numCols === 3 ? 16 : 20;
+  const colGapPx = effCols === 3 ? 16 : 20;
   const prefs = sectionStyles.prefs;
   const lyricFontFamily = resolveChartFontFamily(prefs);
   // Quick Actions chart-font picker. Persists per-user via section_styles, the
@@ -1235,7 +1253,7 @@ export default function SongEditor({
   // Ceiling for the fluid clamp() (the --lyric-font-size CSS var). The split-3
   // column view keeps its tighter size by lowering the ceiling; clamp then
   // scales fluidly from a 13px floor up to it based on viewport width.
-  const lyricCeiling = viewMode === "split-3" ? Math.max(13, Math.round(baseFontSize * 0.78)) : baseFontSize;
+  const lyricCeiling = effCols === 3 ? Math.max(13, Math.round(baseFontSize * 0.78)) : baseFontSize;
   // In fit mode the font is an exact measured px value (driven through the
   // --fit-font CSS var set on the sections container), overriding the fluid
   // clamp so the whole song can be scaled to fit the available viewport.
@@ -1529,6 +1547,20 @@ export default function SongEditor({
     setFitFont(font);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitMode, zoomOffset, baseFontSize, prefs.lyricFontSize, lineHeight, lyricFontFamily, showChords, song, resizeTick]);
+
+  // Track the chart column container's actual width for the column auto-cap.
+  // useLayoutEffect + a synchronous first measure keeps first paint correct; the
+  // ResizeObserver then catches every later width change (rotate, nav collapse,
+  // entering/leaving present mode) without a window-resize listener.
+  useLayoutEffect(() => {
+    const el = sectionsRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const measure = () => setChartWidth(el.clientWidth || window.innerWidth);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
 
   const switchView = (mode: ViewMode) => {
     setEditingChord(null);
@@ -2646,9 +2678,9 @@ export default function SongEditor({
         maxWidth: "100%",
         "--fit-font": `${fitFont}px`,
       } as React.CSSProperties)
-    : columnView
+    : effCols > 1
     ? {
-        columnCount: numCols,
+        columnCount: effCols,
         columnGap: colGap,
       }
     : {};
@@ -3319,7 +3351,7 @@ export default function SongEditor({
                   )}
 
                   {!readOnly && (
-                    <div className={"items-center gap-0.5 ml-1 print:hidden " + (columnView ? "hidden sm:flex" : "flex")}>
+                    <div className={"items-center gap-0.5 ml-1 print:hidden " + (effColumnView ? "hidden sm:flex" : "flex")}>
                       <ToolBtn
                         onClick={() => moveSection(section.id, -1)}
                         disabled={sIdx === 0}
