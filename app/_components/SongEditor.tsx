@@ -1084,6 +1084,10 @@ export default function SongEditor({
   // desktop nav, present-mode full-bleed, and rotation).
   const [chartWidth, setChartWidth] = useState<number>(() => (typeof window !== "undefined" ? window.innerWidth : 1024));
   const fitWrapRef = useRef<HTMLDivElement>(null);
+  // A zero-height, w-full probe inside the chart card. Its width is ALWAYS the
+  // available column area, independent of the section container's column-count /
+  // min-w-fit — so the auto-cap can't get stuck measuring a narrow 1-column body.
+  const widthProbeRef = useRef<HTMLDivElement>(null);
   const scrollRafRef = useRef<number | null>(null);
   const sectionRefs = useRef<Map<string, HTMLElement>>(new Map());
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
@@ -1548,12 +1552,14 @@ export default function SongEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitMode, zoomOffset, baseFontSize, prefs.lyricFontSize, lineHeight, lyricFontFamily, showChords, song, resizeTick]);
 
-  // Track the chart column container's actual width for the column auto-cap.
-  // useLayoutEffect + a synchronous first measure keeps first paint correct; the
-  // ResizeObserver then catches every later width change (rotate, nav collapse,
+  // Track the AVAILABLE chart width for the column auto-cap. Measured off the
+  // w-full probe (not the sections body, which is min-w-fit in 1-column mode and
+  // would report content width — flattening every choice to 1 and freezing the
+  // switcher). useLayoutEffect + a synchronous first measure keeps first paint
+  // correct; the ResizeObserver then catches later changes (rotate, nav collapse,
   // entering/leaving present mode) without a window-resize listener.
   useLayoutEffect(() => {
-    const el = sectionsRef.current;
+    const el = widthProbeRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
     const measure = () => setChartWidth(el.clientWidth || window.innerWidth);
     measure();
@@ -3271,6 +3277,9 @@ export default function SongEditor({
         // shrunk to fit. Scroll mode keeps the card's natural auto height.
         style={fitMode ? { height: fitHeight ?? undefined, overflowY: "auto", overflowX: "hidden" } : undefined}
       >
+        {/* Zero-height full-width probe: reports the available column width
+            regardless of the body's column-count / min-w-fit (drives the auto-cap). */}
+        <div ref={widthProbeRef} aria-hidden className="w-full h-0 pointer-events-none" />
         <div
           ref={sectionsRef}
           data-bubble-skip
