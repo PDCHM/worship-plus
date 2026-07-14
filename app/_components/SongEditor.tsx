@@ -1197,6 +1197,12 @@ export default function SongEditor({
   // Whichever path drives a multi-column flow: the editor's split view OR the
   // performance fit-to-screen mode. Section break-inside/spacing keys off this.
   const effColumnView = columnView || fitMode;
+  // TEMP line-spacing diagnostic: add ?diag=1 to the URL to tint the layout boxes
+  // so we can SEE which element owns the vertical gap above a lyric line —
+  // GREEN = line div · BLUE = word row · RED = chord slot · YELLOW = word.
+  // No effect on normal use. Remove after diagnosis.
+  const showLayoutDiag =
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).has("diag");
   const numCols = viewMode === "split-2" ? 2 : viewMode === "split-3" ? 3 : 1;
   // Grid gutter between columns. Word-block lines wrap on their own, so this is
   // purely visual spacing now — no chord-position math depends on it.
@@ -3560,7 +3566,7 @@ export default function SongEditor({
                         key={line.id}
                         data-line-id={line.id}
                         className="group/line flex items-start gap-1"
-                        style={{ marginTop: lineTopGap }}
+                        style={{ marginTop: lineTopGap, ...(showLayoutDiag ? { outline: "1px solid rgba(0,180,0,0.85)" } : {}) }}
                         onClick={readOnly ? undefined : () => setActiveLine(line.id)}
                       >
                         <div className="flex-1 min-w-0" data-fit-line>
@@ -3600,6 +3606,7 @@ export default function SongEditor({
                                 fontSize: lyricFontSize,
                                 fontFamily: lyricFontFamily,
                                 lineHeight,
+                                ...(showLayoutDiag ? { backgroundColor: "rgba(0,120,255,0.18)" } : {}),
                               }}
                             >
                               {units.map((u) => {
@@ -3635,7 +3642,7 @@ export default function SongEditor({
                                       // chord lands and stays where it's dropped.
                                       <span
                                         className="relative block leading-none"
-                                        style={{ minHeight: lineChordSlot, width: "100%" }}
+                                        style={{ minHeight: lineChordSlot, width: "100%", ...(showLayoutDiag ? { backgroundColor: "rgba(255,0,0,0.35)" } : {}) }}
                                       >
                                         {u.chords.map((ch, idx) => (
                                           <span
@@ -3716,7 +3723,7 @@ export default function SongEditor({
                                           ? ""
                                           : "cursor-pointer hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40")
                                       }
-                                      style={u.tappable ? undefined : { minWidth: "1ch" }}
+                                      style={{ ...(u.tappable ? {} : { minWidth: "1ch" }), ...(showLayoutDiag ? { backgroundColor: "rgba(255,220,0,0.5)" } : {}) }}
                                     >
                                       {u.text}
                                     </span>
