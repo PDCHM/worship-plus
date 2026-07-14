@@ -3383,9 +3383,7 @@ export default function SongEditor({
                 </div>
 
                 <div
-                  className={
-                    effColumnView ? "pl-3 space-y-2" : "pl-4 space-y-3"
-                  }
+                  className={effColumnView ? "pl-3" : "pl-4"}
                   style={{ borderLeft: `3px solid ${c.bg}` }}
                 >
                   {section.lines.map((line, lIdx) => {
@@ -3399,17 +3397,27 @@ export default function SongEditor({
                     const visibleChords = line.chords.filter(
                       (ch) => ch.chord.trim() !== "" || editingChord === ch.id,
                     );
-                    // Collapse the empty chord slot above lyric lines that carry NO
-                    // chord — so chord-less lines pack tighter under the previous one
-                    // instead of each reserving a full (empty) chord row. Decided
-                    // per-LINE (not per-word) so word baselines stay aligned within a
-                    // line; lines WITH any chord keep the full slot, so a chord can
-                    // never overlap the line above. Kept full while a chord is being
-                    // added to this line, so the input has room to show.
-                    const lineChordSlot =
-                      visibleChords.length > 0 || addingChord?.lineId === line.id
-                        ? chordSlotHeight
-                        : "0px";
+                    // A line needs chord room when it has any chord (or one is being
+                    // added to it). Two things then key off this, per LINE:
+                    //  1. chord slot height above the words — full (room for the
+                    //     chord, no overlap) vs collapsed to 0 (no empty reserved row).
+                    //  2. the gap ABOVE this line — the real driver of vertical space.
+                    //     It was a uniform space-y on the container, so chord-less
+                    //     lines still showed a full gap even with the slot collapsed.
+                    //     Making it chord-aware is what actually tightens them: a
+                    //     chord-less line tucks right under the previous line; a chord
+                    //     line keeps the normal gap (its chord room comes from the slot).
+                    const lineHasChordRoom =
+                      visibleChords.length > 0 || addingChord?.lineId === line.id;
+                    const lineChordSlot = lineHasChordRoom ? chordSlotHeight : "0px";
+                    const lineTopGap =
+                      lIdx === 0
+                        ? "0px"
+                        : lineHasChordRoom
+                          ? effColumnView
+                            ? "0.5rem"
+                            : "0.75rem"
+                          : "0.15rem";
                     // Each unit: a draggable slot index, the word text below, and
                     // the chords sitting above it.
                     type WordUnit = { key: string; dragIndex: number; text: string; chords: Chord[]; tappable: boolean };
@@ -3517,6 +3525,7 @@ export default function SongEditor({
                         key={line.id}
                         data-line-id={line.id}
                         className="group/line flex items-start gap-1"
+                        style={{ marginTop: lineTopGap }}
                         onClick={readOnly ? undefined : () => setActiveLine(line.id)}
                       >
                         <div className="flex-1 min-w-0" data-fit-line>
