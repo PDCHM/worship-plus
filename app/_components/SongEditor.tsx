@@ -1383,10 +1383,16 @@ export default function SongEditor({
     let last = 0;
     const tick = (t: number) => {
       if (last) {
-        window.scrollBy(0, pxPerSec * (t - last) / 1000);
-        if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 10) {
-          setAutoScrolling(false);
-          return;
+        const dy = pxPerSec * (t - last) / 1000;
+        // In fullscreen present mode the scroll container is rootRef (fixed
+        // overflow-y-auto), not the window — scroll whichever is active.
+        const el = presenting ? rootRef.current : null;
+        if (el) {
+          el.scrollBy(0, dy);
+          if (el.scrollTop + el.clientHeight >= el.scrollHeight - 10) { setAutoScrolling(false); return; }
+        } else {
+          window.scrollBy(0, dy);
+          if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 10) { setAutoScrolling(false); return; }
         }
       }
       last = t;
@@ -1394,7 +1400,7 @@ export default function SongEditor({
     };
     scrollRafRef.current = requestAnimationFrame(tick);
     return () => { if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current); };
-  }, [autoScrolling, scrollSpeed]);
+  }, [autoScrolling, scrollSpeed, presenting]);
 
   // Fit mode has nothing to continuously scroll, so any running autoscroll is
   // stopped when entering it. (The control itself is also hidden — see below.)
@@ -2797,27 +2803,56 @@ export default function SongEditor({
               />
             )}
           </div>
-          {/* Bottom bar: Prev · position · Next — revealed on tap, auto-hides. */}
+          {/* Bottom bar — revealed on tap, auto-hides. Row 1 promotes the on-stage
+              quick actions (auto-scroll + text size); row 2 is Prev · position ·
+              Next. Prep-time actions (print/export/styles/delete) stay in ⋯. */}
           {presentControls && (
             <div onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}
-              className="fixed inset-x-0 bottom-0 z-[2] flex items-center justify-between gap-2 bg-slate-900/85 text-white backdrop-blur-md"
-              style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.4rem)", paddingTop: "0.4rem", paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.6rem)", paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.6rem)" }}>
-              <button type="button" onClick={() => { goPrev(); revealControls(); }}
-                className="flex items-center gap-1 h-10 px-3 rounded-lg hover:bg-white/10 text-sm font-medium">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
-                Prev
-              </button>
-              <span className="min-w-0 text-xs text-white/70 truncate px-2 text-center flex flex-col leading-tight">
-                <span className="truncate">{presentSection || " "}</span>
-                {setlistContext && (
-                  <span className="text-[10px] text-white/50">Song {setlistContext.currentIndex + 1} / {setlistContext.total}</span>
-                )}
-              </span>
-              <button type="button" onClick={() => { goNext(); revealControls(); }}
-                className="flex items-center gap-1 h-10 px-3 rounded-lg hover:bg-white/10 text-sm font-medium">
-                Next
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-              </button>
+              className="fixed inset-x-0 bottom-0 z-[2] flex flex-col gap-1.5 bg-slate-900/85 text-white backdrop-blur-md"
+              style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.4rem)", paddingTop: "0.45rem", paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.6rem)", paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.6rem)" }}>
+              {/* Promoted quick actions */}
+              <div className="flex items-center justify-center gap-2">
+                {/* Auto-scroll — distinct "scroll down" icon + text label so it's
+                    never mistaken for the metronome play. Highlights while running. */}
+                <button type="button" onClick={() => { setAutoScrolling((o) => !o); revealControls(); }}
+                  aria-pressed={autoScrolling}
+                  className={"flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm font-medium transition-colors " + (autoScrolling ? "bg-indigo-500 text-white" : "hover:bg-white/10")}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="7 5 12 10 17 5"/><polyline points="7 13 12 18 17 13"/></svg>
+                  {autoScrolling ? "Scrolling" : "Auto-scroll"}
+                </button>
+                {/* Text size */}
+                <div className="flex items-center rounded-lg overflow-hidden border border-white/15">
+                  <button type="button" onClick={() => { adjustZoom(-1); revealControls(); }}
+                    disabled={zoomOffset <= zoomMin} aria-label="Smaller text" title="Smaller text"
+                    className="h-9 px-3 flex items-center hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent">
+                    <span className="text-xs font-bold">A</span><span className="text-xs">−</span>
+                  </button>
+                  <button type="button" onClick={() => { adjustZoom(1); revealControls(); }}
+                    disabled={zoomOffset >= zoomMax} aria-label="Larger text" title="Larger text"
+                    className="h-9 px-3 flex items-center border-l border-white/15 hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent">
+                    <span className="text-base font-bold">A</span><span className="text-xs">+</span>
+                  </button>
+                </div>
+              </div>
+              {/* Prev · position · Next */}
+              <div className="flex items-center justify-between gap-2">
+                <button type="button" onClick={() => { goPrev(); revealControls(); }}
+                  className="flex items-center gap-1 h-10 px-3 rounded-lg hover:bg-white/10 text-sm font-medium">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+                  Prev
+                </button>
+                <span className="min-w-0 text-xs text-white/70 truncate px-2 text-center flex flex-col leading-tight">
+                  <span className="truncate">{presentSection || " "}</span>
+                  {setlistContext && (
+                    <span className="text-[10px] text-white/50">Song {setlistContext.currentIndex + 1} / {setlistContext.total}</span>
+                  )}
+                </span>
+                <button type="button" onClick={() => { goNext(); revealControls(); }}
+                  className="flex items-center gap-1 h-10 px-3 rounded-lg hover:bg-white/10 text-sm font-medium">
+                  Next
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
+              </div>
             </div>
           )}
         </>
