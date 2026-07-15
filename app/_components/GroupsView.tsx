@@ -12,9 +12,9 @@ export type GroupMember = {
   status: "pending"|"joined"; email: string | null;
 };
 
-// Human labels for roles. "Musician" is the friendly name for the view/play-only
-// tier; "Editor" can edit songs/setlists; "Leader" is full admin.
-const ROLE_LABEL: Record<MemberRole, string> = { leader: "Leader", editor: "Editor", member: "Musician" };
+// Human labels for roles. "Member" is the view/play-only tier (matching the
+// "N members" count); "Editor" can edit songs/setlists; "Leader" is full admin.
+const ROLE_LABEL: Record<MemberRole, string> = { leader: "Leader", editor: "Editor", member: "Member" };
 export type GroupSong = { id: string; groupId: string; songId: string; };
 export type GroupsViewProps = {
   userId: string; groups: Group[]; groupMembers: GroupMember[]; groupSongs: GroupSong[]; songs: Song[]; folders: Folder[];
@@ -316,7 +316,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
                     </div>
                   </div>
                   {/* Leaders show a static badge; a leader can toggle any other
-                      member between Editor and Musician in place. No control on
+                      member between Editor and Member in place. No control on
                       self or on fellow leaders (role is enforced by RLS). */}
                   {m.role === "leader" ? (
                     <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 shrink-0">Leader</span>
@@ -421,7 +421,7 @@ function MemberView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
   const sharedSongs = songs.filter(s => sharedSongIds.has(s.id));
   const teamSetlists = folders.filter(f => f.type === "setlist" && f.groupId === group.id);
   // Editors also land here (only leaders get the management view), so show the
-  // viewer's actual role rather than assuming Musician.
+  // viewer's actual role rather than assuming Member.
   const myRole: MemberRole = groupMembers.find(m => m.groupId === group.id && m.userId === userId)?.role ?? "member";
   return (
     <div className="max-w-3xl w-full mx-auto px-4 sm:px-6 py-6">
@@ -537,14 +537,14 @@ function AddMemberModal({ groupId, suggestions, onAdd, onClose, showToast }: { g
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Role</div>
             <div className="flex gap-2">
-              {[["member","Musician"],["editor","Editor"],["leader","Leader"]].map(([v,l]) => (
+              {[["member","Member"],["editor","Editor"],["leader","Leader"]].map(([v,l]) => (
                 <button key={v} type="button" onClick={() => setRole(v)}
                   className={"flex-1 h-9 rounded-xl text-sm font-medium border transition-colors "+(role===v?"border-indigo-500 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600":"border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400")}>
                   {l}
                 </button>
               ))}
             </div>
-            <p className="text-[11px] text-slate-400 mt-1.5">Musicians view &amp; play. Editors can edit songs and setlists. Leaders manage the team.</p>
+            <p className="text-[11px] text-slate-400 mt-1.5">Members view &amp; play. Editors can edit songs and setlists. Leaders manage the team.</p>
           </div>
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Instrument</div>
