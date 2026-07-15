@@ -527,6 +527,23 @@ export default function Home() {
     }
   }, [view]);
 
+  // First-run landing: a brand-new / empty account should open on SONGS (the
+  // welcoming "add your first song" empty state), NOT a stale restored tab. The
+  // initial view restores the last-viewed screen from `wp-view`, so a user who
+  // ever tapped Teams/Folders lands back there — which for an empty library is a
+  // blank, discouraging screen. Once songs have loaded, if the library is empty
+  // and we landed on the Teams or Folders tab, nudge to Songs. One-shot (a ref
+  // guard) so it only affects the initial landing, never later navigation.
+  const didFirstLandingRef = useRef(false);
+  useEffect(() => {
+    if (!songsLoaded || didFirstLandingRef.current) return;
+    didFirstLandingRef.current = true;
+    if (songs.length === 0 && (view.kind === "groups" || view.kind === "folders")) {
+      setView({ kind: "library", filter: "all" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [songsLoaded]);
+
   // Mobile edge-swipe to open / swipe-left to close the nav. Decision is made at
   // touchend (passive listeners, no preventDefault) so normal scrolling is never
   // disturbed. Desktop (≥768px) keeps the nav permanently open, so it's ignored.

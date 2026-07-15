@@ -471,11 +471,9 @@ export default function Library({
       {filtered.length === 0 ? (
         songs.length === 0 && !query.trim() ? (
           <LibraryWelcome
+            onImportPhoto={onImportPhoto}
             onImportFile={onImportFile}
             onNewSong={onNewSong}
-            onAiChords={onAiChords}
-            canUseAiChords={canUseAiChords}
-            onRequireUpgrade={onRequireUpgrade}
           />
         ) : (
           <div className="text-center py-16 text-slate-400 dark:text-slate-500">
@@ -784,44 +782,59 @@ export default function Library({
 // existing flows — Import (headline for SongBook Pro switchers), Create, and the
 // gating-aware AI generate (Personal+). No new flows are introduced here.
 function LibraryWelcome({
-  onImportFile, onNewSong, onAiChords, canUseAiChords, onRequireUpgrade,
+  onImportPhoto, onImportFile, onNewSong,
 }: {
+  onImportPhoto: () => void;
   onImportFile: () => void;
   onNewSong: () => void;
-  onAiChords: () => void;
-  canUseAiChords: boolean;
-  onRequireUpgrade: () => void;
 }) {
   return (
     <div className="max-w-xl w-full mx-auto px-2 py-12 sm:py-16 text-center">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src="/worship-plus-icon.png" alt="Worship+" className="w-16 h-16 sm:w-20 sm:h-20 object-contain mx-auto mb-5" />
       <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">
-        Your songbook starts here
+        Add your first song
       </h2>
       <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
-        Bring your existing songs across, build a new chart, or let AI generate the chords for you.
+        The fastest way to start: snap a photo of a chord chart and let Claude read it in.
       </p>
 
       <div className="mt-8 space-y-3 text-left">
-        {/* Lead CTA — Import (headline for switchers). */}
+        {/* PRIMARY — Import from photo (the key hook). */}
         <button
           type="button"
-          onClick={onImportFile}
+          onClick={onImportPhoto}
           className="w-full flex items-center gap-4 p-4 rounded-2xl bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-600/20"
         >
           <span className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" />
+            </svg>
+          </span>
+          <span className="min-w-0">
+            <span className="block font-semibold text-sm">Import from photo</span>
+            <span className="block text-xs text-indigo-100/90">Snap a photo of your chords — Claude reads it in.</span>
+          </span>
+        </button>
+
+        {/* Secondary — Import a file. */}
+        <button
+          type="button"
+          onClick={onImportFile}
+          className="w-full flex items-center gap-4 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-800 transition-colors"
+        >
+          <span className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
             </svg>
           </span>
           <span className="min-w-0">
-            <span className="block font-semibold text-sm">Import your library</span>
-            <span className="block text-xs text-indigo-100/90">Switching from SongBook Pro? Bring everything across.</span>
+            <span className="block font-semibold text-sm text-slate-900 dark:text-slate-100">Import a file</span>
+            <span className="block text-xs text-slate-500 dark:text-slate-400">SongBook Pro, PDF, Word, ChordPro and more.</span>
           </span>
         </button>
 
-        {/* Create */}
+        {/* Secondary — Create manually. */}
         <button
           type="button"
           onClick={onNewSong}
@@ -833,32 +846,8 @@ function LibraryWelcome({
             </svg>
           </span>
           <span className="min-w-0">
-            <span className="block font-semibold text-sm text-slate-900 dark:text-slate-100">Create a song</span>
+            <span className="block font-semibold text-sm text-slate-900 dark:text-slate-100">Create manually</span>
             <span className="block text-xs text-slate-500 dark:text-slate-400">Start a fresh chord chart from scratch.</span>
-          </span>
-        </button>
-
-        {/* Generate with AI — Personal+; opens the upgrade prompt for Free users. */}
-        <button
-          type="button"
-          onClick={canUseAiChords ? onAiChords : onRequireUpgrade}
-          className="w-full flex items-center gap-4 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-800 transition-colors"
-        >
-          <span className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15l-1.9-4.1L5.5 9l4.6-1.4L12 3z" /><path d="M19 14l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z" />
-            </svg>
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="flex items-center gap-2">
-              <span className="font-semibold text-sm text-slate-900 dark:text-slate-100">Generate with AI</span>
-              {!canUseAiChords && (
-                <span className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
-                  Personal
-                </span>
-              )}
-            </span>
-            <span className="block text-xs text-slate-500 dark:text-slate-400">Paste lyrics and let Claude add the chords.</span>
           </span>
         </button>
       </div>
