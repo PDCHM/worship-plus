@@ -13,6 +13,7 @@ import {
 import { useOnlineStatus } from "@/lib/offline/useOnlineStatus";
 import OfflineBadge from "@/app/_components/OfflineBadge";
 import AddSongSheet from "@/app/_components/AddSongSheet";
+import PhotoImportModal from "@/app/_components/PhotoImportModal";
 import SongSearchSheet, { type SongSearchResult } from "@/app/_components/SongSearchSheet";
 import UpgradeModal from "@/app/_components/UpgradeModal";
 import { isPaidPlan, PLANS, type Plan } from "@/lib/plans";
@@ -514,8 +515,9 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Import-from-photo (Claude vision). Separate hidden input (images only) + a
   // busy flag for the full-screen "reading photo" overlay.
-  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [photoModalOpen, setPhotoModalOpen] = useState(false);
   const [importingPhoto, setImportingPhoto] = useState(false);
+  const [importCount, setImportCount] = useState(1); // #pages, for the overlay text
 
   const isFirstRender = useRef(true);
   useEffect(() => {
@@ -1643,7 +1645,7 @@ export default function Home() {
       return;
     }
     if (!guardOnline()) return;
-    photoInputRef.current?.click();
+    setPhotoModalOpen(true);
   };
 
   // Normalise any picked image (incl. iPhone HEIC) to a downscaled JPEG so the
@@ -1682,7 +1684,7 @@ export default function Home() {
     const sections: Section[] = [];
     for (const s of rawSections) {
       const sec = (s ?? {}) as { label?: unknown; lines?: unknown };
-      const label = typeof sec.label === "string" && sec.label.trim() ? sec.label.trim() : "Verse";
+      const label = typeof sec.label === "string" && sec.label.trim() ? sec.label.trim() : "Section";
       const rawLines = Array.isArray(sec.lines) ? sec.lines : [];
       const lines: Line[] = [];
       for (const l of rawLines) {
@@ -1712,17 +1714,31 @@ export default function Home() {
   // the editor as an UNSAVED draft (the review screen) — the user corrects
   // misreads and taps Save to commit, exactly like Build New. Nothing is written
   // to the DB until they Save.
-  const importFromPhoto = async (file: File) => {
+  // One OR several images (multi-page song). Each is normalised to JPEG, sent
+  // TOGETHER to the vision route (which merges them into one song in order), then
+  // opened in the editor as an unsaved draft for review. Single-image is just the
+  // n=1 case, so nothing about Stage 1's behaviour changes.
+  const importFromPhotos = async (files: File[]) => {
+    if (!files.length) return;
     if (!guardOnline()) return;
-    setImportingPhoto(true);
+    setImportCount(files.length);
+    setImportingPhoto(true); // modal stays open showing its busy state; closes on success
     const target = addTargetFolderId;
     setAddTargetFolderId(null);
     try {
-      const { b64, mediaType } = await imageFileToJpeg(file);
+      const images: { image: string; mediaType: string }[] = [];
+      for (const f of files) {
+        const { b64, mediaType } = await imageFileToJpeg(f);
+        if (b64) images.push({ image: b64, mediaType });
+      }
+      if (!images.length) {
+        showToast("Couldn't read these clearly — try clearer photos or add manually.");
+        return;
+      }
       const res = await fetch("/api/import-photo", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ image: b64, mediaType }),
+        body: JSON.stringify({ images }),
       });
       let json: { error?: string; sections?: unknown } | null = null;
       try { json = await res.json(); } catch { /* handled below */ }
@@ -1744,8 +1760,9 @@ export default function Home() {
       newSongIdsRef.current.add(song.id);
       hydratedIdsRef.current.add(song.id);
       if (target) pendingFolderLinkRef.current.set(song.id, target);
+      setPhotoModalOpen(false); // success → close the staging sheet, open the editor
       navigateTo({ kind: "editor", songId: song.id });
-      showToast("Review the imported song, then Save");
+      showToast(files.length > 1 ? `Review the imported song (${files.length} pages), then Save` : "Review the imported song, then Save");
     } catch {
       showToast("Couldn't read this clearly — try a clearer photo or add manually.");
     } finally {
@@ -2686,26 +2703,17 @@ export default function Home() {
         }}
       />
 
-      {/* Import-from-photo picker — images only; no `capture` so the OS offers
-          BOTH camera and photo library. Single image (Stage 1). */}
-      <input
-        ref={photoInputRef}
-        type="file"
-        accept="image/*,image/heic,image/heif"
-        className="hidden"
-        onChange={async (e) => {
-          const el = e.target;
-          const file = el.files?.[0];
-          try { if (file) await importFromPhoto(file); }
-          finally { el.value = ""; }
-        }}
-      />
+      {/* Photo import — staging sheet (add one or several pages), then vision. */}
+      {photoModalOpen && (
+        <PhotoImportModal onClose={() => setPhotoModalOpen(false)} onImport={importFromPhotos} busy={importingPhoto} />
+      )}
 
-      {/* Full-screen "reading photo" overlay while the vision call runs. */}
-      {importingPhoto && (
+      {/* Full-screen "reading photo" overlay — only when the staging sheet isn't
+          up (the sheet shows its own busy state; avoids a double spinner). */}
+      {importingPhoto && !photoModalOpen && (
         <div className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-3 bg-slate-950/70 backdrop-blur-sm print:hidden">
           <div className="w-8 h-8 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-          <p className="text-white text-sm font-medium">Reading the chord chart…</p>
+          <p className="text-white text-sm font-medium">{importCount > 1 ? `Reading ${importCount} pages…` : "Reading the chord chart…"}</p>
         </div>
       )}
 

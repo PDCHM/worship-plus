@@ -3,34 +3,50 @@ import { NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import { enforceAiAccess } from "@/lib/aiGate";
 
-// Import a song from a PHOTO/screenshot of a chord chart (Stage 1: single image).
+// Import a song from PHOTO(s)/screenshot(s) of a chord chart. Stage 2 accepts
+// MULTIPLE images (a multi-page song) and merges them into one song, in order.
 // Runs server-side so the Anthropic API key never reaches the browser — same
-// pattern as /api/generate-chords. The client posts a base64 JPEG/PNG; we ask a
+// pattern as /api/generate-chords. The client posts base64 JPEG(s); we ask a
 // vision model to read the chart and return strict JSON, which the client maps
 // onto the normal Song → sections → lines → chords structure for review + save.
 
 // Vision-capable Sonnet (bare alias = active, recommended snapshot).
 const MODEL = "claude-sonnet-4-6";
 
-const SYSTEM_PROMPT = `You read a photo of a PRINTED or SCREENSHOT worship chord chart and return the song as STRICT JSON. Return ONLY the JSON object — no prose, no explanation, no markdown code fences.
+const SYSTEM_PROMPT = `You read one or more photos/screenshots of a PRINTED worship chord chart and return the song as STRICT JSON. Return ONLY the JSON object — no prose, no explanation, no markdown code fences.
 
 Shape:
 {"title": string|null, "key": string|null, "sections": [{"label": string, "lines": [{"lyrics": string, "chords": [{"chord": string, "wordIndex": number}]}]}]}
 
-Rules:
-- Identify section labels (Intro, Verse 1, Verse 2, Pre-Chorus, Chorus, Bridge, Tag, Ending/Outro, etc.). If a block has no visible label, infer a sensible one from position/repetition.
-- SEPARATE chords from lyrics. "lyrics" is the plain lyric text of that line with NO chords embedded. "chords" is the list of chords sitting ABOVE that line.
-- Align each chord to the word it sits above using "wordIndex": a 0-based index into the space-separated words of that line's "lyrics". A chord over the first word → wordIndex 0. If a chord sits over empty space or between words, attach it to the nearest following word (or the last word if it is past the end of the line).
-- Chord-only lines (chords with no lyrics under them, e.g. an intro riff): use "lyrics": "" and still list the chords left-to-right with wordIndex 0, 1, 2, …
-- Preserve chord spelling EXACTLY as printed: G, D/F#, Bm7, Csus4, Em7, A2, etc.
-- Preserve REPEATED sections — if the chorus is printed (or marked) more than once, emit it each time.
-- IGNORE page furniture: song/hymn numbers, CCLI numbers, copyright lines, author/composer credits, page numbers, tempo markings, and unrelated notes.
+CHORD POSITIONING — be precise:
+- "wordIndex" is a 0-based index into the space-separated words of that line's "lyrics".
+- Each chord's wordIndex is the word the chord sits DIRECTLY ABOVE. Match the chord's horizontal position to the word beneath it.
+- If a chord sits BETWEEN two words, or before the first word / at the very start of the line, assign it to the NEAREST FOLLOWING word (the word to its right). If it is past the last word, use the last word's index.
+- Before returning, DOUBLE-CHECK every chord's horizontal alignment against the word beneath it and fix any that are off by one.
+- Preserve chord spelling EXACTLY — quality, extensions, AND slash/bass notes: G, D/F#, Bm7, Csus4, Gmaj7, A2, Em7b5, F#m, Asus, Dadd9, etc. NEVER simplify (do not turn Gmaj7 into G, Am7 into Am, or D/F# into D).
 
-If the image is NOT a readable chord chart (blurry, blank, unrelated), return exactly {"error": "unreadable"}.`;
+SECTIONS — label every block:
+- Identify section labels precisely: Intro, Verse, Verse 2, Verse 3, Pre-Chorus, Chorus, Bridge, Tag, Instrumental, Interlude, Ending/Outro, etc. Use the label printed on the chart, keeping its number (Verse 2, Chorus 2).
+- If a block has NO printed label, give it the generic label "Section". Do NOT merge an unlabeled block into the previous section — start a new section at every label or clear visual break.
+- Preserve REPEATED sections (emit a chorus each time it appears).
+
+LINES:
+- "lyrics" is the plain lyric text of the line with NO chords embedded.
+- Chord-only lines (chords with no lyrics under them, e.g. an intro riff): use "lyrics": "" and list the chords left-to-right with wordIndex 0, 1, 2, …
+
+IGNORE page furniture: song/hymn numbers, CCLI numbers, copyright lines, author/composer credits, page numbers, tempo/BPM markings, capo notes, and unrelated notes.
+
+If NONE of the images is a readable chord chart, return exactly {"error": "unreadable"}.`;
+
+// Extra instruction when several images are sent — they are pages of ONE song.
+const multiPageInstruction = (n: number) =>
+  `The ${n} images above are consecutive PAGES of ONE song, in the given order (Page 1, Page 2, …). Combine them into a SINGLE song: read the pages in order and CONCATENATE the sections across pages in that reading order. Do not repeat the title. If a section is split across a page break, continue it as the same section. Then return the strict JSON described.`;
 
 const MEDIA_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+type MediaType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 
-type Body = { image?: unknown; mediaType?: unknown };
+type ImageIn = { image?: unknown; mediaType?: unknown };
+type Body = { images?: unknown; image?: unknown; mediaType?: unknown };
 
 // Pull the JSON object out of the reply — tolerant of a stray ```json fence or
 // surrounding prose, same as /api/generate-chords.
@@ -63,29 +79,45 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  const image = typeof body.image === "string" ? body.image.trim() : "";
-  const mediaType =
-    typeof body.mediaType === "string" && MEDIA_TYPES.has(body.mediaType) ? body.mediaType : "image/jpeg";
-  if (!image) {
+  // Accept an array of images (Stage 2 multi-page) OR a single `image` (Stage 1,
+  // still supported so nothing breaks). Cap the count to keep the payload sane.
+  const normMedia = (m: unknown): MediaType =>
+    typeof m === "string" && MEDIA_TYPES.has(m) ? (m as MediaType) : "image/jpeg";
+  let images: { data: string; mediaType: MediaType }[] = [];
+  if (Array.isArray(body.images)) {
+    for (const it of body.images) {
+      const o = (it ?? {}) as ImageIn;
+      const data = typeof o.image === "string" ? o.image.trim() : "";
+      if (data) images.push({ data, mediaType: normMedia(o.mediaType) });
+    }
+  } else if (typeof body.image === "string" && body.image.trim()) {
+    images.push({ data: body.image.trim(), mediaType: normMedia(body.mediaType) });
+  }
+  images = images.slice(0, 10);
+  if (images.length === 0) {
     return NextResponse.json({ error: "No image provided." }, { status: 400 });
   }
 
   const client = new Anthropic({ apiKey });
 
+  // Build the content: each image (labelled with its page number when there are
+  // several), then the closing text instruction.
+  const content: Array<Anthropic.ImageBlockParam | Anthropic.TextBlockParam> = [];
+  images.forEach((im, i) => {
+    if (images.length > 1) content.push({ type: "text", text: `Page ${i + 1} of ${images.length}:` });
+    content.push({ type: "image", source: { type: "base64", media_type: im.mediaType, data: im.data } });
+  });
+  content.push({
+    type: "text",
+    text: images.length > 1 ? multiPageInstruction(images.length) : "Read this chord chart and return the strict JSON described.",
+  });
+
   try {
     const response = await client.messages.create({
       model: MODEL,
-      max_tokens: 16000,
+      max_tokens: images.length > 1 ? 32000 : 16000,
       system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "image", source: { type: "base64", media_type: mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: image } },
-            { type: "text", text: "Read this chord chart and return the strict JSON described." },
-          ],
-        },
-      ],
+      messages: [{ role: "user", content }],
     });
 
     const text = response.content
