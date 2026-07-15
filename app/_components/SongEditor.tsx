@@ -4759,10 +4759,13 @@ function TempoPanel({ bpm, playing, onBpmChange, onToggle }: {
   );
 }
 
-/* MetronomePill — persistent floating control, pinned bottom-right of the song
+/* MetronomePill — persistent floating control, pinned bottom-left of the song
    view (fixed → stays put through scroll). Reads/controls the SAME metronome as
-   the panel's play button. Quiet when stopped; accent-filled + beat-pulsing when
-   playing. Tap toggles play/stop. */
+   the panel's play button; audio logic untouched. CONTEXTUAL appearance:
+   • IDLE  → small, low-contrast (▶ + BPM) so it barely draws the eye while reading.
+   • PLAYING → grows into a prominent accent-filled STOP control (■ + BPM), with the
+     subtle beat pulse, so it's an obvious, easy tap to stop instantly.
+   Tap toggles play/stop; the two states cross-fade/grow via a single transition. */
 function MetronomePill({ bpm, playing, onToggle, raised }: {
   bpm: number;
   playing: boolean;
@@ -4774,14 +4777,19 @@ function MetronomePill({ bpm, playing, onToggle, raised }: {
       onPointerDown={(e) => { e.preventDefault(); onToggle(); }}
       aria-pressed={playing}
       aria-label={playing ? `Stop metronome, ${bpm} BPM` : `Start metronome, ${bpm} BPM`}
-      style={{ bottom: `calc(env(safe-area-inset-bottom) + ${raised ? "8rem" : "5rem"})`, transition: "bottom 0.2s ease" }}
-      className={"fixed left-4 z-40 print:hidden flex items-center gap-1.5 h-9 pl-2.5 pr-3 rounded-full text-sm font-semibold tabular-nums transition-colors " + (playing
-        ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/30"
-        : "bg-white/90 dark:bg-slate-900/90 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 shadow-md backdrop-blur")}>
+      style={{ bottom: `calc(env(safe-area-inset-bottom) + ${raised ? "8rem" : "5rem"})`, transition: "all 0.2s ease" }}
+      className={"fixed left-4 z-40 print:hidden inline-flex items-center rounded-full font-semibold tabular-nums " + (playing
+        // PLAYING: prominent accent-filled stop control — bigger, filled, ring-lifted,
+        // easy to hit to stop instantly.
+        ? "h-10 gap-2 pl-3 pr-4 text-sm bg-indigo-600 text-white shadow-lg shadow-indigo-600/40 ring-2 ring-indigo-500/25"
+        // IDLE: quiet + minimal — small, low-contrast, barely there.
+        : "h-8 gap-1.5 pl-2 pr-2.5 text-xs bg-white/70 dark:bg-slate-900/70 text-slate-400 dark:text-slate-500 border border-slate-200/70 dark:border-slate-700/70 shadow-sm backdrop-blur")}>
       <span className="inline-flex" style={playing ? { animation: `mp-beat ${(60 / bpm).toFixed(3)}s ease-in-out infinite` } : undefined}>
         {playing
-          ? <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
-          : <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>}
+          // ■ stop
+          ? <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+          // ▶ play
+          : <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>}
       </span>
       {bpm}
     </button>
