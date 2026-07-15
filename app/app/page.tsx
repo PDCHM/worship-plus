@@ -45,7 +45,10 @@ import {
   parseSbp,
   markSongOpened,
   uid,
+  KEYS,
   type Chord,
+  type Line,
+  type Section,
   type SectionStyles,
   type Settings,
   type Song,
@@ -509,6 +512,10 @@ export default function Home() {
   // saving the copy we navigate to `after` (where the user was headed).
   const [saveAsPrompt, setSaveAsPrompt] = useState<{ song: Song; title: string; after: View } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Import-from-photo (Claude vision). Separate hidden input (images only) + a
+  // busy flag for the full-screen "reading photo" overlay.
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [importingPhoto, setImportingPhoto] = useState(false);
 
   const isFirstRender = useRef(true);
   useEffect(() => {
@@ -1628,6 +1635,124 @@ export default function Home() {
     setSearchOpen(true);
   };
 
+  // ── Import a song from a photo of a chord chart (Claude vision) ──────────────
+  // Gated like the other AI features; opens the image picker (camera or library).
+  const gatedImportPhoto = () => {
+    if (!gate.canUse("ai_chords")) {
+      setUpgradeModal({ reason: "Photo import" });
+      return;
+    }
+    if (!guardOnline()) return;
+    photoInputRef.current?.click();
+  };
+
+  // Normalise any picked image (incl. iPhone HEIC) to a downscaled JPEG so the
+  // vision API gets a supported format and a reasonable payload size.
+  const imageFileToJpeg = (file: File, maxDim = 1600): Promise<{ b64: string; mediaType: string }> =>
+    new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onerror = () => reject(new Error("read failed"));
+      fr.onload = () => {
+        // `Image` is shadowed by the next/image import — use the DOM element.
+        const img = document.createElement("img");
+        img.onerror = () => reject(new Error("decode failed"));
+        img.onload = () => {
+          const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+          const w = Math.max(1, Math.round(img.width * scale));
+          const h = Math.max(1, Math.round(img.height * scale));
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) { reject(new Error("no canvas")); return; }
+          ctx.drawImage(img, 0, 0, w, h);
+          const url = canvas.toDataURL("image/jpeg", 0.85);
+          resolve({ b64: url.split(",")[1] ?? "", mediaType: "image/jpeg" });
+        };
+        img.src = fr.result as string;
+      };
+      fr.readAsDataURL(file);
+    });
+
+  // Vision JSON → the app's Song structure. Same shape the .sbp/paste import
+  // builds (song → sections → lines → chords), with chords positioned by word.
+  const songFromVision = (data: unknown, userId?: string): Song => {
+    const d = (data ?? {}) as { title?: unknown; key?: unknown; sections?: unknown };
+    const rawSections = Array.isArray(d.sections) ? d.sections : [];
+    const sections: Section[] = [];
+    for (const s of rawSections) {
+      const sec = (s ?? {}) as { label?: unknown; lines?: unknown };
+      const label = typeof sec.label === "string" && sec.label.trim() ? sec.label.trim() : "Verse";
+      const rawLines = Array.isArray(sec.lines) ? sec.lines : [];
+      const lines: Line[] = [];
+      for (const l of rawLines) {
+        const ln = (l ?? {}) as { lyrics?: unknown; chords?: unknown };
+        const lyric = typeof ln.lyrics === "string" ? ln.lyrics : "";
+        const rawChords = Array.isArray(ln.chords) ? ln.chords : [];
+        const chords: Chord[] = [];
+        for (const c of rawChords) {
+          const ch = (c ?? {}) as { chord?: unknown; wordIndex?: unknown };
+          const chord = typeof ch.chord === "string" ? ch.chord.trim() : "";
+          if (!chord) continue;
+          const wi = typeof ch.wordIndex === "number" && Number.isFinite(ch.wordIndex) ? Math.max(0, Math.floor(ch.wordIndex)) : 0;
+          chords.push({ id: uid(), chord, wordIndex: wi, offset: 0, pos: wordStartOffset(lyric, wi) });
+        }
+        chords.sort((a, b) => a.pos - b.pos);
+        lines.push({ id: uid(), lyric, chords });
+      }
+      if (lines.length) sections.push({ id: uid(), label, lines });
+    }
+    if (sections.length === 0) sections.push({ id: uid(), label: "Verse 1", lines: [{ id: uid(), lyric: "", chords: [] }] });
+    const key = typeof d.key === "string" && KEYS.includes(d.key.trim()) ? d.key.trim() : "C";
+    const title = typeof d.title === "string" && d.title.trim() ? d.title.trim() : "Imported Song";
+    return { ...makeNewSong(), title, key, sections, userId, updatedAt: Date.now() };
+  };
+
+  // Send the image to the vision route, map the result to a Song, and open it in
+  // the editor as an UNSAVED draft (the review screen) — the user corrects
+  // misreads and taps Save to commit, exactly like Build New. Nothing is written
+  // to the DB until they Save.
+  const importFromPhoto = async (file: File) => {
+    if (!guardOnline()) return;
+    setImportingPhoto(true);
+    const target = addTargetFolderId;
+    setAddTargetFolderId(null);
+    try {
+      const { b64, mediaType } = await imageFileToJpeg(file);
+      const res = await fetch("/api/import-photo", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ image: b64, mediaType }),
+      });
+      let json: { error?: string; sections?: unknown } | null = null;
+      try { json = await res.json(); } catch { /* handled below */ }
+      if (res.status === 401) { showToast("Please sign in again."); return; }
+      if (res.status === 403 || json?.error === "upgrade_required") { setUpgradeModal({ reason: "Photo import" }); return; }
+      if (!res.ok || !json || json.error === "unreadable" || !Array.isArray(json.sections)) {
+        showToast(
+          json?.error && json.error !== "unreadable" && json.error !== "upgrade_required"
+            ? json.error
+            : "Couldn't read this clearly — try a clearer photo or add manually.",
+        );
+        return;
+      }
+      const song = songFromVision(json, user?.id);
+      // Add as an unsaved draft (dirty + new) and open the editor for review.
+      setSongs((prev) => [song, ...prev]);
+      setDirtyIds((prev) => new Set(prev).add(song.id));
+      lastSavedRef.current.set(song.id, song);
+      newSongIdsRef.current.add(song.id);
+      hydratedIdsRef.current.add(song.id);
+      if (target) pendingFolderLinkRef.current.set(song.id, target);
+      navigateTo({ kind: "editor", songId: song.id });
+      showToast("Review the imported song, then Save");
+    } catch {
+      showToast("Couldn't read this clearly — try a clearer photo or add manually.");
+    } finally {
+      setImportingPhoto(false);
+    }
+  };
+
   // Adding team members is capped by the team's plan (15 on Team, unlimited on
   // Church). Enforced here before the add_group_member RPC; the cap uses the
   // caller's effective plan, which for a team owner/admin already reflects that
@@ -2561,6 +2686,29 @@ export default function Home() {
         }}
       />
 
+      {/* Import-from-photo picker — images only; no `capture` so the OS offers
+          BOTH camera and photo library. Single image (Stage 1). */}
+      <input
+        ref={photoInputRef}
+        type="file"
+        accept="image/*,image/heic,image/heif"
+        className="hidden"
+        onChange={async (e) => {
+          const el = e.target;
+          const file = el.files?.[0];
+          try { if (file) await importFromPhoto(file); }
+          finally { el.value = ""; }
+        }}
+      />
+
+      {/* Full-screen "reading photo" overlay while the vision call runs. */}
+      {importingPhoto && (
+        <div className="fixed inset-0 z-[70] flex flex-col items-center justify-center gap-3 bg-slate-950/70 backdrop-blur-sm print:hidden">
+          <div className="w-8 h-8 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+          <p className="text-white text-sm font-medium">Reading the chord chart…</p>
+        </div>
+      )}
+
       <TopNav
         onHome={() => navigateTo({ kind: "library", filter: "all" })}
         profile={profile}
@@ -2606,6 +2754,7 @@ export default function Home() {
               onPasteChart={() => { setAddTargetFolderId(null); setPasteAiIntent(false); setPasteOpen(true); }}
               onAiChords={() => { setAddTargetFolderId(null); setPasteAiIntent(true); setPasteOpen(true); }}
               onImportFile={() => { setAddTargetFolderId(null); fileInputRef.current?.click(); }}
+              onImportPhoto={() => { setAddTargetFolderId(null); gatedImportPhoto(); }}
               onSearchOnline={() => { setAddTargetFolderId(null); gatedSearchOnline(); }}
               canUseAiChords={gate.canUse("ai_chords")}
               onRequireUpgrade={() => setUpgradeModal({ reason: "AI chord generation" })}
@@ -2779,6 +2928,7 @@ export default function Home() {
           onPasteChart={() => { setPasteAiIntent(false); setPasteOpen(true); }}
           onAiChords={() => { setPasteAiIntent(true); setPasteOpen(true); }}
           onImportFile={() => fileInputRef.current?.click()}
+          onImportPhoto={gatedImportPhoto}
           onSearchOnline={gatedSearchOnline}
           // Only in the folder/setlist flow (target set) — opens the existing
           // library picker to add songs you already have to that target.

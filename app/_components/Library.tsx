@@ -18,6 +18,7 @@ type Props = {
   onPasteChart: () => void;
   onAiChords: () => void;
   onImportFile: () => void;
+  onImportPhoto: () => void;
   onSearchOnline: () => void;
   // AI chord generation is Personal+. When false, the welcoming empty state's
   // "Generate with AI" CTA opens the upgrade prompt instead of the AI flow.
@@ -43,6 +44,7 @@ export default function Library({
   onPasteChart,
   onAiChords,
   onImportFile,
+  onImportPhoto,
   onSearchOnline,
   canUseAiChords,
   onRequireUpgrade,
@@ -773,7 +775,7 @@ export default function Library({
         </div>
       )}
 
-      {addSheetOpen && <AddSongSheet onBuildNew={onNewSong} onPasteChart={onPasteChart} onAiChords={onAiChords} onImportFile={onImportFile} onSearchOnline={onSearchOnline} onClose={()=>setAddSheetOpen(false)} />}
+      {addSheetOpen && <AddSongSheet onBuildNew={onNewSong} onPasteChart={onPasteChart} onAiChords={onAiChords} onImportFile={onImportFile} onImportPhoto={onImportPhoto} onSearchOnline={onSearchOnline} onClose={()=>setAddSheetOpen(false)} />}
     </div>
   );
 }

@@ -7,6 +7,7 @@ type Props = {
   onPasteChart: () => void;
   onAiChords: () => void;
   onImportFile: () => void;
+  onImportPhoto: () => void;
   onSearchOnline: () => void;
   // When provided (folder/setlist "+ Add Songs" flow), a "Choose from library"
   // entry is shown that opens the existing library picker. Omitted in the plain
@@ -30,11 +31,14 @@ const ICON_FILE = (
 const ICON_GLOBE = (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
 );
+const ICON_CAMERA = (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+);
 const ICON_LIBRARY = (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 5h18"/><path d="M3 12h18"/><path d="M3 19h18"/><circle cx="7" cy="5" r="0.5" fill="currentColor"/></svg>
 );
 
-export default function AddSongSheet({ onBuildNew, onPasteChart, onAiChords, onImportFile, onSearchOnline, onChooseFromLibrary, onClose }: Props) {
+export default function AddSongSheet({ onBuildNew, onPasteChart, onAiChords, onImportFile, onImportPhoto, onSearchOnline, onChooseFromLibrary, onClose }: Props) {
   // Second-level menus: "Paste Song" (paste text) and "Import Song" (which shows
   // format guidance before opening the native file picker).
   const [pasteSubOpen, setPasteSubOpen] = useState(false);
@@ -95,6 +99,9 @@ export default function AddSongSheet({ onBuildNew, onPasteChart, onAiChords, onI
             <SheetBtn onClick={() => setImportSubOpen(true)}
               icon={ICON_FILE}
               label="Import Song" desc="From a file — best with SongBook Pro .sbp / .sbpbackup" chevron />
+            <SheetBtn onClick={() => { onImportPhoto(); onClose(); }}
+              icon={ICON_CAMERA}
+              label="Import from photo" desc="Snap or upload a chord chart — Claude reads it" />
             <SheetBtn onClick={() => setPasteSubOpen(true)}
               icon={ICON_PASTE}
               label="Paste Song" desc="Paste a full chord chart as text" chevron />
