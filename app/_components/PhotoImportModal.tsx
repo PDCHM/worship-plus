@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { prepareImageFile } from "@/lib/image/prepare";
 
 // Staging sheet for photo import (Stage 2). The user adds one OR several images
 // (camera or library; "Add photos" can be tapped repeatedly to add more), sees
@@ -14,6 +15,8 @@ export default function PhotoImportModal({
   busy: boolean;
 }) {
   const [items, setItems] = useState<{ file: File; url: string }[]>([]);
+  const [preparing, setPreparing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   // Revoke every preview URL when the sheet unmounts (avoid object-URL leaks).
   const itemsRef = useRef(items);
@@ -21,12 +24,37 @@ export default function PhotoImportModal({
   useEffect(() => () => { itemsRef.current.forEach((it) => URL.revokeObjectURL(it.url)); }, []);
 
   const MAX = 10;
-  const addFiles = (files: FileList | null) => {
+  // Every picked file is normalised to a previewable, API-safe JPEG BEFORE it
+  // reaches state — an iPhone HEIC has no <img> preview and cannot be sent to
+  // the vision API as-is, so converting here fixes the thumbnail and the import
+  // in one place. Conversion is async (heic2any decodes a whole photo), hence
+  // the `preparing` state on the picker button.
+  const addFiles = async (files: FileList | null) => {
     if (!files) return;
     const picked = Array.from(files)
-      .filter((f) => f.type.startsWith("image/") || /\.(heic|heif)$/i.test(f.name))
-      .map((f) => ({ file: f, url: URL.createObjectURL(f) }));
-    setItems((prev) => [...prev, ...picked].slice(0, MAX));
+      .filter((f) => f.type.startsWith("image/") || /\.(heic|heif)$/i.test(f.name));
+    if (!picked.length) return;
+    setPreparing(true);
+    setError(null);
+    let failed = 0;
+    try {
+      // Room left, so a 30-photo pick doesn't convert 20 images it will discard.
+      const room = MAX - itemsRef.current.length;
+      for (const f of picked.slice(0, Math.max(0, room))) {
+        try {
+          const ready = await prepareImageFile(f);
+          const item = { file: ready, url: URL.createObjectURL(ready) };
+          // Append per file: pages appear as they convert, and one bad photo
+          // never discards the ones that already worked.
+          setItems((prev) => [...prev, item].slice(0, MAX));
+        } catch {
+          failed += 1;
+        }
+      }
+    } finally {
+      setPreparing(false);
+      if (failed) setError(failed === picked.length ? "Couldn't read that image. Try another photo." : `Skipped ${failed} image${failed > 1 ? "s" : ""} that couldn't be read.`);
+    }
   };
   const removeAt = (i: number) =>
     setItems((prev) => {
@@ -71,17 +99,27 @@ export default function PhotoImportModal({
             </div>
           )}
 
-          <button type="button" onClick={() => inputRef.current?.click()} disabled={busy || items.length >= MAX}
+          {error && (
+            <p className="text-xs text-rose-600 dark:text-rose-400" role="alert">{error}</p>
+          )}
+
+          <button type="button" onClick={() => inputRef.current?.click()} disabled={busy || preparing || items.length >= MAX}
             className="w-full h-11 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center justify-center gap-2 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-            {items.length === 0 ? "Add photo" : "Add more"}
+            {preparing ? (
+              <><span className="w-4 h-4 rounded-full border-2 border-slate-300 border-t-slate-600 dark:border-slate-600 dark:border-t-slate-300 animate-spin" /> Preparing…</>
+            ) : (
+              <>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                {items.length === 0 ? "Add photo" : "Add more"}
+              </>
+            )}
           </button>
           {/* No `capture` → the OS offers camera AND library; `multiple` lets a
               whole set be picked at once. Tap again to add more. */}
           <input ref={inputRef} type="file" accept="image/*,image/heic,image/heif" multiple className="hidden"
-            onChange={(e) => { addFiles(e.target.files); e.target.value = ""; }} />
+            onChange={(e) => { void addFiles(e.target.files); e.target.value = ""; }} />
 
-          <button type="button" onClick={() => onImport(items.map((it) => it.file))} disabled={busy || items.length === 0}
+          <button type="button" onClick={() => onImport(items.map((it) => it.file))} disabled={busy || preparing || items.length === 0}
             className="w-full h-11 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold flex items-center justify-center gap-2 transition-colors shadow-sm shadow-indigo-600/30 disabled:opacity-50 disabled:cursor-not-allowed">
             {busy ? (
               <><span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" /> Reading…</>

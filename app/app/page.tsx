@@ -14,6 +14,7 @@ import { useOnlineStatus } from "@/lib/offline/useOnlineStatus";
 import OfflineBadge from "@/app/_components/OfflineBadge";
 import AddSongSheet from "@/app/_components/AddSongSheet";
 import PhotoImportModal from "@/app/_components/PhotoImportModal";
+import { prepareImageFile, fileToBase64 } from "@/lib/image/prepare";
 import SongSearchSheet, { type SongSearchResult } from "@/app/_components/SongSearchSheet";
 import UpgradeModal from "@/app/_components/UpgradeModal";
 import { isPaidPlan, PLANS, type Plan } from "@/lib/plans";
@@ -1665,33 +1666,15 @@ export default function Home() {
     setPhotoModalOpen(true);
   };
 
-  // Normalise any picked image (incl. iPhone HEIC) to a downscaled JPEG so the
-  // vision API gets a supported format and a reasonable payload size.
-  const imageFileToJpeg = (file: File, maxDim = 1600): Promise<{ b64: string; mediaType: string }> =>
-    new Promise((resolve, reject) => {
-      const fr = new FileReader();
-      fr.onerror = () => reject(new Error("read failed"));
-      fr.onload = () => {
-        // `Image` is shadowed by the next/image import — use the DOM element.
-        const img = document.createElement("img");
-        img.onerror = () => reject(new Error("decode failed"));
-        img.onload = () => {
-          const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-          const w = Math.max(1, Math.round(img.width * scale));
-          const h = Math.max(1, Math.round(img.height * scale));
-          const canvas = document.createElement("canvas");
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) { reject(new Error("no canvas")); return; }
-          ctx.drawImage(img, 0, 0, w, h);
-          const url = canvas.toDataURL("image/jpeg", 0.85);
-          resolve({ b64: url.split(",")[1] ?? "", mediaType: "image/jpeg" });
-        };
-        img.src = fr.result as string;
-      };
-      fr.readAsDataURL(file);
-    });
+  // Encode a picked image for the vision route. The staging sheet has already
+  // run prepareImageFile() on everything it holds (HEIC → JPEG, oversized →
+  // downscaled), but this re-runs it so the route is still safe for any caller
+  // handing over a raw file — an already-prepared file falls through with just
+  // one decode and no re-encode.
+  const imageFileToJpeg = async (file: File): Promise<{ b64: string; mediaType: string }> => {
+    const ready = await prepareImageFile(file);
+    return { b64: await fileToBase64(ready), mediaType: ready.type || "image/jpeg" };
+  };
 
   // Vision JSON → the app's Song structure. Same shape the .sbp/paste import
   // builds (song → sections → lines → chords), with chords positioned by word.
@@ -1745,8 +1728,12 @@ export default function Home() {
     try {
       const images: { image: string; mediaType: string }[] = [];
       for (const f of files) {
-        const { b64, mediaType } = await imageFileToJpeg(f);
-        if (b64) images.push({ image: b64, mediaType });
+        // Skip an image that won't decode rather than failing the whole
+        // multi-page import — the readable pages still come through.
+        try {
+          const { b64, mediaType } = await imageFileToJpeg(f);
+          if (b64) images.push({ image: b64, mediaType });
+        } catch { /* skipped — reported by the empty check below */ }
       }
       if (!images.length) {
         showToast("Couldn't read these clearly — try clearer photos or add manually.");
