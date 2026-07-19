@@ -147,7 +147,26 @@ export type Song = {
   userId?: string;
   // Owner-only draft: hidden from group members / shared setlists until published.
   isDraft?: boolean;
+  // Time signature, e.g. "4/4". OPTIONAL on purpose: the DB column may not
+  // exist yet (migration pending) and older songs predate it — unset means the
+  // 4/4 default, so no existing Song literal or row needs updating.
+  timeSignature?: string | null;
 };
+
+// ── Time signature ──────────────────────────────────────────────────────────
+// Common signatures only, kept short so the picker stays a single tidy row.
+export const TIME_SIGNATURES = ["4/4", "3/4", "2/4", "2/2", "6/8", "5/4"] as const;
+export const DEFAULT_TIME_SIGNATURE = "4/4";
+
+// Beats per bar = the signature's TOP number, which is what the visual
+// metronome blinks through (6/8 → 6 blocks). The bottom number doesn't affect
+// scheduling: the engine advances one beat per 60/bpm tick regardless, so bpm
+// is read as "this many blocks per minute". Anything unrecognised — including
+// null from a song saved before the column existed — falls back to 4.
+export function beatsPerBar(timeSignature?: string | null): number {
+  const top = Number.parseInt(String(timeSignature ?? "").split("/")[0], 10);
+  return Number.isFinite(top) && top >= 1 && top <= 12 ? top : 4;
+}
 
 export type SectionColor = { bg: string; fg: string };
 export type SectionColorKey =

@@ -79,12 +79,22 @@ const LIBRARY_VIEW_KEY = "wp-library-view-v1";
 // library list — never sections/lines/chords. Full content is loaded per song
 // when opened (hydrateSong) so the library scales to 500+ songs without a
 // nested-join timeout. rowToSong maps a metadata row to a Song with sections: [].
-const SONG_META_COLUMNS = "id, user_id, title, artist, key, bpm, capo, favorite, created_at, updated_at";
+// Columns that predate every pending migration — the guaranteed-safe floor
+// that every fallback bottoms out at.
+const SONG_META_BASE = "id, user_id, title, artist, key, bpm, capo, favorite, created_at, updated_at";
+// Preferred metadata set. `time_signature` may not exist yet (migration
+// pending), so every select using this retries with SONG_META_BASE on a
+// missing-column error rather than leaving the library empty.
+const SONG_META_COLUMNS = SONG_META_BASE + ", time_signature";
 // Drafts are owner-only (never shared to groups/setlists), so only the
 // own-songs load pulls is_draft. It falls back to SONG_META_COLUMNS if the
 // column hasn't been added to the DB yet (schema migration not applied), so a
 // missing column can never empty the library.
-const SONG_META_COLUMNS_OWN = "id, user_id, title, artist, key, bpm, capo, favorite, is_draft, created_at, updated_at";
+const SONG_META_COLUMNS_OWN = SONG_META_COLUMNS + ", is_draft";
+
+// A Postgres "column does not exist" (42703) from a not-yet-applied migration,
+// as opposed to a real query failure.
+const isMissingColumn = (msg?: string | null) => /column|42703/i.test(msg || "");
 
 // Strip filename-invalid characters (/ \ : * ? " < > |); keep case and spaces.
 function safeFilename(title: string): string {
@@ -128,6 +138,9 @@ type SongRow = {
   capo: number | null;
   favorite: boolean;
   is_draft?: boolean | null;
+  // Absent when the migration hasn't run yet, or when a fallback select
+  // dropped it — treated as unset (= 4/4).
+  time_signature?: string | null;
   created_at: string;
   updated_at: string;
   sections?: Array<{
@@ -192,6 +205,7 @@ function rowToSong(row: SongRow): Song {
     capo: row.capo,
     favorite: !!row.favorite,
     isDraft: !!row.is_draft,
+    timeSignature: row.time_signature ?? null,
     sections,
     createdAt: new Date(row.created_at).getTime(),
     updatedAt: new Date(row.updated_at).getTime(),
@@ -252,11 +266,15 @@ async function writeSongToDb(supabase: SupabaseClient, song: Song, userId: strin
   // Writes omit .select() — returning every inserted row adds latency/payload
   // and isn't needed (errors come back regardless), which was contributing to
   // save timeouts on large songs.
-  let { error: songError } = await supabase
-    .from("songs")
-    .upsert({ ...songRow, is_draft: song.isDraft ?? false });
-  // Fall back to a save without is_draft if the column hasn't been added yet
-  // (schema migration not applied) so saving never hard-fails on it.
+  // Optional columns are peeled off one migration at a time, so a save never
+  // hard-fails on a column that hasn't been added yet. Order matters: drop the
+  // newest (time_signature) first, then is_draft, then the guaranteed floor.
+  const withDraft = { ...songRow, is_draft: song.isDraft ?? false };
+  const withAll = { ...withDraft, time_signature: song.timeSignature ?? null };
+  let { error: songError } = await supabase.from("songs").upsert(withAll);
+  if (songError && /time_signature|column|42703/i.test(songError.message || "")) {
+    ({ error: songError } = await supabase.from("songs").upsert(withDraft));
+  }
   if (songError && /is_draft|column|42703/i.test(songError.message || "")) {
     ({ error: songError } = await supabase.from("songs").upsert(songRow));
   }
@@ -805,10 +823,14 @@ export default function Home() {
         // the songs_user_id_idx index. Library renders as soon as this returns.
         const ownAbort = new AbortController();
         const ownTimeoutId = setTimeout(() => ownAbort.abort(), 15000);
-        const loadOwnSongs = (cols: string, isFallback: boolean) => {
+        // Column tiers, richest first. Each step drops exactly ONE pending
+        // migration's column, so a missing `time_signature` no longer costs us
+        // `is_draft` too (which would silently un-draft every draft).
+        const OWN_TIERS = [SONG_META_COLUMNS_OWN, SONG_META_COLUMNS, SONG_META_BASE];
+        const loadOwnSongs = (tier: number) => {
           void supabase
             .from("songs")
-            .select(cols)
+            .select(OWN_TIERS[tier])
             .eq("user_id", u.id)
             .order("created_at", { ascending: false })
             .abortSignal(ownAbort.signal)
@@ -816,11 +838,11 @@ export default function Home() {
               ({ data: songRows, error: songsError }) => {
                 if (cancelled) return;
                 if (songsError) {
-                  // The is_draft column may not exist yet (schema migration not
-                  // applied). Retry once without it so the library still loads.
-                  if (!isFallback && /is_draft|column|42703/i.test(songsError.message || "")) {
-                    console.warn("own songs: retrying without is_draft —", songsError.message);
-                    loadOwnSongs(SONG_META_COLUMNS, true);
+                  // A column may not exist yet (schema migration not applied).
+                  // Step down one tier at a time so the library still loads.
+                  if (tier + 1 < OWN_TIERS.length && isMissingColumn(songsError.message)) {
+                    console.warn(`own songs: column missing, retrying at tier ${tier + 1} —`, songsError.message);
+                    loadOwnSongs(tier + 1);
                     return;
                   }
                   clearTimeout(ownTimeoutId);
@@ -846,16 +868,17 @@ export default function Home() {
               },
             );
         };
-        loadOwnSongs(SONG_META_COLUMNS_OWN, false);
+        loadOwnSongs(0);
 
         // Phase 2: shared songs (owned by other users, visible via group_songs
         // or shared setlist). This hits the heavier RLS path; if it times out
         // setlist rows referencing shared songs will appear empty until reload.
         const sharedAbort = new AbortController();
         const sharedTimeoutId = setTimeout(() => sharedAbort.abort(), 15000);
+        const loadSharedSongs = (cols: string, isFallback: boolean) => {
         void supabase
           .from("songs")
-          .select(SONG_META_COLUMNS)
+          .select(cols)
           .neq("user_id", u.id)
           .order("created_at", { ascending: false })
           .abortSignal(sharedAbort.signal)
@@ -864,10 +887,19 @@ export default function Home() {
               clearTimeout(sharedTimeoutId);
               if (cancelled) return;
               if (songsError) {
+                // time_signature may not exist yet — retry on the safe floor
+                // so shared songs don't silently vanish from the library.
+                if (!isFallback && isMissingColumn(songsError.message)) {
+                  console.warn("shared songs: column missing, retrying without time_signature —", songsError.message);
+                  loadSharedSongs(SONG_META_BASE, true);
+                  return;
+                }
                 console.error("load shared songs failed", songsError.message);
                 return;
               }
-              const shared = (songRows ?? []).map((r) => rowToSong(r as SongRow));
+              // `as unknown as` because the column list is now a variable, so
+              // PostgREST can't infer the row shape (same as the own-songs load).
+              const shared = (songRows ?? []).map((r) => rowToSong(r as unknown as SongRow));
               setSongs(prev => {
                 const have = new Set(prev.map(s => s.id));
                 const newOnes = shared.filter(s => !have.has(s.id));
@@ -883,6 +915,8 @@ export default function Home() {
               // No user-facing toast — shared songs are best-effort.
             },
           );
+        };
+        loadSharedSongs(SONG_META_COLUMNS, false);
 
         aborts.push(ownAbort, sharedAbort);
 
@@ -1327,11 +1361,19 @@ export default function Home() {
   // and refreshes this folder's ordering authoritatively — without ever
   // loading section content. Mirrors the on-demand model for setlists.
   const loadSetlistSongs = async (folderId: string) => {
-    const { data, error } = await supabase
-      .from("folder_songs")
-      .select("id, position, song_id, songs(" + SONG_META_COLUMNS + ")")
-      .eq("folder_id", folderId)
-      .order("position", { ascending: true });
+    const fetchAt = (cols: string) =>
+      supabase
+        .from("folder_songs")
+        .select("id, position, song_id, songs(" + cols + ")")
+        .eq("folder_id", folderId)
+        .order("position", { ascending: true });
+    let { data, error } = await fetchAt(SONG_META_COLUMNS);
+    // time_signature may not exist yet — retry on the safe floor so setlists
+    // don't come back empty before the migration is applied.
+    if (error && isMissingColumn(error.message)) {
+      console.warn("setlist songs: column missing, retrying without time_signature —", error.message);
+      ({ data, error } = await fetchAt(SONG_META_BASE));
+    }
     if (error) {
       console.error("load setlist songs failed", error.message);
       return;
