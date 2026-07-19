@@ -23,6 +23,9 @@ create table if not exists public.songs (
   -- until the owner toggles them back to published. Enforced in can_read_song
   -- and the songs_group_read / songs_setlist_group_read policies below.
   is_draft    boolean not null default false,
+  -- Time signature, e.g. '4/4'. NULL = unset, read as 4/4 by the app; the top
+  -- number drives the visual metronome's beat count.
+  time_signature text default '4/4',
   data        jsonb not null default '{}'::jsonb,
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
