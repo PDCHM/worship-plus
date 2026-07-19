@@ -13,6 +13,11 @@ import { enforceAiAccess } from "@/lib/aiGate";
 // Vision-capable Sonnet (bare alias = active, recommended snapshot).
 const MODEL = "claude-sonnet-4-6";
 
+// Reading up to 10 photo pages in one call takes far longer than the platform
+// default. 60s is the ceiling on every Vercel plan; raise it if a Pro plan and
+// very long multi-page charts need more.
+export const maxDuration = 60;
+
 const SYSTEM_PROMPT = `You read one or more photos/screenshots of a PRINTED worship chord chart and return the song as STRICT JSON. Return ONLY the JSON object — no prose, no explanation, no markdown code fences.
 
 Shape:
@@ -113,12 +118,20 @@ export async function POST(request: Request) {
   });
 
   try {
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: images.length > 1 ? 32000 : 16000,
-      system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
-      messages: [{ role: "user", content }],
-    });
+    // MUST stream. The SDK refuses a non-streaming request whose max_tokens
+    // implies a >10min worst case — it throws client-side before sending
+    // anything, at max_tokens > (600 * 128000 / 3600) = 21333. The multi-page
+    // budget of 32000 is over that line while the single-page 16000 is under
+    // it, which is exactly why single-page imports worked and multi-page ones
+    // always failed. Streaming lifts the ceiling, so both paths use it.
+    const response = await client.messages
+      .stream({
+        model: MODEL,
+        max_tokens: images.length > 1 ? 32000 : 16000,
+        system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+        messages: [{ role: "user", content }],
+      })
+      .finalMessage();
 
     const text = response.content
       .filter((b): b is Anthropic.TextBlock => b.type === "text")
@@ -158,6 +171,16 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: message, ...(devDetail ? { detail: { status: error.status, type: error.type, message: error.message } } : {}) },
         { status },
+      );
+    }
+    // Client-side SDK faults (bad request shape, max_tokens over the
+    // non-streaming ceiling) are AnthropicError but NOT APIError, so they fell
+    // past the branch above and surfaced as an unhelpful generic failure —
+    // which is what masked the multi-page bug. Name them explicitly.
+    if (error instanceof Anthropic.AnthropicError) {
+      return NextResponse.json(
+        { error: "Photo import failed. Try again.", ...(devDetail ? { detail: { kind: "sdk", message: error.message } } : {}) },
+        { status: 500 },
       );
     }
     return NextResponse.json(
