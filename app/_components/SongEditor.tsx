@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { useOnlineStatus } from "@/lib/offline/useOnlineStatus";
 import Coachmark from "@/app/_components/Coachmark";
@@ -1050,7 +1050,11 @@ export default function SongEditor({
   // the floating corner pill both drive this one metronome. Seeded from the song's
   // saved bpm (SongEditor is keyed by song id, so this re-seeds per song).
   const [bpm, setBpm] = useState<number>(song.bpm ?? BPM_DEFAULT);
-  const metronome = useMetronome(bpm);
+  // Sound/Silent is a persisted user setting, so the choice survives song
+  // switches, present-mode entry/exit, and reloads.
+  const metronomeSilent = settings.metronomeSilent;
+  const setMetronomeSilent = (v: boolean) => onSettingsChange({ ...settings, metronomeSilent: v });
+  const metronome = useMetronome(bpm, metronomeSilent);
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [markupMode, setMarkupMode] = useState(false);
   // Markup CREATION needs a connection (view-only offline). Entry is disabled
@@ -2714,6 +2718,10 @@ export default function SongEditor({
   // touches bpm or the metronome — the tempo panel stays reachable via the header
   // "{N} BPM" chip and the ⋯ menu.
   const showMetronomePill = settings.showMetronomePill && (song.bpm != null || metronome.playing);
+  // Present mode never renders the pill, so the beat bar is the only metronome
+  // UI there — gate it on having a tempo, NOT on the "show pill" setting, or
+  // present mode would lose the metronome entirely.
+  const showPresentBeatBar = song.bpm != null || metronome.playing;
 
   return (
     <div
@@ -2736,8 +2744,9 @@ export default function SongEditor({
         ? {
             "--lyric-font-size": `${lyricCeiling}px`,
             // Clear the persistent top header (title + always-visible section
-            // flow-bar), which is fixed at the top of the present view.
-            paddingTop: "calc(env(safe-area-inset-top, 0px) + 5rem)",
+            // flow-bar, plus the beat bar row when a tempo is set), which is
+            // fixed at the top of the present view.
+            paddingTop: `calc(env(safe-area-inset-top, 0px) + ${showPresentBeatBar ? "7rem" : "5rem"})`,
             paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)",
             paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.75rem)",
             paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.75rem)",
@@ -2802,6 +2811,17 @@ export default function SongEditor({
                 onDelete={deleteSection}
               />
             )}
+            {/* Visual metronome — pinned in the ALWAYS-visible header (not the
+                tap-to-reveal controls), so the beat stays readable on stage
+                without touching the screen. Full width for distance
+                legibility; the Sound/Silent toggle sits inline so the mode can
+                be flipped without leaving present mode. */}
+            {showPresentBeatBar && (
+              <div className="flex items-center gap-2 pt-0.5">
+                <BeatBar metronome={metronome} playing={metronome.playing} variant="present" className="flex-1 min-w-0" />
+                <SoundToggle silent={metronomeSilent} onChange={setMetronomeSilent} variant="present" />
+              </div>
+            )}
           </div>
           {/* Bottom bar — revealed on tap, auto-hides. Row 1 promotes the on-stage
               quick actions (auto-scroll + text size); row 2 is Prev · position ·
@@ -2862,7 +2882,8 @@ export default function SongEditor({
           indicator (same corner) when it's showing. Both view + edit mode.
           Hidden entirely when the user's "Show metronome pill" setting is off. */}
       {!presenting && showMetronomePill && (
-        <MetronomePill bpm={bpm} playing={metronome.playing} onToggle={metronome.toggle} raised={offlineIndicatorActive} />
+        <MetronomePill bpm={bpm} playing={metronome.playing} onToggle={metronome.toggle} raised={offlineIndicatorActive}
+          metronome={metronome} silent={metronomeSilent} onSilentChange={setMetronomeSilent} />
       )}
       {!presenting && setlistContext && (
         <div className="mb-3 -mt-2 print:hidden">
@@ -3023,6 +3044,9 @@ export default function SongEditor({
                     playing={metronome.playing}
                     onBpmChange={changeBpm}
                     onToggle={metronome.toggle}
+                    metronome={metronome}
+                    silent={metronomeSilent}
+                    onSilentChange={setMetronomeSilent}
                   />
                 )}
               </div>
@@ -4619,10 +4643,20 @@ function makeClickDataUri(): string {
 let _clickSrc: string | null = null;
 const clickSrc = () => (_clickSrc ??= makeClickDataUri());
 
+// 4/4 assumed for now (time-signature options later).
+export const BEATS_PER_BAR = 4;
+
 export type Metronome = {
   playing: boolean;
   toggle: () => void;
   stop: () => void;
+  // Visual beat channel. The beat index lives in a ref and is published through
+  // this tiny subscription rather than React state ON PURPOSE: a state update
+  // per beat would re-render the whole song view (chart included) twice a
+  // second at 120bpm. Only <BeatBar> subscribes, so only <BeatBar> re-renders.
+  // -1 = stopped, otherwise 0..BEATS_PER_BAR-1 (0 is the downbeat).
+  subscribeBeat: (cb: () => void) => () => void;
+  getBeat: () => number;
 };
 
 /* useMetronome — the HTML5 <Audio> click loop, lifted to the SONG-VIEW level so
@@ -4632,15 +4666,29 @@ export type Metronome = {
    there's one source of truth for isPlaying. Reads the live bpm via a ref so the
    wheel retunes without restarting. The interval is a plain setTimeout — nothing
    to do with scroll/visibility — so scrolling never stutters the click. */
-function useMetronome(bpm: number): Metronome {
+function useMetronome(bpm: number, silent: boolean): Metronome {
   const [playing, setPlaying] = useState(false);
   const bpmRef = useRef(bpm);
   const timerRef = useRef<number | null>(null);
   const poolRef = useRef<HTMLAudioElement[]>([]);
   const poolIdxRef = useRef(0);
   const wakeLockRef = useRef<WakeLockLike | null>(null);
+  // Live mirror of the Sound/Silent choice, so flipping the toggle mid-play
+  // takes effect on the very next tick without restarting the loop.
+  const silentRef = useRef(silent);
+  const beatRef = useRef(-1);
+  const beatSubsRef = useRef(new Set<() => void>());
 
   useEffect(() => { bpmRef.current = bpm; }, [bpm]);
+  useEffect(() => { silentRef.current = silent; }, [silent]);
+
+  const emitBeat = () => { beatSubsRef.current.forEach((cb) => cb()); };
+  // Stable identities — useSyncExternalStore resubscribes if these change.
+  const subscribeBeat = useCallback((cb: () => void) => {
+    beatSubsRef.current.add(cb);
+    return () => { beatSubsRef.current.delete(cb); };
+  }, []);
+  const getBeat = useCallback(() => beatRef.current, []);
 
   // Pool of 3 <Audio> elements (round-robin) so rapid clicks don't cut each other
   // off. Created client-side on mount; torn down when the song view unmounts.
@@ -4683,15 +4731,25 @@ function useMetronome(bpm: number): Metronome {
     poolIdxRef.current++;
     try { a.currentTime = 0; void a.play(); } catch { /* ignore */ }
   };
+  // ONE tick = one beat. Advances the bar position, plays the click unless
+  // Silent, then publishes to the beat bar. Audio and visual are the same
+  // event by construction — there is no second timer to drift against.
+  const tick = () => {
+    beatRef.current = (beatRef.current + 1) % BEATS_PER_BAR;
+    if (!silentRef.current) playClick();
+    emitBeat();
+  };
   const scheduleNext = () => {
     timerRef.current = window.setTimeout(() => {
-      playClick();
+      tick();
       scheduleNext();               // interval = 60/bpm sec, read live each tick
     }, (60 / bpmRef.current) * 1000);
   };
 
   const stop = () => {
     if (timerRef.current != null) { clearTimeout(timerRef.current); timerRef.current = null; }
+    beatRef.current = -1;           // clears the bar — stop kills audio AND visual
+    emitBeat();
     releaseWakeLock();
     setPlaying(false);
   };
@@ -4699,15 +4757,19 @@ function useMetronome(bpm: number): Metronome {
     const pool = poolRef.current;
     if (!pool.length) return;
     // Unlock iOS INSIDE the user gesture: the first .play() is synchronous (no
-    // await before it). Element 0 plays the audible downbeat; the extras unlock
-    // silently (muted play→pause) so later round-robin plays are authorized.
+    // await before it). In Sound mode element 0 is left alone so it plays the
+    // audible downbeat; the extras unlock silently (muted play→pause) so later
+    // round-robin plays are authorized. In Silent mode element 0 is unlocked
+    // muted along with the rest — nothing is heard now, but switching to Sound
+    // mid-play then works without needing a fresh gesture.
     pool.forEach((a, i) => {
-      if (i === 0) return;
+      if (i === 0 && !silentRef.current) return;
       a.muted = true;
       a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { a.muted = false; });
     });
     poolIdxRef.current = 0;
-    playClick();
+    beatRef.current = -1;
+    tick();                         // start ON the downbeat (beat 0)
     scheduleNext();
     void requestWakeLock();
     setPlaying(true);
@@ -4722,17 +4784,93 @@ function useMetronome(bpm: number): Metronome {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [playing]);
 
-  return { playing, toggle, stop };
+  return { playing, toggle, stop, subscribeBeat, getBeat };
+}
+
+/* BeatBar — the silent visual metronome: BEATS_PER_BAR blocks that light in
+   sequence, driven by useMetronome's existing scheduler via subscribeBeat (no
+   timer of its own). Beat 1 is the downbeat and lights amber + taller-feeling
+   (ring) so the top of the bar reads at a glance from a distance; beats 2-4
+   light indigo. The lit block snaps on and fades out, which is what makes the
+   pulse legible on stage. Subscribing here (not in the parent) keeps the
+   per-beat re-render scoped to this one small component. */
+function BeatBar({ metronome, playing, variant, className }: {
+  metronome: Metronome;
+  playing: boolean;
+  variant: "present" | "pill";
+  className?: string;
+}) {
+  const beat = useSyncExternalStore(metronome.subscribeBeat, metronome.getBeat, () => -1);
+  const present = variant === "present";
+  return (
+    <div aria-hidden className={"flex items-stretch " + (present ? "gap-1.5" : "gap-1") + (className ? " " + className : "")}>
+      {Array.from({ length: BEATS_PER_BAR }, (_, i) => {
+        const lit = playing && beat === i;
+        const downbeat = i === 0;
+        return (
+          <span key={i}
+            className={
+              "flex-1 rounded-full " +
+              (present ? "h-2.5 " : "h-1.5 ") +
+              // Snap bright instantly, then ease back down — a fade-in would
+              // blur the attack and make the beat hard to lock onto.
+              (lit ? "transition-none " : "transition-colors duration-150 ease-out ") +
+              (lit
+                ? (downbeat
+                    ? "bg-amber-400 ring-2 ring-amber-300/70 dark:ring-amber-400/40"
+                    : "bg-indigo-500 ring-2 ring-indigo-400/50 dark:ring-indigo-400/30")
+                : (downbeat
+                    ? "bg-amber-400/20 dark:bg-amber-400/15"
+                    : "bg-slate-300/60 dark:bg-slate-700/60"))
+            } />
+        );
+      })}
+    </div>
+  );
+}
+
+/* SoundToggle — Sound (audible click) ⇄ Silent (beat bar only). Flips the
+   persisted setting; useMetronome reads it live, so switching mid-play takes
+   effect on the next beat without restarting the loop. */
+function SoundToggle({ silent, onChange, variant }: {
+  silent: boolean;
+  onChange: (silent: boolean) => void;
+  variant: "present" | "pill";
+}) {
+  const present = variant === "present";
+  return (
+    <button type="button"
+      onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); onChange(!silent); }}
+      aria-pressed={silent}
+      title={silent ? "Silent — visual beat only" : "Sound — audible click"}
+      aria-label={silent ? "Metronome is silent, switch to sound" : "Metronome plays sound, switch to silent"}
+      className={
+        "shrink-0 rounded-full flex items-center justify-center transition-colors print:hidden " +
+        (present ? "w-7 h-7 " : "w-6 h-6 ") +
+        (silent
+          ? "bg-slate-200/80 dark:bg-slate-700/80 text-slate-500 dark:text-slate-400"
+          : "bg-indigo-100 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400")
+      }>
+      {silent
+        // muted speaker
+        ? <svg width={present ? 15 : 13} height={present ? 15 : 13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></svg>
+        // speaker with waves
+        : <svg width={present ? 15 : 13} height={present ? 15 : 13} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>}
+    </button>
+  );
 }
 
 /* TempoPanel — pure UI. Wheel + play/stop, both driving SHARED state passed in.
    No audio here: sound lives in useMetronome above the popover, so closing the
    panel never stops playback. */
-function TempoPanel({ bpm, playing, onBpmChange, onToggle }: {
+function TempoPanel({ bpm, playing, onBpmChange, onToggle, metronome, silent, onSilentChange }: {
   bpm: number;
   playing: boolean;
   onBpmChange: (bpm: number) => void;
   onToggle: () => void;
+  metronome: Metronome;
+  silent: boolean;
+  onSilentChange: (silent: boolean) => void;
 }) {
   return (
     <div data-picker-popover onMouseDown={(e) => e.stopPropagation()}
@@ -4754,7 +4892,11 @@ function TempoPanel({ bpm, playing, onBpmChange, onToggle }: {
             ? <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
             : <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>}
         </button>
+        <SoundToggle silent={silent} onChange={onSilentChange} variant="present" />
       </div>
+      {/* Same beat bar as present mode — lets the user confirm the visual pulse
+          while dialling in the tempo, including with Sound off. */}
+      <BeatBar metronome={metronome} playing={playing} variant="pill" className="mt-2.5 px-1" />
     </div>
   );
 }
@@ -4766,19 +4908,31 @@ function TempoPanel({ bpm, playing, onBpmChange, onToggle }: {
    • PLAYING → grows into a prominent accent-filled STOP control (■ + BPM), with the
      subtle beat pulse, so it's an obvious, easy tap to stop instantly.
    Tap toggles play/stop; the two states cross-fade/grow via a single transition. */
-function MetronomePill({ bpm, playing, onToggle, raised }: {
+function MetronomePill({ bpm, playing, onToggle, raised, metronome, silent, onSilentChange }: {
   bpm: number;
   playing: boolean;
   onToggle: () => void;
   raised?: boolean;   // lift above the bottom-left offline indicator when it's showing
+  metronome: Metronome;
+  silent: boolean;
+  onSilentChange: (silent: boolean) => void;
 }) {
   return (
+    // Wrapper carries the fixed position that used to live on the button —
+    // the Sound/Silent control is interactive and can't nest inside a <button>.
+    <div
+      style={{ bottom: `calc(env(safe-area-inset-bottom) + ${raised ? "8rem" : "5rem"})`, transition: "all 0.2s ease" }}
+      className="fixed left-4 z-40 print:hidden flex flex-col gap-1.5 items-start">
+      {/* Beat bar sits directly above the pill so the tempo is glanceable from
+          the same spot the user already looks to start/stop. */}
+      <BeatBar metronome={metronome} playing={playing} variant="pill" className="w-24 self-stretch" />
+      <div className="flex items-center gap-1.5">
     <button type="button"
       onPointerDown={(e) => { e.preventDefault(); onToggle(); }}
       aria-pressed={playing}
       aria-label={playing ? `Stop metronome, ${bpm} BPM` : `Start metronome, ${bpm} BPM`}
-      style={{ bottom: `calc(env(safe-area-inset-bottom) + ${raised ? "8rem" : "5rem"})`, transition: "all 0.2s ease" }}
-      className={"fixed left-4 z-40 print:hidden inline-flex items-center rounded-full font-semibold tabular-nums " + (playing
+      style={{ transition: "all 0.2s ease" }}
+      className={"inline-flex items-center rounded-full font-semibold tabular-nums " + (playing
         // PLAYING: prominent accent-filled stop control — bigger, filled, ring-lifted,
         // easy to hit to stop instantly.
         ? "h-10 gap-2 pl-3 pr-4 text-sm bg-indigo-600 text-white shadow-lg shadow-indigo-600/40 ring-2 ring-indigo-500/25"
@@ -4793,5 +4947,8 @@ function MetronomePill({ bpm, playing, onToggle, raised }: {
       </span>
       {bpm}
     </button>
+        <SoundToggle silent={silent} onChange={onSilentChange} variant="pill" />
+      </div>
+    </div>
   );
 }

@@ -191,6 +191,11 @@ export type Settings = {
   showChords: boolean;
   // Whether the floating metronome pill renders on songs with a saved BPM.
   showMetronomePill: boolean;
+  // Metronome output mode. true = Silent: the visual beat bar blinks on tempo
+  // and no click is played — for stages where sound isn't an option. false =
+  // Sound: the audible click (plus the bar). Persisted with the rest of
+  // settings, so the choice carries across songs and sessions.
+  metronomeSilent: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -206,6 +211,7 @@ export const DEFAULT_SETTINGS: Settings = {
   printOrientation: "portrait",
   showChords: true,
   showMetronomePill: true,
+  metronomeSilent: false,   // default Sound — unchanged behaviour for existing users
 };
 
 export function uid(): string {
