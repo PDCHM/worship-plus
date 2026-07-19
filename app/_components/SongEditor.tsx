@@ -4674,39 +4674,110 @@ export type Metronome = {
   getBeat: () => number;
 };
 
-/* useMetronome — the HTML5 <Audio> click loop, lifted to the SONG-VIEW level so
-   it OUTLIVES the tempo popover (which unmounts on close). Playback state and the
-   loop live here; opening/closing the panel is pure UI and never touches sound.
-   The panel's play button and the corner pill both call the same toggle(), so
-   there's one source of truth for isPlaying. Reads the live bpm via a ref so the
-   wheel retunes without restarting. The interval is a plain setTimeout — nothing
-   to do with scroll/visibility — so scrolling never stutters the click. */
+// ── Lookahead scheduler constants ("A Tale of Two Clocks") ──────────────────
+const LOOKAHEAD_MS = 25;        // how often the scheduler wakes to top up the queue
+const SCHEDULE_AHEAD_S = 0.12;  // how far ahead beats are handed to the audio clock
+// If the grid falls further behind than this — backgrounded tab, long stall —
+// re-anchor instead of firing a burst of catch-up beats at once.
+const RESYNC_AFTER_S = 0.25;
+
+// ONE shared AudioContext for the whole app. Browsers cap concurrent contexts
+// (~6) and this hook remounts on every song open, so a per-instance context
+// would eventually fail to construct. Never closed — just left idle.
+let _audioCtx: AudioContext | null = null;
+let _clickBuf: AudioBuffer | null = null;
+let _audioCtxFailed = false;
+
+function getAudioCtx(): AudioContext | null {
+  if (_audioCtx || _audioCtxFailed) return _audioCtx;
+  try {
+    const AC = window.AudioContext
+      ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AC) { _audioCtxFailed = true; return null; }
+    const ctx = new AC();
+    // Same 1kHz decaying tone the WAV generator produces, straight into a buffer.
+    const sr = ctx.sampleRate;
+    const n = Math.floor(sr * 0.04);
+    const buf = ctx.createBuffer(1, n, sr);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) {
+      const t = i / sr;
+      data[i] = Math.sin(2 * Math.PI * 1000 * t) * Math.exp(-t * 55);
+    }
+    _audioCtx = ctx;
+    _clickBuf = buf;
+    return ctx;
+  } catch { _audioCtxFailed = true; return null; }
+}
+
+/* useMetronome — a Web Audio LOOKAHEAD scheduler, lifted to the SONG-VIEW level
+   so it OUTLIVES the tempo popover (which unmounts on close). Playback state and
+   the loop live here; opening/closing the panel is pure UI and never touches
+   sound. The panel's play button and the corner pill both call the same
+   toggle(), so there's one source of truth for isPlaying.
+
+   WHY NOT setTimeout: the previous loop re-armed setTimeout AFTER each tick with
+   a fixed delay, so every millisecond of timer overshoot and callback latency
+   was baked into the grid permanently. Measured at 120bpm that was ~+1.3ms per
+   beat idle and ~+5.9ms per beat under render load — 0.8s and 3.5s of
+   accumulated lag across a five-minute song. Useless on stage against a band.
+
+   HOW THIS WORKS:
+   • nextBeatTime advances by EXACTLY 60/bpm, absolutely — never "now + interval"
+     — so per-beat error cannot accumulate no matter how late a wake-up is.
+   • A 25ms lookahead timer queues every beat falling inside the next 120ms.
+     Timer jitter stops mattering: it only has to wake often enough to keep the
+     queue fed, not to be punctual.
+   • Clicks are handed to Web Audio with an exact start time, so the ATTACK is
+     sample-accurate — scheduled on the audio hardware clock, immune to
+     main-thread jank.
+   • The beat bar is reconciled in requestAnimationFrame against those same
+     scheduled times, so blocks light ON the beat rather than whenever a JS
+     timer happened to fire.
+
+   The master clock is AudioContext.currentTime whenever the context is running,
+   so a scheduled beat time IS a context time and src.start(t) takes it verbatim
+   — no conversion, no jitter. performance.now() is the fallback clock for when
+   the context can't run (a suspended context's currentTime is frozen, which
+   would stall the visual bar too, and the bar has to keep working in Silent
+   mode). If the context reaches "running" after playback has already started,
+   the grid is re-anchored onto it ONCE — a single conversion at the hand-over
+   rather than one per beat. (Converting per beat re-samples two independent
+   clocks every time and measurably jitters the audio grid: ±3.9ms worst case,
+   5.2ms accumulated over 30 beats, when this was first built that way.) */
 function useMetronome(bpm: number, silent: boolean, beats: number): Metronome {
   const [playing, setPlaying] = useState(false);
   const bpmRef = useRef(bpm);
-  const timerRef = useRef<number | null>(null);
-  const poolRef = useRef<HTMLAudioElement[]>([]);
-  const poolIdxRef = useRef(0);
   const wakeLockRef = useRef<WakeLockLike | null>(null);
   // Live mirror of the Sound/Silent choice, so flipping the toggle mid-play
-  // takes effect on the very next tick without restarting the loop.
+  // takes effect on the next scheduled beat without restarting the loop.
   const silentRef = useRef(silent);
   const beatRef = useRef(-1);
   const beatsRef = useRef(beats);
   const beatSubsRef = useRef(new Set<() => void>());
 
-  useEffect(() => { bpmRef.current = bpm; }, [bpm]);
-  useEffect(() => { silentRef.current = silent; }, [silent]);
-  // Changing the time signature mid-play re-counts the bar on the next tick,
-  // no restart. Clamp first so a shrink (6/8 → 3/4) can't leave the lit index
-  // past the end of the bar for one beat.
-  useEffect(() => {
-    beatsRef.current = beats;
-    if (beatRef.current >= beats) {
-      beatRef.current = beats - 1;
-      beatSubsRef.current.forEach((cb) => cb());
-    }
-  }, [beats]);
+  // Scheduler state.
+  const lookaheadRef = useRef<number | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const nextBeatTimeRef = useRef(0);            // master clock, seconds
+  const nextBeatIndexRef = useRef(0);
+  const visualQueueRef = useRef<{ beat: number; time: number }[]>([]);
+  const liveSourcesRef = useRef<AudioBufferSourceNode[]>([]);
+  const pendingPoolRef = useRef<number[]>([]);
+
+  // Fallback <Audio> pool. KEPT ON PURPOSE: Web Audio has previously gone silent
+  // on some mobile browsers here, and a silent metronome is a worse failure than
+  // an imprecise one. If the context never reaches "running" we still click —
+  // on the same drift-free grid, just without sample-accurate attack.
+  const poolRef = useRef<HTMLAudioElement[]>([]);
+  const poolIdxRef = useRef(0);
+
+  // Which clock the grid is anchored to for THIS run. Chosen at start() and
+  // only ever upgraded perf → ctx (once, via the resume handler) so scheduled
+  // times never jump between timebases mid-beat.
+  const clockRef = useRef<"ctx" | "perf">("perf");
+  const perfSec = () => performance.now() / 1000;
+  const nowSec = () => (clockRef.current === "ctx" && _audioCtx ? _audioCtx.currentTime : perfSec());
 
   const emitBeat = () => { beatSubsRef.current.forEach((cb) => cb()); };
   // Stable identities — useSyncExternalStore resubscribes if these change.
@@ -4715,25 +4786,6 @@ function useMetronome(bpm: number, silent: boolean, beats: number): Metronome {
     return () => { beatSubsRef.current.delete(cb); };
   }, []);
   const getBeat = useCallback(() => beatRef.current, []);
-
-  // Pool of 3 <Audio> elements (round-robin) so rapid clicks don't cut each other
-  // off. Created client-side on mount; torn down when the song view unmounts.
-  useEffect(() => {
-    const src = clickSrc();
-    poolRef.current = Array.from({ length: 3 }, () => {
-      const a = new Audio(src);
-      a.volume = 0.7;
-      a.preload = "auto";
-      return a;
-    });
-    return () => {
-      if (timerRef.current != null) { clearTimeout(timerRef.current); timerRef.current = null; }
-      poolRef.current.forEach((a) => { try { a.pause(); } catch { /* ignore */ } });
-      poolRef.current = [];
-      const w = wakeLockRef.current; wakeLockRef.current = null;
-      if (w) void w.release().catch(() => {});
-    };
-  }, []);
 
   // Screen Wake Lock: keep the display awake while playing so the OS doesn't lock
   // the screen and suspend audio. Silent no-op where unsupported.
@@ -4750,67 +4802,204 @@ function useMetronome(bpm: number, silent: boolean, beats: number): Metronome {
     if (w) void w.release().catch(() => {});
   };
 
-  const playClick = (accent: boolean) => {
+  const playPoolClick = (accent: boolean) => {
     const pool = poolRef.current;
     if (!pool.length) return;
     const a = pool[poolIdxRef.current % pool.length];
     poolIdxRef.current++;
     try {
-      // Downbeat accent from the SAME one-shot sample — louder and pitched up
-      // via playbackRate — so beat 1 is audibly distinct without shipping a
-      // second asset or touching the click generator. Set per play because the
-      // pool is round-robin and elements are reused across beats.
       a.volume = accent ? 1 : 0.55;
       a.playbackRate = accent ? 1.5 : 1;
       a.currentTime = 0;
       void a.play();
     } catch { /* ignore */ }
   };
-  // ONE tick = one beat. Advances the bar position, plays the click unless
-  // Silent, then publishes to the beat bar. Audio and visual are the same
-  // event by construction — there is no second timer to drift against.
-  const tick = () => {
-    const next = (beatRef.current + 1) % beatsRef.current;   // bar length read live
-    beatRef.current = next;
-    if (!silentRef.current) playClick(next === 0);           // accent the downbeat
-    emitBeat();
+
+  // Hand one beat to the audio clock at an exact time.
+  const scheduleClickAt = (t: number, accent: boolean) => {
+    const ctx = getAudioCtx();
+    if (ctx && _clickBuf && ctx.state === "running") {
+      // On the ctx clock, t IS a context time — handed to start() verbatim,
+      // which is what makes the attack sample-exact. Only the fallback clock
+      // needs a conversion (and pays the jitter that comes with it).
+      const when = clockRef.current === "ctx"
+        ? t
+        : ctx.currentTime + Math.max(0, t - perfSec());
+      const src = ctx.createBufferSource();
+      src.buffer = _clickBuf;
+      // Downbeat accent from the SAME sample: louder and pitched up.
+      src.playbackRate.value = accent ? 1.5 : 1;
+      const gain = ctx.createGain();
+      gain.gain.value = accent ? 1 : 0.55;
+      src.connect(gain).connect(ctx.destination);
+      src.start(when);
+      liveSourcesRef.current.push(src);
+      src.onended = () => {
+        liveSourcesRef.current = liveSourcesRef.current.filter((x) => x !== src);
+      };
+      return;
+    }
+    // Fallback path. A beat due right now is played SYNCHRONOUSLY so the very
+    // first click stays inside the user gesture that started playback — iOS
+    // refuses audio started outside one.
+    const delayMs = (t - nowSec()) * 1000;
+    if (delayMs <= 5) { playPoolClick(accent); return; }
+    const id = window.setTimeout(() => {
+      pendingPoolRef.current = pendingPoolRef.current.filter((x) => x !== id);
+      playPoolClick(accent);
+    }, delayMs);
+    pendingPoolRef.current.push(id);
   };
-  const scheduleNext = () => {
-    timerRef.current = window.setTimeout(() => {
-      tick();
-      scheduleNext();               // interval = 60/bpm sec, read live each tick
-    }, (60 / bpmRef.current) * 1000);
+
+  const scheduler = () => {
+    const now = nowSec();
+    // Fell badly behind (hidden tab, long stall): re-anchor rather than
+    // machine-gunning every missed beat. Normal operation never reaches this.
+    if (nextBeatTimeRef.current < now - RESYNC_AFTER_S) nextBeatTimeRef.current = now;
+    let guard = 64;
+    while (nextBeatTimeRef.current < now + SCHEDULE_AHEAD_S && guard-- > 0) {
+      const t = nextBeatTimeRef.current;
+      const beat = nextBeatIndexRef.current;
+      if (!silentRef.current) scheduleClickAt(t, beat === 0);
+      visualQueueRef.current.push({ beat, time: t });
+      // THE ABSOLUTE ADVANCE — the whole point. bpm is read live so the wheel
+      // retunes without restarting; beats likewise for time-signature changes.
+      nextBeatTimeRef.current = t + 60 / bpmRef.current;
+      nextBeatIndexRef.current = (beat + 1) % beatsRef.current;
+    }
+  };
+
+  // Reconcile the bar to the SCHEDULED times, not to timer callbacks.
+  const drawLoop = () => {
+    const now = nowSec();
+    const q = visualQueueRef.current;
+    let changed = false;
+    while (q.length && q[0].time <= now) {
+      const e = q.shift()!;
+      // Clamp: the signature may have shrunk since this beat was queued.
+      beatRef.current = Math.min(e.beat, beatsRef.current - 1);
+      changed = true;
+    }
+    if (changed) emitBeat();
+    rafRef.current = requestAnimationFrame(drawLoop);
+  };
+
+  const cancelScheduledAudio = () => {
+    liveSourcesRef.current.forEach((s) => { try { s.stop(); } catch { /* already ended */ } });
+    liveSourcesRef.current = [];
+    pendingPoolRef.current.forEach((id) => clearTimeout(id));
+    pendingPoolRef.current = [];
   };
 
   const stop = () => {
-    if (timerRef.current != null) { clearTimeout(timerRef.current); timerRef.current = null; }
+    if (lookaheadRef.current != null) { clearInterval(lookaheadRef.current); lookaheadRef.current = null; }
+    if (rafRef.current != null) { cancelAnimationFrame(rafRef.current); rafRef.current = null; }
+    // Beats are queued up to 120ms ahead — they must not fire after stop.
+    cancelScheduledAudio();
+    visualQueueRef.current = [];
     beatRef.current = -1;           // clears the bar — stop kills audio AND visual
     emitBeat();
     releaseWakeLock();
     setPlaying(false);
   };
+
   const start = () => {
-    const pool = poolRef.current;
-    if (!pool.length) return;
-    // Unlock iOS INSIDE the user gesture: the first .play() is synchronous (no
-    // await before it). In Sound mode element 0 is left alone so it plays the
-    // audible downbeat; the extras unlock silently (muted play→pause) so later
-    // round-robin plays are authorized. In Silent mode element 0 is unlocked
-    // muted along with the rest — nothing is heard now, but switching to Sound
-    // mid-play then works without needing a fresh gesture.
-    pool.forEach((a, i) => {
+    // Create/resume the context INSIDE the user gesture — the only moment iOS
+    // will let it start. Done even in Silent mode so a later switch to Sound
+    // doesn't need a fresh gesture.
+    const ctx = getAudioCtx();
+    // Anchor this run's grid to the audio clock if it's already running.
+    clockRef.current = ctx && ctx.state === "running" ? "ctx" : "perf";
+    if (ctx && ctx.state !== "running") {
+      void ctx.resume().then(() => {
+        // Context came up after we'd already started (first-ever play, or a
+        // policy-suspended context). Hand the grid over to the audio clock with
+        // ONE conversion, then it's exact from here on.
+        if (ctx.state !== "running" || clockRef.current === "ctx" || lookaheadRef.current == null) return;
+        const at = perfSec();
+        clockRef.current = "ctx";
+        nextBeatTimeRef.current = ctx.currentTime + (nextBeatTimeRef.current - at);
+        visualQueueRef.current = visualQueueRef.current.map((e) => ({
+          beat: e.beat,
+          time: ctx.currentTime + (e.time - at),
+        }));
+      }).catch(() => {});
+    }
+    // Unlock the fallback pool in the same gesture, for browsers where the
+    // context never reaches "running". In Sound mode element 0 is left alone so
+    // it can play the audible downbeat synchronously; in Silent mode it is
+    // unlocked muted with the rest so switching to Sound later still works.
+    poolRef.current.forEach((a, i) => {
       if (i === 0 && !silentRef.current) return;
       a.muted = true;
       a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { a.muted = false; });
     });
     poolIdxRef.current = 0;
+
     beatRef.current = -1;
-    tick();                         // start ON the downbeat (beat 0)
-    scheduleNext();
+    visualQueueRef.current = [];
+    nextBeatIndexRef.current = 0;
+    nextBeatTimeRef.current = nowSec();   // downbeat due immediately
+    scheduler();                          // schedule it now, inside the gesture
+    lookaheadRef.current = window.setInterval(scheduler, LOOKAHEAD_MS);
+    rafRef.current = requestAnimationFrame(drawLoop);
     void requestWakeLock();
     setPlaying(true);
   };
   const toggle = () => { if (playing) stop(); else start(); };
+
+  // Live parameter mirrors — all read inside the scheduler, so changing any of
+  // them retunes on the next scheduled beat WITHOUT restarting the loop.
+  useEffect(() => { bpmRef.current = bpm; }, [bpm]);
+  useEffect(() => {
+    silentRef.current = silent;
+    // Beats are queued up to 120ms ahead; drop the already-scheduled ones so
+    // going Silent is silent immediately rather than a beat later.
+    if (silent) cancelScheduledAudio();
+    // cancelScheduledAudio is stable for the life of the hook (refs only).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [silent]);
+  // Changing the time signature mid-play re-counts the bar on the next beat.
+  // Clamp first so a shrink (6/8 → 3/4) can't leave the lit index past the end
+  // of the bar for one frame.
+  useEffect(() => {
+    beatsRef.current = beats;
+    if (beatRef.current >= beats) {
+      beatRef.current = beats - 1;
+      beatSubsRef.current.forEach((cb) => cb());
+    }
+  }, [beats]);
+
+  // Fallback pool of 3 <Audio> elements (round-robin) so rapid clicks don't cut
+  // each other off. Created client-side on mount; the cleanup also tears down
+  // the scheduler so a song view unmounting mid-play leaves nothing running.
+  useEffect(() => {
+    const src = clickSrc();
+    poolRef.current = Array.from({ length: 3 }, () => {
+      const a = new Audio(src);
+      a.volume = 0.7;
+      a.preload = "auto";
+      return a;
+    });
+    const pool = poolRef.current;
+    const lookahead = lookaheadRef;
+    const raf = rafRef;
+    const live = liveSourcesRef;
+    const pending = pendingPoolRef;
+    const wake = wakeLockRef;
+    return () => {
+      if (lookahead.current != null) { clearInterval(lookahead.current); lookahead.current = null; }
+      if (raf.current != null) { cancelAnimationFrame(raf.current); raf.current = null; }
+      live.current.forEach((s) => { try { s.stop(); } catch { /* already ended */ } });
+      live.current = [];
+      pending.current.forEach((id) => clearTimeout(id));
+      pending.current = [];
+      pool.forEach((a) => { try { a.pause(); } catch { /* ignore */ } });
+      poolRef.current = [];
+      const w = wake.current; wake.current = null;
+      if (w) void w.release().catch(() => {});
+    };
+  }, []);
 
   // Re-acquire the wake lock on return to foreground (it auto-releases when hidden).
   useEffect(() => {
@@ -4823,13 +5012,15 @@ function useMetronome(bpm: number, silent: boolean, beats: number): Metronome {
   return { playing, toggle, stop, subscribeBeat, getBeat };
 }
 
-/* BeatBar — the silent visual metronome: BEATS_PER_BAR blocks that light in
-   sequence, driven by useMetronome's existing scheduler via subscribeBeat (no
-   timer of its own). Beat 1 is the downbeat and lights amber + taller-feeling
-   (ring) so the top of the bar reads at a glance from a distance; beats 2-4
-   light indigo. The lit block snaps on and fades out, which is what makes the
-   pulse legible on stage. Subscribing here (not in the parent) keeps the
-   per-beat re-render scoped to this one small component. */
+/* BeatBar — the silent visual metronome: one block per beat of the song's time
+   signature, lit in sequence. It has NO timer of its own: useMetronome
+   reconciles the beat index in requestAnimationFrame against the times the
+   clicks were actually scheduled for, and publishes via subscribeBeat, so the
+   blocks light on the beat rather than when a JS timer fired. Beat 1 is the
+   downbeat and lights amber + ringed so the top of the bar reads at a glance
+   from a distance; the rest light indigo. The lit block snaps on and fades out,
+   which is what makes the pulse legible on stage. Subscribing here (not in the
+   parent) keeps the per-beat re-render scoped to this one small component. */
 function BeatBar({ metronome, playing, beats, variant, className }: {
   metronome: Metronome;
   playing: boolean;
