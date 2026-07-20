@@ -30,7 +30,11 @@ type Props = {
   onLibraryViewChange: (v: LibraryView) => void;
   // Bulk actions.
   setlists: { id: string; name: string }[];
+  // Plain folders (folders and setlists are one table, discriminated by type).
+  folders: { id: string; name: string }[];
   onBulkDelete: (ids: string[]) => Promise<void> | void;
+  // Adds songs to a folder OR a setlist — same join table, same RPC. Named for
+  // its original bulk-setlist caller; the single-song menu reuses it verbatim.
   onBulkAddToSetlist: (ids: string[], folderId: string) => Promise<void> | void;
 };
 
@@ -53,6 +57,7 @@ export default function Library({
   libraryView,
   onLibraryViewChange,
   setlists,
+  folders,
   onBulkDelete,
   onBulkAddToSetlist,
 }: Props) {
@@ -63,6 +68,11 @@ export default function Library({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkConfirm, setBulkConfirm] = useState(false);
   const [addToSetlistOpen, setAddToSetlistOpen] = useState(false);
+  // Single-song "Add to Folder" / "Add to Setlist" from the row ⋯ menu. One
+  // picker serves both; `kind` selects the list, wording and icon.
+  const [pickTarget, setPickTarget] = useState<
+    { songId: string; songTitle: string; kind: "folder" | "setlist" } | null
+  >(null);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [menu, setMenu] = useState<{
     songId: string;
@@ -236,6 +246,22 @@ export default function Library({
       setAddToSetlistOpen(false);
       exitSelect();
       showToast(`${ids.length} ${ids.length === 1 ? "song" : "songs"} added to ${folderName}`);
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  // Add the ONE song from the ⋯ menu to the chosen folder/setlist. Goes through
+  // the same path as the bulk flow, so dedupe, positioning and the
+  // add_song_to_folder RPC behave identically.
+  const doAddSongTo = async (folderId: string, folderName: string) => {
+    if (!pickTarget || bulkBusy) return;
+    setBulkBusy(true);
+    try {
+      await onBulkAddToSetlist([pickTarget.songId], folderId);
+      const what = pickTarget.songTitle.trim() || "Untitled Song";
+      setPickTarget(null);
+      showToast(`"${what}" added to ${folderName}`);
     } finally {
       setBulkBusy(false);
     }
@@ -557,8 +583,9 @@ export default function Library({
           </MenuItem>
           <MenuItem
             onClick={() => {
+              const song = menuSong;
               setMenu(null);
-              showToast("Folders coming soon");
+              setPickTarget({ songId: song.id, songTitle: song.title, kind: "folder" });
             }}
             icon={
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -569,6 +596,25 @@ export default function Library({
             }
           >
             Add to Folder
+          </MenuItem>
+          <MenuItem
+            onClick={() => {
+              const song = menuSong;
+              setMenu(null);
+              setPickTarget({ songId: song.id, songTitle: song.title, kind: "setlist" });
+            }}
+            icon={
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="8" y1="6" x2="21" y2="6" />
+                <line x1="8" y1="12" x2="21" y2="12" />
+                <line x1="8" y1="18" x2="21" y2="18" />
+                <line x1="3" y1="6" x2="3.01" y2="6" />
+                <line x1="3" y1="12" x2="3.01" y2="12" />
+                <line x1="3" y1="18" x2="3.01" y2="18" />
+              </svg>
+            }
+          >
+            Add to Setlist
           </MenuItem>
           <MenuItem
             onClick={() => {
@@ -772,6 +818,75 @@ export default function Library({
           </div>
         </div>
       )}
+
+      {/* Single-song folder/setlist picker — opened from the row ⋯ menu. Mirrors
+          the bulk "Add to setlist" sheet so both feel like one control. */}
+      {pickTarget && (() => {
+        const isFolder = pickTarget.kind === "folder";
+        const options = isFolder ? folders : setlists;
+        return (
+          <div
+            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
+            onMouseDown={() => !bulkBusy && setPickTarget(null)}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={isFolder ? "Add to folder" : "Add to setlist"}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="w-full sm:max-w-sm bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden flex flex-col max-h-[80vh] pb-[env(safe-area-inset-bottom)]"
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800">
+                <div className="min-w-0">
+                  <h2 className="font-semibold text-sm">{isFolder ? "Add to folder" : "Add to setlist"}</h2>
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 truncate">
+                    {pickTarget.songTitle.trim() || "Untitled Song"}
+                  </p>
+                </div>
+                <button type="button" onClick={() => !bulkBusy && setPickTarget(null)} aria-label="Close"
+                  className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+              <div className="overflow-y-auto">
+                {options.length === 0 ? (
+                  <p className="text-center py-10 px-5 text-sm text-slate-400 dark:text-slate-500">
+                    {isFolder
+                      ? "No folders yet. Create one from the Folders tab first."
+                      : "No setlists yet. Create one from the Setlists tab first."}
+                  </p>
+                ) : (
+                  options.map((o) => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      disabled={bulkBusy}
+                      onClick={() => doAddSongTo(o.id, o.name)}
+                      className="w-full flex items-center gap-3 px-5 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors text-left disabled:opacity-50 border-b border-slate-50 dark:border-slate-800/50 last:border-b-0"
+                    >
+                      <span className={"w-8 h-8 rounded-lg flex items-center justify-center shrink-0 " + (isFolder
+                        ? "bg-amber-50 dark:bg-amber-950/60 text-amber-500 dark:text-amber-400"
+                        : "bg-violet-50 dark:bg-violet-950/60 text-violet-500 dark:text-violet-400")}>
+                        {isFolder ? (
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                        ) : (
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                        )}
+                      </span>
+                      <span className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">{o.name}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+              {!isFolder && (
+                <p className="px-5 py-3 text-[11px] text-slate-400 dark:text-slate-500 text-center border-t border-slate-100 dark:border-slate-800">
+                  Team setlists — open the setlist to add songs
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {addSheetOpen && <AddSongSheet onBuildNew={onNewSong} onPasteChart={onPasteChart} onAiChords={onAiChords} onImportFile={onImportFile} onImportPhoto={onImportPhoto} onSearchOnline={onSearchOnline} onClose={()=>setAddSheetOpen(false)} />}
     </div>
