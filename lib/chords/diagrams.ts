@@ -80,6 +80,9 @@ const SLASH_NOTE: Record<string, string> = {
   "G#": "G#", Ab: "G#", A: "A", "A#": "Bb", Bb: "Bb", B: "B", Cb: "B",
 };
 
+export type GuitarDbPublic = {
+  chords: Record<string, { suffix: string; positions: GuitarShape[] }[]>;
+};
 type GuitarDb = {
   chords: Record<string, { suffix: string; positions: GuitarShape[] }[]>;
 };
@@ -136,6 +139,11 @@ export function guitarShapeFrom(db: GuitarDb, symbol: string): GuitarShape | nul
 // ── Piano ──────────────────────────────────────────────────────────────────
 type TonalChord = { get: (s: string) => { empty: boolean; notes: string[]; bass: string } };
 let _tonal: TonalChord | null = null;
+
+// Synchronous cache reads — the print path renders from these rather than
+// awaiting, so nothing is missing at the moment the print dialog opens.
+export function cachedGuitarDb(): GuitarDbPublic | null { return _guitarDb; }
+export function cachedTonal(): TonalChord | null { return _tonal; }
 
 export async function loadTonal(): Promise<TonalChord | null> {
   if (_tonal) return _tonal;

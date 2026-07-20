@@ -208,6 +208,9 @@ export type Settings = {
   printColumns: 1 | 2 | 3;
   printOrientation: "portrait" | "landscape";
   showChords: boolean;
+  // Include the auto-generated chord diagrams above the chart when printing.
+  // Remembered between prints; off by default so existing output is unchanged.
+  printChordDiagrams: boolean;
   // Whether the floating metronome pill renders on songs with a saved BPM.
   showMetronomePill: boolean;
   // Metronome output mode. true = Silent: the visual beat bar blinks on tempo
@@ -229,6 +232,7 @@ export const DEFAULT_SETTINGS: Settings = {
   printColumns: 1,
   printOrientation: "portrait",
   showChords: true,
+  printChordDiagrams: false,
   showMetronomePill: true,
   metronomeSilent: false,   // default Sound — unchanged behaviour for existing users
 };

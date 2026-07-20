@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
-import { CHORD_FONT_CLAMP, LYRIC_FONT_CLAMP, buildChordLine, capoChords, playKey, getEffectiveStyle, getSectionColorKey, getSectionStyleKey, type SectionStyles, type Song, type Settings } from "@/lib/song";
+import { ChordDiagramSheet, preloadChordData } from "@/app/_components/ChordDiagrams";
+import { uniqueChordSymbols } from "@/lib/chords/diagrams";
+import { CHORD_FONT_CLAMP, LYRIC_FONT_CLAMP, buildChordLine, capoChord, capoChords, playKey, getEffectiveStyle, getSectionColorKey, getSectionStyleKey, type SectionStyles, type Song, type Settings } from "@/lib/song";
 
 const FONT_CSS: Record<string, string> = {
   system: "ui-sans-serif, system-ui, -apple-system, sans-serif",
@@ -58,6 +60,11 @@ export default function PrintPreviewModal({
   const paperH = isLandscape ? Math.round(paperW / ratio) : Math.round(paperW * ratio);
 
   const showChords = settings.showChords ?? true;
+  const printDiagrams = settings.printChordDiagrams ?? false;
+  // Same capo/transpose-applied symbols the on-screen strip uses.
+  const diagramSymbols = uniqueChordSymbols(
+    song.sections.flatMap((sec) => sec.lines.flatMap((ln) => ln.chords.map((ch) => capoChord(ch.chord, song.key, song.capo)))),
+  );
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black/60 backdrop-blur-sm">
@@ -112,6 +119,19 @@ export default function PrintPreviewModal({
               <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${showChords ? "translate-x-4" : "translate-x-0"}`} />
             </button>
           </Field>
+          {/* Diagrams — only offered when the song actually has chords AND
+              they're being printed; a diagram sheet over a lyrics-only sheet
+              would make no sense. Flipping it on warms the dataset cache so the
+              print path can render synchronously. */}
+          {showChords && diagramSymbols.length > 0 && (
+            <Field label="Diagrams">
+              <button type="button" aria-pressed={printDiagrams}
+                onClick={() => { if (!printDiagrams) void preloadChordData(); update({ printChordDiagrams: !printDiagrams }); }}
+                className={`relative w-10 h-6 rounded-full transition-colors ${printDiagrams ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-600"}`}>
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${printDiagrams ? "translate-x-4" : "translate-x-0"}`} />
+              </button>
+            </Field>
+          )}
         </div>
         <button type="button"
           onClick={() => { onClose(); setTimeout(onPrint, 80); }}
@@ -181,6 +201,16 @@ function PaperContent({ song, settings, sectionStyles, cols, paperW, paperH }: {
           {song.bpm  != null  && <div><strong>BPM:</strong>  {song.bpm}</div>}
         </div>
       </div>
+
+      {/* Chord diagrams above the chart — same static sheet the real print DOM
+          renders, so the preview is faithful. */}
+      {showChords && (settings.printChordDiagrams ?? false) && (
+        <ChordDiagramSheet
+          symbols={uniqueChordSymbols(song.sections.flatMap((sec) => sec.lines.flatMap((ln) => ln.chords.map((ch) => capoChord(ch.chord, song.key, song.capo)))))}
+          instrument={sectionStyles.prefs.chordDiagramInstrument ?? "guitar"}
+          fontSize={fontSize}
+        />
+      )}
 
       {/* Sections — multi-column flow so they pack continuously down each
           column (no per-row gaps); each section avoids breaking across columns. */}

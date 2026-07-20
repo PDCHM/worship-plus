@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   loadGuitarDb, loadTonal, guitarShapeFrom, pianoVoicingFrom,
-  parseChord, pitchClass,
+  parseChord, pitchClass, cachedGuitarDb, cachedTonal,
   type GuitarShape, type PianoVoicing,
 } from "@/lib/chords/diagrams";
 
@@ -125,6 +125,61 @@ function ChordCard({ symbol, instrument, guitar, piano }: {
       {instrument === "piano" && piano?.bass && parsed?.bass && (
         <span className="text-[9px] text-amber-600 dark:text-amber-400 leading-none">bass {parsed.bass}</span>
       )}
+    </div>
+  );
+}
+
+/* preloadChordData — warm the module-level dataset caches. The print path
+   renders SYNCHRONOUSLY from those caches, so the preview calls this the moment
+   diagrams are switched on; by the time the browser print dialog opens the
+   shapes are already resolvable. */
+export async function preloadChordData(): Promise<void> {
+  await Promise.all([loadGuitarDb(), loadTonal()]);
+}
+
+/* ChordDiagramSheet — STATIC diagrams for print/PDF: no instrument toggle, no
+   close button, no horizontal scroller (a scroll container would clip on paper,
+   so this wraps instead). Reuses the exact same GuitarDiagram / PianoDiagram
+   primitives as the on-screen strip. print-color-adjust keeps the fretboard
+   dots and highlighted keys from being dropped by the browser's
+   remove-backgrounds print behaviour. */
+export function ChordDiagramSheet({ symbols, instrument, fontSize }: {
+  symbols: string[];
+  instrument: DiagramInstrument;
+  fontSize?: number;
+}) {
+  const [ready, setReady] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    void preloadChordData().then(() => { if (!cancelled) setReady((n) => n + 1); });
+    return () => { cancelled = true; };
+  }, []);
+  const db = cachedGuitarDb();
+  const Chord = cachedTonal();
+  if (!symbols.length) return null;
+  // `ready` is only a re-render trigger once the caches fill.
+  void ready;
+  return (
+    <div
+      style={{ WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" } as React.CSSProperties}
+      className="mb-3"
+    >
+      <div style={{ fontSize: `${(fontSize ?? 12) * 0.8}px`, fontWeight: 700, color: "#444", marginBottom: "0.25em" }}>
+        Chords · {instrument === "guitar" ? "Guitar" : "Piano"}
+      </div>
+      <div className="flex flex-wrap gap-x-2 gap-y-1">
+        {symbols.map((sym) => {
+          const g = db ? guitarShapeFrom(db, sym) : null;
+          const p = Chord ? pianoVoicingFrom(Chord, sym) : null;
+          if (instrument === "guitar" ? !g : !p) return null;
+          return (
+            <div key={sym} className="flex flex-col items-center" style={{ breakInside: "avoid" }}>
+              <span style={{ fontSize: `${(fontSize ?? 12) * 0.78}px`, fontWeight: 700, lineHeight: 1.1 }}>{sym}</span>
+              {instrument === "guitar" ? <GuitarDiagram shape={g!} /> : <PianoDiagram voicing={p!} />}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -1,8 +1,10 @@
 "use client";
 
+import { ChordDiagramSheet } from "@/app/_components/ChordDiagrams";
+import { uniqueChordSymbols } from "@/lib/chords/diagrams";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { buildChordLine, capoChords, playKey, getEffectiveStyle, getSectionColorKey, getSectionStyleKey, type SectionStyles, type Song, type Settings } from "@/lib/song";
+import { buildChordLine, capoChord, capoChords, playKey, getEffectiveStyle, getSectionColorKey, getSectionStyleKey, type SectionStyles, type Song, type Settings } from "@/lib/song";
 
 const FONT_CSS: Record<string, string> = {
   system: "ui-sans-serif, system-ui, -apple-system, sans-serif",
@@ -74,6 +76,19 @@ export function SongSheet({ song, settings, sectionStyles }: Props) {
           {song.bpm  != null && <div><strong>BPM:</strong>  {song.bpm}</div>}
         </div>
       </div>
+
+      {/* ── Chord diagrams — opt-in via the print preview's Diagrams toggle.
+          Sits ABOVE the section flow (outside the column container, so it spans
+          the full width rather than being cut into a column). Symbols come from
+          capoChord(), the same feed as the on-screen strip, so printed shapes
+          match what's actually played. ── */}
+      {showChords && (settings.printChordDiagrams ?? false) && (
+        <ChordDiagramSheet
+          symbols={uniqueChordSymbols(song.sections.flatMap((sec) => sec.lines.flatMap((ln) => ln.chords.map((ch) => capoChord(ch.chord, song.key, song.capo)))))}
+          instrument={sectionStyles.prefs.chordDiagramInstrument ?? "guitar"}
+          fontSize={fontSize}
+        />
+      )}
 
       {/* ── Sections — multi-column flow so sections pack continuously down each
           column (no per-row gaps); each section avoids breaking across columns. ── */}
