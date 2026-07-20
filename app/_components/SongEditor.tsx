@@ -1248,6 +1248,22 @@ export default function SongEditor({
     void onSectionStylesSave({ ...sectionStyles, prefs: { ...sectionStyles.prefs, showChordDiagrams: v } });
   };
   const [presentDiagrams, setPresentDiagrams] = useState(false);
+  // The present header is FIXED, so the chart below it has to be padded by
+  // exactly its height. That was two magic numbers (5rem / 7rem) covering the
+  // beat-bar row — which silently under-padded once the chord strip could also
+  // live in there, letting the strip cover the top lyrics. Measure it instead,
+  // so any future row in the header is accounted for automatically.
+  const presentHeaderRef = useRef<HTMLDivElement>(null);
+  const [presentHeaderH, setPresentHeaderH] = useState<number | null>(null);
+  useEffect(() => {
+    const el = presentHeaderRef.current;
+    if (!presenting || !el) { setPresentHeaderH(null); return; }
+    // ResizeObserver fires once on observe, so the initial measurement comes
+    // from the callback rather than a synchronous setState here.
+    const ro = new ResizeObserver(() => setPresentHeaderH(el.offsetHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [presenting]);
   // Font stepper works in absolute px: base (from the small/medium/large pref)
   // plus the user's zoom offset, clamped to [FONT_MIN_PX, FONT_MAX_PX]. The zoom
   // offset is bounded so the resulting px exactly spans that range for whichever
@@ -2810,10 +2826,12 @@ export default function SongEditor({
       style={presenting
         ? {
             "--lyric-font-size": `${lyricCeiling}px`,
-            // Clear the persistent top header (title + always-visible section
-            // flow-bar, plus the beat bar row when a tempo is set), which is
-            // fixed at the top of the present view.
-            paddingTop: `calc(env(safe-area-inset-top, 0px) + ${showPresentBeatBar ? "7rem" : "5rem"})`,
+            // Clear the fixed top header. The measured height already includes
+            // the header's own safe-area inset, so env() is NOT added again
+            // here; the calc() is only the pre-measurement fallback.
+            paddingTop: presentHeaderH != null
+              ? `${presentHeaderH + 10}px`
+              : `calc(env(safe-area-inset-top, 0px) + ${showPresentBeatBar ? "7rem" : "5rem"})`,
             paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)",
             paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.75rem)",
             paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.75rem)",
@@ -2841,7 +2859,7 @@ export default function SongEditor({
               stopPropagation so tapping a chip/control navigates rather than
               toggling controls. Subtle surface background (matches the chart, never
               a dark tab). The root's paddingTop clears this fixed header. */}
-          <div onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}
+          <div ref={presentHeaderRef} onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}
             className="fixed inset-x-0 top-0 z-[2] flex flex-col gap-1 bg-white/85 dark:bg-slate-950/85 backdrop-blur-md border-b border-slate-200/70 dark:border-slate-800/70"
             style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.35rem)", paddingBottom: "0.3rem", paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.6rem)", paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.6rem)" }}>
             <div className="flex items-center gap-2 min-h-[1.75rem]">
