@@ -1,16 +1,34 @@
 "use client";
 
 import { useState } from "react";
-import { effectiveWordIndex, getSectionColorKey, wordStartOffset, type Chord, type Line, type Song } from "@/lib/song";
+import { displayColumn, effectiveWordIndex, getSectionColorKey, wordStartOffset, type Chord, type Line, type Song } from "@/lib/song";
 
 /* ─── helpers ────────────────────────────────────────────────────────────── */
 
-function buildChordLine(chords: Chord[], pxPerChar: number): string {
+// Word fonts. "Courier New" carries no CJK glyphs, so a Chinese chart forced
+// Word into per-glyph substitution — inconsistent faces and a broken monospace
+// grid. "MS Gothic" is a CJK-capable FIXED-PITCH face present on Windows and
+// Office for Mac, and its ideographs are exactly double its Latin advance,
+// which is precisely what the two-column padding above assumes. Latin-only
+// songs are visually unchanged.
+const DOCX_MONO_FONT = "MS Gothic";
+// Body/lyric runs: a CJK-capable proportional face rather than the implicit
+// Latin default.
+const DOCX_BODY_FONT = "MS PGothic";
+
+function buildChordLine(chords: Chord[], pxPerChar: number, lyric = ""): string {
   if (!chords.length) return "";
   const sorted = [...chords].sort((a, b) => a.pos - b.pos);
   let result = "";
   for (const c of sorted) {
-    const target = Math.max(result.length + 1, Math.round(c.pos / pxPerChar));
+    // A chord's `pos` is a CHARACTER index, but a CJK glyph occupies two
+    // monospace columns — so on a Chinese line the chord row has to be padded
+    // by display width, or every chord drifts further left across the line.
+    // Latin is unaffected (width === length).
+    const col = pxPerChar === 1 && lyric
+      ? displayColumn(lyric, c.pos)
+      : c.pos / pxPerChar;
+    const target = Math.max(result.length + 1, Math.round(col));
     result = result.padEnd(target) + c.chord;
   }
   return result;
@@ -66,7 +84,7 @@ function doText(song: Song) {
     lines.push(`{section: ${section.label}}`);
     for (const line of section.lines) {
       if (line.chords.length > 0) {
-        lines.push(buildChordLine(line.chords, pxPerChar));
+        lines.push(buildChordLine(line.chords, pxPerChar, line.lyric));
       }
       lines.push(line.lyric);
     }
@@ -151,13 +169,13 @@ async function doWord(song: Song) {
       if (line.chords.length > 0) {
         children.push(new Paragraph({
           children: [new TextRun({
-            text: buildChordLine(line.chords, pxPerChar),
-            font: "Courier New", bold: true, size: 18, color: "1D4ED8",
+            text: buildChordLine(line.chords, pxPerChar, line.lyric),
+            font: DOCX_MONO_FONT, bold: true, size: 18, color: "1D4ED8",
           })],
         }));
       }
       children.push(new Paragraph({
-        children: [new TextRun({ text: line.lyric || " ", size: 22 })],
+        children: [new TextRun({ text: line.lyric || " ", size: 22, font: DOCX_BODY_FONT })],
       }));
     }
   }

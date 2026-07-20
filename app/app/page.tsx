@@ -38,6 +38,7 @@ import {
   DEFAULT_SECTION_STYLES,
   buildChordLine,
   cloneSection,
+  containsCjk,
   findNearestWordIndex,
   getSectionColorKey,
   makeNewSong,
@@ -178,20 +179,45 @@ function sectionRowsToSections(rows: SectionRow[]): Song["sections"] {
       lines: (s.lines ?? [])
         .slice()
         .sort((a, b) => a.position - b.position)
-        .map((l) => ({
-          id: l.id,
-          lyric: l.lyric,
-          chords: (l.chords ?? [])
-            .slice()
-            .sort((a, b) => a.position_px - b.position_px)
-            .map((c) => ({
-              id: c.id,
-              pos: c.position_px,
-              chord: c.chord_name,
-              wordIndex: c.word_index ?? null,
-              offset: c.offset ?? 0,
-            })),
-        })),
+        .map((l) => {
+          // CJK lines are re-anchored from position_px, which the schema keeps
+          // as the authoritative character column. Chinese/Japanese lyrics used
+          // to tokenize as ONE word per line; now every ideograph is its own
+          // word, so a stored word_index written under the old rule would point
+          // at the wrong character. Re-deriving from the column it was actually
+          // saved at keeps those chords exactly where the user put them.
+          //
+          // Latin lines keep their stored word_index untouched — re-deriving
+          // there would round-trip wrong for a chord parked in a word's
+          // trailing gap (findNearestWordIndex would snap it to the NEXT word).
+          const cjkLine = containsCjk(l.lyric);
+          return {
+            id: l.id,
+            lyric: l.lyric,
+            chords: (l.chords ?? [])
+              .slice()
+              .sort((a, b) => a.position_px - b.position_px)
+              .map((c) => {
+                if (!cjkLine) {
+                  return {
+                    id: c.id,
+                    pos: c.position_px,
+                    chord: c.chord_name,
+                    wordIndex: c.word_index ?? null,
+                    offset: c.offset ?? 0,
+                  };
+                }
+                const wi = findNearestWordIndex(c.position_px, l.lyric);
+                return {
+                  id: c.id,
+                  pos: c.position_px,
+                  chord: c.chord_name,
+                  wordIndex: wi,
+                  offset: Math.max(0, c.position_px - wordStartOffset(l.lyric, wi)),
+                };
+              }),
+          };
+        }),
     }));
 }
 

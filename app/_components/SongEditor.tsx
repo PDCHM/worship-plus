@@ -1862,7 +1862,19 @@ export default function SongEditor({
       for (const sec of Array.isArray(data?.sections) ? data.sections : []) {
         for (const ln of Array.isArray(sec?.lines) ? sec.lines : []) aiLines.push(ln);
       }
-      const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/gi, " ").replace(/\s+/g, " ").trim();
+      const normalize = (s: string) =>
+        // Unicode-safe: keep letters/digits in ANY script. The old
+        // /[^a-z0-9 ]+/ stripped Chinese lyrics to an empty string, so the
+        // text match never hit and every Chinese line fell through to the
+        // positional pass — which misses repeated sections, because the
+        // model returns a repeated chorus once, not per occurrence.
+        s.toLowerCase().replace(/[^\p{L}\p{N} ]+/gu, " ").replace(/\s+/g, "");
+      // Whitespace is dropped entirely, not collapsed: the model returns
+      // Chinese pre-segmented into `words` ("耶穌 是 主") while the lyric is
+      // stored unsegmented ("耶穌是主"), so keeping spaces would guarantee a
+      // miss on every CJK line. Comparing the bare character sequence makes
+      // the key segmentation-agnostic, and is equivalent for Latin (both
+      // sides lose the same spaces).
       const aiByText = new Map<string, unknown[]>();
       for (const ln of aiLines) {
         const words = Array.isArray(ln?.words) ? (ln.words as unknown[]).map(String) : [];
@@ -1946,7 +1958,19 @@ export default function SongEditor({
       // therefore only covers the first few lines and misses everything after.
       // Matching on the line's words lets every occurrence of a repeated line
       // get chords; an index-based pass is the fallback for any unmatched line.
-      const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/gi, " ").replace(/\s+/g, " ").trim();
+      const normalize = (s: string) =>
+        // Unicode-safe: keep letters/digits in ANY script. The old
+        // /[^a-z0-9 ]+/ stripped Chinese lyrics to an empty string, so the
+        // text match never hit and every Chinese line fell through to the
+        // positional pass — which misses repeated sections, because the
+        // model returns a repeated chorus once, not per occurrence.
+        s.toLowerCase().replace(/[^\p{L}\p{N} ]+/gu, " ").replace(/\s+/g, "");
+      // Whitespace is dropped entirely, not collapsed: the model returns
+      // Chinese pre-segmented into `words` ("耶穌 是 主") while the lyric is
+      // stored unsegmented ("耶穌是主"), so keeping spaces would guarantee a
+      // miss on every CJK line. Comparing the bare character sequence makes
+      // the key segmentation-agnostic, and is equivalent for Latin (both
+      // sides lose the same spaces).
       const aiByText = new Map<string, unknown[]>();
       const aiLabelByText = new Map<string, string>();
       aiLines.forEach((ln, idx) => {

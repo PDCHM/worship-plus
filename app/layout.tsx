@@ -6,6 +6,8 @@ import {
   Roboto_Mono,
   IBM_Plex_Mono,
   Courier_Prime,
+  Noto_Sans_SC,
+  Noto_Sans_TC,
 } from "next/font/google";
 import "./globals.css";
 import ServiceWorkerRegister from "./_components/ServiceWorkerRegister";
@@ -37,6 +39,28 @@ const ibmPlexMono = IBM_Plex_Mono({
   variable: "--font-ibm-plex-mono",
   weight: ["400", "500", "700"],
   subsets: ["latin"],
+});
+
+// CJK faces. Chinese worship charts previously fell back to whatever the OS
+// happened to pick, which looked inconsistent next to the Latin chart fonts.
+// Google serves these as ~150 unicode-range chunks each, so the browser fetches
+// ONLY the ranges a song actually uses (~30KB a chunk) — and `preload: false`
+// means an English-only user downloads none of it. SC covers Simplified, TC
+// picks up Traditional-only glyphs for HK/TW charts.
+const notoSansSC = Noto_Sans_SC({
+  variable: "--font-noto-sc",
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  display: "swap",
+  preload: false,
+});
+
+const notoSansTC = Noto_Sans_TC({
+  variable: "--font-noto-tc",
+  subsets: ["latin"],
+  weight: ["400", "700"],
+  display: "swap",
+  preload: false,
 });
 
 const courierPrime = Courier_Prime({
@@ -114,7 +138,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${jetbrainsMono.variable} ${robotoMono.variable} ${ibmPlexMono.variable} ${courierPrime.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${jetbrainsMono.variable} ${robotoMono.variable} ${ibmPlexMono.variable} ${courierPrime.variable} ${notoSansSC.variable} ${notoSansTC.variable} h-full antialiased`}
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />

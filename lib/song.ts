@@ -782,15 +782,29 @@ export const EDITOR_FONT_FAMILY: Record<EditorPrefs["fontFamily"], string> = {
   sans: "ui-sans-serif, system-ui, -apple-system, sans-serif",
 };
 
+// CJK tier appended to every chart stack. Latin fonts are listed FIRST so Latin
+// rendering is completely unchanged — a browser only reaches this tier for a
+// glyph the Latin face doesn't have, i.e. exactly the Chinese/Japanese
+// characters. The self-hosted Noto faces come first, then the platform CJK
+// fonts every target device already ships, so a Chinese chart still renders
+// properly offline or before the webfont chunk arrives (these are the good
+// native faces, named explicitly — not the browser's arbitrary last-resort
+// fallback, which is what made Chinese look out of place before).
+export const CJK_FONT_STACK =
+  "var(--font-noto-sc), var(--font-noto-tc), " +
+  "'PingFang SC', 'PingFang TC', 'Hiragino Sans GB', " +
+  "'Noto Sans CJK SC', 'Source Han Sans SC', " +
+  "'Microsoft YaHei', 'Microsoft JhengHei'";
+
 // Monospace family options for the chart body. The non-default options are
 // self-hosted via next/font/google (see app/layout.tsx), exposed as CSS vars on
 // <html>; each keeps a generic monospace fallback so a failed load still aligns.
 export const CHART_FONT_FAMILY: Record<ChartFont, string> = {
-  default:      EDITOR_FONT_FAMILY.mono,
-  jetbrains:    "var(--font-jetbrains-mono), ui-monospace, monospace",
-  roboto:       "var(--font-roboto-mono), ui-monospace, monospace",
-  ibmplex:      "var(--font-ibm-plex-mono), ui-monospace, monospace",
-  courierprime: "var(--font-courier-prime), ui-monospace, monospace",
+  default:      `ui-monospace, Menlo, Consolas, 'Courier New', ${CJK_FONT_STACK}, monospace`,
+  jetbrains:    `var(--font-jetbrains-mono), ui-monospace, ${CJK_FONT_STACK}, monospace`,
+  roboto:       `var(--font-roboto-mono), ui-monospace, ${CJK_FONT_STACK}, monospace`,
+  ibmplex:      `var(--font-ibm-plex-mono), ui-monospace, ${CJK_FONT_STACK}, monospace`,
+  courierprime: `var(--font-courier-prime), ui-monospace, ${CJK_FONT_STACK}, monospace`,
 };
 
 export const CHART_FONT_OPTIONS: { value: ChartFont; label: string }[] = [
@@ -813,12 +827,72 @@ export function resolveChartFontFamily(prefs: EditorPrefs): string {
 // characters together with its character span in the lyric.
 export type WordToken = { text: string; start: number; end: number };
 
+// Characters that stand alone as their own word token. Chinese and Japanese
+// don't put spaces between words, so /\S+/ alone collapses an entire lyric line
+// into ONE token — which made chord placement on a Chinese chart hopelessly
+// coarse (one target for the whole line). Treating each Han ideograph / kana /
+// CJK-fullwidth mark as its own token gives per-character tap and drag targets,
+// exactly like an English word.
+//
+// Hangul is deliberately NOT included: Korean spaces its words already, so the
+// default rule is right there and per-syllable splitting would be too granular.
+const CJK_UNIT =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}　-〿！-｠￠-￦]/u;
+
+export function isCjkChar(ch: string): boolean {
+  return CJK_UNIT.test(ch);
+}
+
+// Does this text contain any spaceless-script character? Used to decide where
+// CJK-specific handling applies, so Latin-only songs take the exact same code
+// path they always did.
+export function containsCjk(s: string): boolean {
+  return CJK_UNIT.test(s);
+}
+
+// A CJK glyph occupies two columns in a monospace face (East Asian "Wide"),
+// while Latin occupies one. Character INDEX and visual COLUMN therefore diverge
+// the moment a line contains CJK — which is why chord-over-lyric rows in the
+// print/export paths drifted right on Chinese songs.
+export function displayWidth(s: string): number {
+  let w = 0;
+  for (const ch of s) w += CJK_UNIT.test(ch) ? 2 : 1;
+  return w;
+}
+
+// Character index → visual column for a given lyric. Anything BEYOND the end of
+// the lyric counts one column per character: chords are deliberately allowed to
+// sit in the trailing gap past the last word, and clamping to the lyric length
+// would drag them back onto it.
+export function displayColumn(lyric: string, charIndex: number): number {
+  const i = Math.max(0, Math.round(charIndex));
+  if (i <= lyric.length) return displayWidth(lyric.slice(0, i));
+  return displayWidth(lyric) + (i - lyric.length);
+}
+
 export function tokenizeWords(lyric: string): WordToken[] {
   const tokens: WordToken[] = [];
   const re = /\S+/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(lyric)) !== null) {
-    tokens.push({ text: m[0], start: m.index, end: m.index + m[0].length });
+    const run = m[0];
+    const base = m.index;
+    // Split each whitespace-delimited run so CJK characters become individual
+    // tokens while Latin sub-runs stay whole: "耶穌Jesus" → 耶, 穌, Jesus.
+    let buf = "";
+    let bufStart = base;
+    let i = 0;
+    for (const ch of run) {          // by code point — astral-safe
+      if (CJK_UNIT.test(ch)) {
+        if (buf) { tokens.push({ text: buf, start: bufStart, end: bufStart + buf.length }); buf = ""; }
+        tokens.push({ text: ch, start: base + i, end: base + i + ch.length });
+      } else {
+        if (!buf) bufStart = base + i;
+        buf += ch;
+      }
+      i += ch.length;
+    }
+    if (buf) tokens.push({ text: buf, start: bufStart, end: bufStart + buf.length });
   }
   return tokens;
 }
@@ -833,7 +907,13 @@ export function findNearestWordIndex(pos: number, lyric: string): number {
   let bestDist = Infinity;
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
-    const d = pos < t.start ? t.start - pos : pos > t.end ? pos - t.end : 0;
+    // `end` is EXCLUSIVE, so containment is start <= pos < end and the distance
+    // for a position past the token is measured to its LAST character. The old
+    // `pos > t.end` counted pos === end as inside, which was harmless while
+    // words were space-separated (a gap always broke the tie) but is wrong for
+    // adjacent CJK character tokens: there token i's end IS token i+1's start,
+    // so every position tied and always resolved one character to the left.
+    const d = pos < t.start ? t.start - pos : pos >= t.end ? pos - t.end + 1 : 0;
     if (d < bestDist) {
       bestDist = d;
       best = i;
@@ -883,8 +963,13 @@ export function buildChordLine(chords: Chord[], lyric: string, pxPerChar = 1): s
     .sort((a, b) => a.col - b.col);
   let result = "";
   for (const p of placed) {
-    const target = Math.max(result.length + 1, Math.round(p.col / pxPerChar));
-    result = result.padEnd(target) + p.chord;
+    // Character index → visual column. On a Latin line these are the same, so
+    // output is byte-identical to before; on a CJK line each ideograph counts
+    // two columns, which is what keeps the chord sitting over its character
+    // instead of drifting left as the line goes on.
+    const col = pxPerChar === 1 ? displayColumn(lyric, p.col) : p.col / pxPerChar;
+    const target = Math.max(displayWidth(result) + 1, Math.round(col));
+    result = result.padEnd(result.length + Math.max(0, target - displayWidth(result))) + p.chord;
   }
   return result;
 }

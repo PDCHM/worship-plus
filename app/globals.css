@@ -22,7 +22,11 @@
 html, body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), system-ui, -apple-system, sans-serif;
+  /* Latin first (unchanged), then the CJK tier so Chinese UI/lyric text outside
+     the chart picks a proper face instead of the browser's last-resort font. */
+  font-family: var(--font-geist-sans), system-ui, -apple-system,
+    var(--font-noto-sc), var(--font-noto-tc), "PingFang SC", "Hiragino Sans GB",
+    "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
   /* Disable per-block text autosizing (font boosting). Tailwind's preflight
      only sets the -webkit- prefix on <html>; the standard property is left at
      auto, so engines that honor it inflate CJK-heavy lines more than short
