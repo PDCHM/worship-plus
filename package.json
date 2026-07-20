@@ -15,6 +15,7 @@
     "@stripe/stripe-js": "^9.7.0",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.2",
+    "@tombatossals/chords-db": "^0.5.1",
     "docx": "^9.7.0",
     "heic2any": "^0.0.4",
     "idb": "^8.0.3",
@@ -27,6 +28,7 @@
     "remark-gfm": "^4.0.1",
     "resend": "^6.12.4",
     "stripe": "^22.2.0",
+    "tonal": "^6.4.3",
     "unpdf": "^1.6.2"
   },
   "devDependencies": {

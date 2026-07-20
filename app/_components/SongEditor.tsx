@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { useOnlineStatus } from "@/lib/offline/useOnlineStatus";
 import Coachmark from "@/app/_components/Coachmark";
@@ -10,6 +10,8 @@ import QuickActionsPanel from "@/app/_components/QuickActionsPanel";
 import MarkupOverlay from "@/app/_components/MarkupOverlay";
 import { LineBubbles, useSongBubbles } from "@/app/_components/SongBubbles";
 import SongReferences, { type SongLink } from "@/app/_components/SongReferences";
+import ChordDiagramStrip, { type DiagramInstrument } from "@/app/_components/ChordDiagrams";
+import { uniqueChordSymbols } from "@/lib/chords/diagrams";
 import {
   CHORD_FONT_CLAMP,
   FONT_ZOOM_STEP,
@@ -762,12 +764,14 @@ function SectionStylesPanel({
                   ))}
                 </div>
               </div>
-              <div className="flex items-center justify-between rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2 opacity-50">
+              <div className="flex items-center justify-between rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2">
                 <div>
                   <div className="text-sm text-slate-600 dark:text-slate-300">Chord diagrams</div>
-                  <div className="text-[11px] text-slate-400">Coming soon</div>
+                  <div className="text-[11px] text-slate-400">Guitar &amp; piano shapes above the chart</div>
                 </div>
-                <input type="checkbox" disabled checked={settings.prefs.showChordDiagrams} className="w-4 h-4 accent-indigo-600 cursor-not-allowed" />
+                <input type="checkbox" checked={settings.prefs.showChordDiagrams}
+                  onChange={(e) => updatePrefs({ showChordDiagrams: e.target.checked })}
+                  className="w-4 h-4 accent-indigo-600 cursor-pointer" />
               </div>
             </div>
           </section>
@@ -1221,6 +1225,29 @@ export default function SongEditor({
     void onSectionStylesSave({ ...sectionStyles, prefs: { ...sectionStyles.prefs, chartFont } });
   };
   const showChords = settings.showChords ?? true;
+
+  // Chord-diagram strip. The symbols come from displayChord(), the SAME
+  // function the chart renders each chord through — so the diagrams are
+  // transpose- and capo-aware by construction: transposing rewrites the stored
+  // chords, capo shifts them down for display, and both land here automatically.
+  const diagramSymbols = useMemo(
+    () => uniqueChordSymbols(
+      song.sections.flatMap((sec) =>
+        sec.lines.flatMap((ln) => ln.chords.map((ch) => capoChord(ch.chord, song.key, song.capo))),
+      ),
+    ),
+    [song.sections, song.key, song.capo],
+  );
+  const diagramInstrument: DiagramInstrument = prefs.chordDiagramInstrument ?? "guitar";
+  const setDiagramInstrument = (i: DiagramInstrument) => {
+    void onSectionStylesSave({ ...sectionStyles, prefs: { ...sectionStyles.prefs, chordDiagramInstrument: i } });
+  };
+  // Normal view remembers the user's choice; present mode always starts hidden
+  // so the stage surface stays calm, and is revealed per session by the toggle.
+  const setShowDiagrams = (v: boolean) => {
+    void onSectionStylesSave({ ...sectionStyles, prefs: { ...sectionStyles.prefs, showChordDiagrams: v } });
+  };
+  const [presentDiagrams, setPresentDiagrams] = useState(false);
   // Font stepper works in absolute px: base (from the small/medium/large pref)
   // plus the user's zoom offset, clamped to [FONT_MIN_PX, FONT_MAX_PX]. The zoom
   // offset is bounded so the resulting px exactly spans that range for whichever
@@ -2839,6 +2866,16 @@ export default function SongEditor({
                 {presentControls && "Exit"}
               </button>
               <span className="flex-1 min-w-0 text-center text-sm font-semibold truncate text-slate-500 dark:text-slate-400">{song.title || "Untitled Song"}</span>
+              {presentControls && diagramSymbols.length > 0 && (
+                <button type="button" title="Chord diagrams" aria-label="Toggle chord diagrams"
+                  aria-pressed={presentDiagrams}
+                  onClick={() => { setPresentDiagrams((v) => !v); revealControls(); }}
+                  className={"w-7 h-7 rounded-lg flex items-center justify-center shrink-0 " + (presentDiagrams
+                    ? "bg-indigo-600 text-white"
+                    : "text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60")}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="4" y1="5" x2="20" y2="5"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="19" x2="20" y2="19"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+                </button>
+              )}
               {presentControls ? (
                 <button type="button" title="Column layout" aria-label="Cycle column layout"
                   onClick={() => { switchView(viewMode === "standard" ? "split-2" : viewMode === "split-2" ? "split-3" : "standard"); revealControls(); }}
@@ -2874,6 +2911,20 @@ export default function SongEditor({
               <div className="flex items-center gap-2 pt-0.5">
                 <BeatBar metronome={metronome} playing={metronome.playing} beats={beatsPerBarCount} variant="present" className="flex-1 min-w-0" />
                 <SoundToggle silent={metronomeSilent} onChange={setMetronomeSilent} variant="present" />
+              </div>
+            )}
+            {/* Chord diagrams — OFF by default on stage so the surface stays
+                calm; the toggle appears with the revealed controls, and the
+                strip itself then stays up until dismissed. */}
+            {presentDiagrams && diagramSymbols.length > 0 && (
+              <div className="pt-1">
+                <ChordDiagramStrip
+                  compact
+                  symbols={diagramSymbols}
+                  instrument={diagramInstrument}
+                  onInstrumentChange={setDiagramInstrument}
+                  onClose={() => setPresentDiagrams(false)}
+                />
               </div>
             )}
           </div>
@@ -3337,6 +3388,29 @@ export default function SongEditor({
       {/* (The present-mode song title now lives in the persistent top header above,
           alongside the always-visible section flow-bar — so the old sticky title
           strip here was removed to avoid a duplicate title.) */}
+
+      {/* Chord diagrams — collapsible strip ABOVE the chart card in normal view.
+          Remembered per user via prefs.showChordDiagrams; hidden in present
+          mode and in print, which have their own handling. */}
+      {!presenting && showChords && diagramSymbols.length > 0 && (
+        <div className="mb-3 print:hidden">
+          {prefs.showChordDiagrams ? (
+            <ChordDiagramStrip
+              symbols={diagramSymbols}
+              instrument={diagramInstrument}
+              onInstrumentChange={setDiagramInstrument}
+              onClose={() => setShowDiagrams(false)}
+            />
+          ) : (
+            <button type="button" onClick={() => setShowDiagrams(true)}
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="4" y1="5" x2="20" y2="5"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="19" x2="20" y2="19"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+              Chord diagrams
+              <span className="text-slate-400 dark:text-slate-500 font-normal">({diagramSymbols.length})</span>
+            </button>
+          )}
+        </div>
+      )}
 
       <div
         ref={fitWrapRef}

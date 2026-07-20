@@ -606,6 +606,8 @@ export type EditorPrefs = {
   chartFont: ChartFont;
   chordFontSize: "small" | "medium" | "large";
   showChordDiagrams: boolean;
+  // Which diagram set the chord strip shows. Guitar and piano only for now.
+  chordDiagramInstrument: "guitar" | "piano";
   lineSpacing: "compact" | "normal" | "relaxed";
 };
 
@@ -648,6 +650,7 @@ export const DEFAULT_EDITOR_PREFS: EditorPrefs = {
   chartFont: "default",
   chordFontSize: "medium",
   showChordDiagrams: false,
+  chordDiagramInstrument: "guitar",
   lineSpacing: "normal",
 };
 
@@ -719,6 +722,7 @@ function parsePrefs(v: unknown): EditorPrefs {
   if (s.chartFont === "default" || s.chartFont === "jetbrains" || s.chartFont === "roboto" || s.chartFont === "ibmplex" || s.chartFont === "courierprime") out.chartFont = s.chartFont;
   if (s.chordFontSize === "small" || s.chordFontSize === "medium" || s.chordFontSize === "large") out.chordFontSize = s.chordFontSize;
   if (typeof s.showChordDiagrams === "boolean") out.showChordDiagrams = s.showChordDiagrams;
+  if (s.chordDiagramInstrument === "guitar" || s.chordDiagramInstrument === "piano") out.chordDiagramInstrument = s.chordDiagramInstrument;
   if (s.lineSpacing === "compact" || s.lineSpacing === "normal" || s.lineSpacing === "relaxed") out.lineSpacing = s.lineSpacing;
   return out;
 }
