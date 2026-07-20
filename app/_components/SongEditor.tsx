@@ -2784,8 +2784,9 @@ export default function SongEditor({
       {presenting && (
         <>
           {/* Persistent top header — song title + read-only section flow-bar,
-              ALWAYS visible (NOT tied to tap-to-reveal). Exit + column-layout
-              buttons appear only when controls are revealed; the chips never hide.
+              ALWAYS visible (NOT tied to tap-to-reveal). Exit is always there
+              too (compact when controls are hidden); the column-layout button
+              appears only when controls are revealed, and the chips never hide.
               stopPropagation so tapping a chip/control navigates rather than
               toggling controls. Subtle surface background (matches the chart, never
               a dark tab). The root's paddingTop clears this fixed header. */}
@@ -2793,13 +2794,26 @@ export default function SongEditor({
             className="fixed inset-x-0 top-0 z-[2] flex flex-col gap-1 bg-white/85 dark:bg-slate-950/85 backdrop-blur-md border-b border-slate-200/70 dark:border-slate-800/70"
             style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.35rem)", paddingBottom: "0.3rem", paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.6rem)", paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.6rem)" }}>
             <div className="flex items-center gap-2 min-h-[1.75rem]">
-              {presentControls ? (
-                <button type="button" onClick={exitPresent}
-                  className="flex items-center gap-0.5 h-7 pl-1 pr-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60 text-sm font-medium shrink-0">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                  Exit
-                </button>
-              ) : <span className="w-7 shrink-0" aria-hidden />}
+              {/* Exit is ALWAYS rendered — never tap-gated. Leaving fullscreen
+                  shouldn't require discovering the tap-to-reveal layer first,
+                  which is a bad place to strand someone mid-service. It only
+                  gets quieter when the other controls are hidden: chevron
+                  alone, muted, at exactly the w-7 the old spacer occupied, so
+                  the calm chart surface is undisturbed and the title's
+                  centring is unchanged. Safe-area insets come from this
+                  header's own padding, so it never sits under the notch. */}
+              <button type="button" onClick={exitPresent}
+                aria-label="Exit performance mode"
+                title="Exit performance mode"
+                className={
+                  "flex items-center rounded-lg shrink-0 transition-colors " +
+                  (presentControls
+                    ? "gap-0.5 h-7 pl-1 pr-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60"
+                    : "justify-center w-7 h-7 text-slate-400/70 dark:text-slate-500/70 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-200/50 dark:hover:bg-slate-800/50")
+                }>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                {presentControls && "Exit"}
+              </button>
               <span className="flex-1 min-w-0 text-center text-sm font-semibold truncate text-slate-500 dark:text-slate-400">{song.title || "Untitled Song"}</span>
               {presentControls ? (
                 <button type="button" title="Column layout" aria-label="Cycle column layout"
