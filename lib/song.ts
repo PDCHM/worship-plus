@@ -168,6 +168,48 @@ export function beatsPerBar(timeSignature?: string | null): number {
   return Number.isFinite(top) && top >= 1 && top <= 12 ? top : 4;
 }
 
+// The DENOMINATOR: which note value gets one beat. 4 = quarter, 8 = eighth,
+// 2 = half. Ignoring this was the 6/8 bug — the metronome clicked six beats a
+// full quarter-note apart, so a 6/8 bar ran twice as long as it should.
+export function beatUnit(timeSignature?: string | null): number {
+  const bottom = Number.parseInt(String(timeSignature ?? "").split("/")[1], 10);
+  return bottom === 2 || bottom === 4 || bottom === 8 || bottom === 16 ? bottom : 4;
+}
+
+// Seconds per beat — 60/bpm for EVERY time signature.
+//
+// This is the app's definition of BPM, and it matches standalone metronome
+// apps: BPM is CLICKS PER MINUTE, i.e. one notated beat. The time signature
+// changes how many beats are in a bar and which one is accented; it never
+// changes how fast a beat goes by. 3/4 at 120 and 4/4 at 120 have identical
+// 0.5s beats — only the accent lands every 3 instead of every 4.
+//
+// The denominator deliberately does NOT scale this. Scaling it (eighth =
+// half a quarter in 6/8) is the "BPM = quarter note" reading, which is
+// self-consistent but makes 6/8 run at double speed against every reference
+// metronome — so it is not what this app means by BPM.
+export function beatDurationSeconds(bpm: number): number {
+  return 60 / Math.max(1, bpm);
+}
+
+// Compound metre: an /8 signature whose beats group in threes (6/8, 9/8, 12/8).
+// These are COUNTED in dotted-quarter pulses — 6/8 is felt "in 2" — even though
+// all six eighths are played.
+export function isCompoundMeter(timeSignature?: string | null): boolean {
+  const top = beatsPerBar(timeSignature);
+  return beatUnit(timeSignature) === 8 && top % 3 === 0 && top >= 6;
+}
+
+// How hard a beat is accented. 2 = downbeat, 1 = secondary pulse, 0 = plain.
+// In compound metre every third eighth starts a new dotted-quarter pulse, so
+// 6/8 sounds ONE-two-three-FOUR-five-six — the felt-in-2 the player expects,
+// while still clicking all six.
+export function accentLevel(beatIndex: number, timeSignature?: string | null): 0 | 1 | 2 {
+  if (beatIndex === 0) return 2;
+  if (isCompoundMeter(timeSignature) && beatIndex % 3 === 0) return 1;
+  return 0;
+}
+
 export type SectionColor = { bg: string; fg: string };
 export type SectionColorKey =
   | "verse"

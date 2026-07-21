@@ -29,6 +29,8 @@ import {
   cloneSection,
   defaultStyleForKey,
   effectiveWordIndex,
+  accentLevel,
+  beatDurationSeconds,
   beatsPerBar,
   detectProgression,
   findNearestWordIndex,
@@ -1066,7 +1068,7 @@ export default function SongEditor({
   // user can actually edit. Re-seeded per song alongside bpm.
   const [timeSig, setTimeSig] = useState<string>(song.timeSignature ?? DEFAULT_TIME_SIGNATURE);
   const beatsPerBarCount = beatsPerBar(timeSig);
-  const metronome = useMetronome(bpm, metronomeSilent, beatsPerBarCount);
+  const metronome = useMetronome(bpm, metronomeSilent, beatsPerBarCount, timeSig);
   const [quickActionsOpen, setQuickActionsOpen] = useState(false);
   const [markupMode, setMarkupMode] = useState(false);
   // Markup CREATION needs a connection (view-only offline). Entry is disabled
@@ -4875,7 +4877,7 @@ function getAudioCtx(): AudioContext | null {
    rather than one per beat. (Converting per beat re-samples two independent
    clocks every time and measurably jitters the audio grid: ±3.9ms worst case,
    5.2ms accumulated over 30 beats, when this was first built that way.) */
-function useMetronome(bpm: number, silent: boolean, beats: number): Metronome {
+function useMetronome(bpm: number, silent: boolean, beats: number, timeSignature: string): Metronome {
   const [playing, setPlaying] = useState(false);
   const bpmRef = useRef(bpm);
   const wakeLockRef = useRef<WakeLockLike | null>(null);
@@ -4884,6 +4886,10 @@ function useMetronome(bpm: number, silent: boolean, beats: number): Metronome {
   const silentRef = useRef(silent);
   const beatRef = useRef(-1);
   const beatsRef = useRef(beats);
+  // Time signature drives BOTH the beat duration (via its denominator) and the
+  // accent pattern, so it's mirrored in a ref like bpm — changing it mid-play
+  // retunes on the next scheduled beat without restarting.
+  const tsRef = useRef(timeSignature);
   const beatSubsRef = useRef(new Set<() => void>());
 
   // Scheduler state.
@@ -4932,21 +4938,22 @@ function useMetronome(bpm: number, silent: boolean, beats: number): Metronome {
     if (w) void w.release().catch(() => {});
   };
 
-  const playPoolClick = (accent: boolean) => {
+  const playPoolClick = (accent: 0 | 1 | 2) => {
     const pool = poolRef.current;
     if (!pool.length) return;
     const a = pool[poolIdxRef.current % pool.length];
     poolIdxRef.current++;
     try {
-      a.volume = accent ? 1 : 0.55;
-      a.playbackRate = accent ? 1.5 : 1;
+      a.volume = accent === 2 ? 1 : accent === 1 ? 0.78 : 0.55;
+      a.playbackRate = accent === 2 ? 1.5 : accent === 1 ? 1.22 : 1;
       a.currentTime = 0;
       void a.play();
     } catch { /* ignore */ }
   };
 
   // Hand one beat to the audio clock at an exact time.
-  const scheduleClickAt = (t: number, accent: boolean) => {
+  // accent: 2 = downbeat, 1 = secondary pulse (compound metre), 0 = plain.
+  const scheduleClickAt = (t: number, accent: 0 | 1 | 2) => {
     const ctx = getAudioCtx();
     if (ctx && _clickBuf && ctx.state === "running") {
       // On the ctx clock, t IS a context time — handed to start() verbatim,
@@ -4958,9 +4965,11 @@ function useMetronome(bpm: number, silent: boolean, beats: number): Metronome {
       const src = ctx.createBufferSource();
       src.buffer = _clickBuf;
       // Downbeat accent from the SAME sample: louder and pitched up.
-      src.playbackRate.value = accent ? 1.5 : 1;
+      // Downbeat highest and loudest; the compound secondary pulse sits
+      // between it and a plain eighth, which is what makes 6/8 read "in 2".
+      src.playbackRate.value = accent === 2 ? 1.5 : accent === 1 ? 1.22 : 1;
       const gain = ctx.createGain();
-      gain.gain.value = accent ? 1 : 0.55;
+      gain.gain.value = accent === 2 ? 1 : accent === 1 ? 0.78 : 0.55;
       src.connect(gain).connect(ctx.destination);
       src.start(when);
       liveSourcesRef.current.push(src);
@@ -4990,11 +4999,13 @@ function useMetronome(bpm: number, silent: boolean, beats: number): Metronome {
     while (nextBeatTimeRef.current < now + SCHEDULE_AHEAD_S && guard-- > 0) {
       const t = nextBeatTimeRef.current;
       const beat = nextBeatIndexRef.current;
-      if (!silentRef.current) scheduleClickAt(t, beat === 0);
+      if (!silentRef.current) scheduleClickAt(t, accentLevel(beat, tsRef.current));
       visualQueueRef.current.push({ beat, time: t });
       // THE ABSOLUTE ADVANCE — the whole point. bpm is read live so the wheel
       // retunes without restarting; beats likewise for time-signature changes.
-      nextBeatTimeRef.current = t + 60 / bpmRef.current;
+      // Constant across every time signature: BPM is clicks per minute, so the
+      // signature changes the bar length and the accent, never the beat speed.
+      nextBeatTimeRef.current = t + beatDurationSeconds(bpmRef.current);
       nextBeatIndexRef.current = (beat + 1) % beatsRef.current;
     }
   };
@@ -5092,6 +5103,10 @@ function useMetronome(bpm: number, silent: boolean, beats: number): Metronome {
   // Changing the time signature mid-play re-counts the bar on the next beat.
   // Clamp first so a shrink (6/8 → 3/4) can't leave the lit index past the end
   // of the bar for one frame.
+  // Mirror the signature so the accent pattern retunes mid-play, exactly like
+  // bpm and beats. (This effect was missed once, which silently froze the
+  // accent pattern at whatever the signature was on mount.)
+  useEffect(() => { tsRef.current = timeSignature; }, [timeSignature]);
   useEffect(() => {
     beatsRef.current = beats;
     if (beatRef.current >= beats) {
