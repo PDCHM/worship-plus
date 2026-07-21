@@ -3045,6 +3045,9 @@ export default function Home() {
           onOpenExisting={(songId) => { setSearchOpen(false); setAddTargetFolderId(null); navigateTo({ kind: "editor", songId }); }}
           onCreateWithAi={handleSearchCreate}
           onRequireUpgrade={() => setUpgradeModal({ reason: "AI song search" })}
+          // Dead end in online search → straight into the reliable path,
+          // keeping any folder/setlist target the flow was launched with.
+          onTryPhotoImport={() => { setSearchOpen(false); gatedImportPhoto(); }}
           onClose={() => { setSearchOpen(false); setAddTargetFolderId(null); }}
         />
       )}

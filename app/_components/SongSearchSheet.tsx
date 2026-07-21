@@ -19,10 +19,42 @@ type Props = {
   // Opens the existing upgrade prompt if the server rejects with 403 (the client
   // already gates entry, so this only fires on a stale/forged session).
   onRequireUpgrade: () => void;
+  // Online search depends on third-party sites, so every dead end offers the
+  // reliable path instead of leaving the user stuck.
+  onTryPhotoImport: () => void;
   onClose: () => void;
 };
 
-export default function SongSearchSheet({ findInLibrary, onOpenExisting, onCreateWithAi, onRequireUpgrade, onClose }: Props) {
+/* PhotoFallback — the graceful exit from a failed online search. Online results
+   depend on third-party sites that block or vary, so a dead end routes straight
+   to the reliable path rather than just apologising. */
+function PhotoFallback({ onTryPhotoImport }: { onTryPhotoImport: () => void }) {
+  return (
+    <div className="rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/70 dark:bg-indigo-950/40 px-4 py-3">
+      <p className="text-sm text-slate-700 dark:text-slate-200">
+        Snap a photo of your chord chart instead — it&apos;s the most reliable way to bring a song in.
+      </p>
+      <button type="button" onClick={onTryPhotoImport}
+        className="mt-2 inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+          <circle cx="12" cy="13" r="4" />
+        </svg>
+        Import from photo
+      </button>
+    </div>
+  );
+}
+
+// A result can come back "found" but thin — a single verse, or a stub the model
+// couldn't flesh out. Flag those so the review screen warns rather than letting
+// a half-song look authoritative.
+function looksIncomplete(r: SongSearchResult): boolean {
+  const lines = r.lyrics.split("\n").map((l) => l.trim()).filter(Boolean);
+  return r.confidence === "low" || lines.length < 6 || r.lyrics.trim().length < 120;
+}
+
+export default function SongSearchSheet({ findInLibrary, onOpenExisting, onCreateWithAi, onRequireUpgrade, onTryPhotoImport, onClose }: Props) {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -102,10 +134,13 @@ export default function SongSearchSheet({ findInLibrary, onOpenExisting, onCreat
             </div>
           )}
 
+          {(error || (result && !result.found)) && <PhotoFallback onTryPhotoImport={onTryPhotoImport} />}
+
           {result && !result.found && (
             <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 px-4 py-5 text-center">
               <p className="text-sm text-slate-500 dark:text-slate-400">
-                Couldn&apos;t confidently identify that song. Try a longer or more distinctive line of lyrics.
+                Couldn&apos;t find a good match online. Try a longer or more distinctive line of lyrics —
+                or import from a photo instead.
               </p>
             </div>
           )}
@@ -127,8 +162,22 @@ export default function SongSearchSheet({ findInLibrary, onOpenExisting, onCreat
                     {result.confidence === "low" ? "Low confidence — double-check this is the right song." : "Best guess — verify the details."}
                   </p>
                 )}
+                {/* Thin or low-confidence result: still offered, because the
+                    user is the better judge — but never presented as complete.
+                    It goes to the review screen either way, never straight to
+                    a save. */}
+                {looksIncomplete(result) && (
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1.5 font-medium">
+                    This may be incomplete — review before saving, or try photo import.
+                  </p>
+                )}
               </div>
 
+              {looksIncomplete(result) && (
+                <div className="px-3 pt-3">
+                  <PhotoFallback onTryPhotoImport={onTryPhotoImport} />
+                </div>
+              )}
               <div className="p-3 grid grid-cols-1 gap-2">
                 {existingId ? (
                   <button

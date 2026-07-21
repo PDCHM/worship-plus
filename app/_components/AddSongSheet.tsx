@@ -113,7 +113,8 @@ export default function AddSongSheet({ onBuildNew, onPasteChart, onAiChords, onI
               label="Build New" desc="Start from a blank editor" />
             <SheetBtn onClick={() => { onSearchOnline(); onClose(); }}
               icon={ICON_GLOBE}
-              label="Search Online" desc="Find a song by lyrics — Claude identifies it" />
+              label="Search Online" badge="Beta"
+              desc="Find a song by lyrics — experimental, results vary" />
           </div>
         )}
         <div className="h-safe-area-bottom" />
@@ -122,9 +123,9 @@ export default function AddSongSheet({ onBuildNew, onPasteChart, onAiChords, onI
   );
 }
 
-function SheetBtn({ icon, label, desc, onClick, disabled, chevron }: {
+function SheetBtn({ icon, label, desc, onClick, disabled, chevron, badge }: {
   icon: React.ReactNode; label: string; desc: string;
-  onClick: () => void; disabled?: boolean; chevron?: boolean;
+  onClick: () => void; disabled?: boolean; chevron?: boolean; badge?: string;
 }) {
   return (
     <button type="button" onClick={onClick} disabled={disabled}
@@ -133,7 +134,14 @@ function SheetBtn({ icon, label, desc, onClick, disabled, chevron }: {
         {icon}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{label}</div>
+        <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+          {label}
+          {badge && (
+            <span className="shrink-0 px-1.5 h-[15px] leading-[15px] rounded text-[9px] font-bold uppercase tracking-wide bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400">
+              {badge}
+            </span>
+          )}
+        </div>
         <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{desc}</div>
       </div>
       {chevron && (
