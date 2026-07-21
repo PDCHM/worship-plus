@@ -3636,7 +3636,7 @@ export default function SongEditor({
                     const lineTextLeading = lineHasChordRoom ? lineHeight : 1.1;
                     // Each unit: a draggable slot index, the word text below, and
                     // the chords sitting above it.
-                    type WordUnit = { key: string; dragIndex: number; text: string; chords: Chord[]; tappable: boolean };
+                    type WordUnit = { key: string; dragIndex: number; text: string; chords: Chord[]; tappable: boolean; gapAfter: boolean };
                     let units: WordUnit[];
                     if (hasWords) {
                       const chordsByWord = new Map<number, Chord[]>();
@@ -3660,6 +3660,10 @@ export default function SongEditor({
                           .slice()
                           .sort((a, b) => (a.offset ?? 0) - (b.offset ?? 0) || a.pos - b.pos),
                         tappable: true,
+                        // Was there REAL whitespace after this token in the
+                        // lyric? Latin words are space-separated so this is
+                        // true throughout; adjacent CJK characters are not.
+                        gapAfter: i < tokens.length - 1 && tokens[i + 1].start > t.end,
                       }));
                     } else {
                       units = [...visibleChords]
@@ -3670,6 +3674,7 @@ export default function SongEditor({
                           text: " ",
                           chords: [ch],
                           tappable: false,
+                          gapAfter: true,   // chord-only pseudo-words stay spaced
                         }));
                     }
                     const addSlotIndex = units.length;
@@ -3776,7 +3781,16 @@ export default function SongEditor({
                             <div
                               className="flex flex-wrap items-end"
                               style={{
-                                columnGap: "0.4em",
+                                // NOT a uniform columnGap. Every word unit is a
+                                // flex child, and since each CJK character is
+                                // its own unit, a blanket gap inserted 0.4em
+                                // between EVERY Chinese character — which is why
+                                // view mode looked stretched next to edit mode's
+                                // plain <input>. The gap now comes from each
+                                // unit's own marginRight, applied only where the
+                                // lyric actually had whitespace. Latin is
+                                // unchanged (its words are space-separated).
+                                columnGap: 0,
                                 rowGap: "0.15em",
                                 fontSize: lyricFontSize,
                                 fontFamily: lyricFontFamily,
@@ -3805,6 +3819,7 @@ export default function SongEditor({
                                     data-wu-line={line.id}
                                     data-wu-index={u.dragIndex}
                                     className="inline-flex flex-col items-start"
+                                    style={u.gapAfter ? { marginRight: "0.4em" } : undefined}
                                   >
                                     {showChords && (hasWords ? (
                                       // Word line: position each chord absolutely at
