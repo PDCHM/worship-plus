@@ -1000,6 +1000,92 @@ export function wordStartOffset(lyric: string, wordIndex: number): number {
 // when `pos`/columns are already character-based.
 // Backward-compatible: for offset-0 word-block data, wordStartOffset+offset
 // equals the saved `pos`, so output is identical to the previous per-file impl.
+// ── Print column fitting ───────────────────────────────────────────────────
+// Chord-over-lyric lives on a shared monospace grid, so a long line cannot be
+// wrapped by CSS: the chord row is mostly trailing spaces, which pre-wrap
+// treats specially, and the two rows break at DIFFERENT characters (measured:
+// chord at 48 where the lyric broke at 32). Both rows must be cut at the same
+// point, computed here.
+//
+// The axis is the DISPLAY COLUMN, not the character index: buildChordLine pads
+// by display width, so chordLine[i] sits over display column i, while a CJK
+// lyric character occupies two columns. Cutting the lyric by characters and the
+// chord row by columns is what keeps them aligned in both scripts.
+
+// Page sizes at 96dpi and the 0.6in @page margin the print trigger applies.
+const PRINT_PAGE_W_PX: Record<string, { portrait: number; landscape: number }> = {
+  A4:     { portrait: 793.7, landscape: 1122.5 },
+  Letter: { portrait: 816,   landscape: 1056 },
+};
+const PRINT_MARGIN_PX = 57.6;
+// Monospace advance varies by face (Menlo/Courier ~0.60em, Consolas ~0.55em),
+// so assume the WIDEST plausible value: a narrower face simply leaves a little
+// slack instead of overflowing.
+const MONO_ADVANCE_RATIO = 0.62;
+
+export function printColumnChars(
+  fontSizePx: number,
+  cols: number,
+  layout: "A4" | "Letter" = "A4",
+  orientation: "portrait" | "landscape" = "portrait",
+): number {
+  const n = Math.max(1, Math.min(3, Math.round(cols)));
+  const pageW = (PRINT_PAGE_W_PX[layout] ?? PRINT_PAGE_W_PX.A4)[orientation];
+  const content = pageW - PRINT_MARGIN_PX * 2;
+  const gap = n === 3 ? 24 : 32;          // 1.5rem / 2rem, matching the layout
+  const colW = (content - gap * (n - 1)) / n;
+  return Math.max(8, Math.floor(colW / (fontSizePx * MONO_ADVANCE_RATIO)) - 1);
+}
+
+// Split a chord row and its lyric into segments no wider than `maxCols` display
+// columns, cut at matching points so every segment keeps its chords over the
+// right syllables. Breaks on a space when one is available, so words aren't
+// split needlessly.
+export function wrapChordLinePairs(
+  chordLine: string,
+  lyric: string,
+  maxCols: number,
+): { chords: string; lyric: string }[] {
+  const W = Math.max(4, Math.floor(maxCols));
+  if (Math.max(displayWidth(lyric), chordLine.length) <= W) {
+    return [{ chords: chordLine, lyric }];
+  }
+  const out: { chords: string; lyric: string }[] = [];
+  let ci = 0;    // char index into the lyric
+  let col = 0;   // display column, i.e. index into the padded chord row
+  let guard = 128;
+  while ((ci < lyric.length || col < chordLine.length) && guard-- > 0) {
+    // Walk the lyric until the next character would exceed the column budget.
+    let j = ci, used = 0, spaceJ = -1, spaceUsed = 0;
+    while (j < lyric.length) {
+      const w = displayWidth(lyric[j]);
+      if (used + w > W) break;
+      if (lyric[j] === " ") { spaceJ = j; spaceUsed = used; }
+      used += w;
+      j++;
+    }
+    // Mid-word at the edge and a space is available → back up to it.
+    let endJ = j, endUsed = used;
+    if (j < lyric.length && lyric[j] !== " " && spaceJ > ci) { endJ = spaceJ; endUsed = spaceUsed; }
+    // Degenerate cases: a single char wider than the budget, or the lyric is
+    // spent and only trailing chords remain.
+    if (endJ === ci) {
+      if (ci < lyric.length) { endJ = ci + 1; endUsed = displayWidth(lyric[ci]); }
+      else { endUsed = W; }
+    }
+    out.push({
+      chords: chordLine.slice(col, col + endUsed).replace(/\s+$/, ""),
+      lyric: lyric.slice(ci, endJ),
+    });
+    // Consume one shared space from BOTH rows so the continuation isn't
+    // indented and the two stay in step.
+    const skip = lyric[endJ] === " " ? 1 : 0;
+    ci = endJ + skip;
+    col += endUsed + skip;
+  }
+  return out.length ? out : [{ chords: chordLine, lyric }];
+}
+
 export function buildChordLine(chords: Chord[], lyric: string, pxPerChar = 1): string {
   if (!chords.length) return "";
   const hasWords = tokenizeWords(lyric).length > 0;

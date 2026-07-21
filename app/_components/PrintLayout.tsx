@@ -4,7 +4,7 @@ import { ChordDiagramSheet } from "@/app/_components/ChordDiagrams";
 import { uniqueChordSymbols } from "@/lib/chords/diagrams";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { buildChordLine, capoChord, capoChords, playKey, getEffectiveStyle, getSectionColorKey, getSectionStyleKey, type SectionStyles, type Song, type Settings } from "@/lib/song";
+import { buildChordLine, capoChord, capoChords, printColumnChars, wrapChordLinePairs, playKey, getEffectiveStyle, getSectionColorKey, getSectionStyleKey, type SectionStyles, type Song, type Settings } from "@/lib/song";
 
 const FONT_CSS: Record<string, string> = {
   system: "ui-sans-serif, system-ui, -apple-system, sans-serif",
@@ -37,6 +37,9 @@ export function SongSheet({ song, settings, sectionStyles }: Props) {
   const fontSize   = settings.fontSize ?? 17;
   const showChords = settings.showChords ?? true;
   const cols       = settings.printColumns ?? 1;
+  // Display columns across ONE print column, from the real page geometry
+  // (@page size + 0.6in margin) — adapts to A4/Letter and orientation.
+  const colChars   = printColumnChars(fontSize, cols, settings.printLayout ?? "A4", settings.printOrientation ?? "portrait");
   const colorMap   = settings.darkMode
     ? settings.sectionColorsDark
     : settings.sectionColorsLight;
@@ -132,36 +135,51 @@ export function SongSheet({ song, settings, sectionStyles }: Props) {
               {/* Lines */}
               {section.lines.map((line) => {
                 const hasChords = line.chords.length > 0;
+                // Cut the chord row and the lyric at MATCHING points so a long
+                // line wraps inside its column instead of being clipped by
+                // overflow:hidden. Measured in display columns, so double-width
+                // CJK is counted correctly.
+                const segments = wrapChordLinePairs(
+                  showChords && hasChords
+                    ? buildChordLine(capoChords(line.chords, song.key, song.capo), line.lyric)
+                    : "",
+                  line.lyric,
+                  colChars,
+                );
                 return (
-                  <div key={line.id} style={{ marginBottom: "0.05em", overflow: "hidden", width: "100%" }}>
-                    {/* Chord line */}
-                    {showChords && hasChords && (
-                      <pre style={{
-                        margin: 0,
-                        fontFamily: MONO_FAMILY,
-                        fontSize: `${fontSize * 0.82}px`,
-                        fontWeight: 700,
-                        color: chordColor,
-                        lineHeight: 1.3,
-                        whiteSpace: "pre",
-                        overflow: "hidden",
-                        width: "100%",
-                      }}>
-                        {buildChordLine(capoChords(line.chords, song.key, song.capo), line.lyric)}
-                      </pre>
-                    )}
-                    {/* Lyric line — forced monospace so chord columns align */}
-                    <div style={{
-                      whiteSpace: "pre",
-                      lineHeight: 1.4,
-                      minHeight: `${fontSize * 1.4}px`,
-                      fontSize: `${fontSize}px`,
-                      fontFamily: MONO_FAMILY,
-                      overflow: "hidden",
-                      width: "100%",
-                    }}>
-                      {line.lyric || " "}
-                    </div>
+                  <div key={line.id} style={{ marginBottom: "0.05em", width: "100%" }}>
+                    {segments.map((seg, si) => (
+                      <div key={si} style={{ width: "100%" }}>
+                        {/* Chord row font MATCHES the lyric: both rows share one
+                            monospace grid, and the old 0.82x size put column N
+                            at a different x — measured 36.8px adrift by
+                            character 20. Weight and colour keep them distinct. */}
+                        {showChords && hasChords && seg.chords.trim() !== "" && (
+                          <pre style={{
+                            margin: 0,
+                            fontFamily: MONO_FAMILY,
+                            fontSize: `${fontSize}px`,
+                            fontWeight: 700,
+                            color: chordColor,
+                            lineHeight: 1.3,
+                            whiteSpace: "pre",
+                            width: "100%",
+                          }}>
+                            {seg.chords}
+                          </pre>
+                        )}
+                        <div style={{
+                          whiteSpace: "pre",
+                          lineHeight: 1.4,
+                          minHeight: `${fontSize * 1.4}px`,
+                          fontSize: `${fontSize}px`,
+                          fontFamily: MONO_FAMILY,
+                          width: "100%",
+                        }}>
+                          {seg.lyric || " "}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 );
               })}
