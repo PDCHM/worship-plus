@@ -38,11 +38,16 @@ function GuitarDiagram({ shape }: { shape: GuitarShape }) {
       ))}
       {/* barres */}
       {shape.barres?.map((bf) => {
-        const rel = bf - shape.baseFret + 1;
+        // chords-db fret numbers are RELATIVE to baseFret (1 = the baseFret
+        // itself), not absolute. Subtracting baseFret pushed every barre chord
+        // to a negative row, so G#m (baseFret 4, frets [1,3,3,1,1,1]) rendered
+        // an empty grid. Open chords have baseFret 1, where the subtraction was
+        // a no-op — which is why only high-position shapes went blank.
+        const rel = bf;
         if (rel < 1 || rel > FRETS) return null;
         const held = shape.frets
           .map((fr, i) => ({ fr, i }))
-          .filter((o) => o.fr - shape.baseFret + 1 === rel)
+          .filter((o) => o.fr === rel)
           .map((o) => o.i);
         if (held.length < 2) return null;
         const from = Math.min(...held), to = Math.max(...held);
@@ -63,7 +68,7 @@ function GuitarDiagram({ shape }: { shape: GuitarShape }) {
         if (fr === 0) {
           return <circle key={`o${s}`} cx={x(s)} cy={padTop - 5.6} r={2} fill="none" strokeWidth={1.1} className="stroke-slate-400 dark:stroke-slate-500" />;
         }
-        const rel = fr - shape.baseFret + 1;
+        const rel = fr;              // already relative to baseFret
         if (rel < 1 || rel > FRETS) return null;
         return <circle key={`d${s}`} cx={x(s)} cy={y(rel - 1) + stepY / 2} r={3.1} className="fill-indigo-500 dark:fill-indigo-400" />;
       })}
