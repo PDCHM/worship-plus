@@ -5,6 +5,51 @@ import WordAnchoredDemo from "@/app/_components/WordAnchoredDemo";
 import SupportLink from "@/app/_components/SupportLink";
 import { PLANS } from "@/lib/plans";
 
+/* ─── Strengths ──────────────────────────────────────────────────────────────
+   The reasons a worship leader picks Worship+ over a buy-once songbook app,
+   led by the ones that decide it: musicians free, any device, photo import,
+   Chinese support. Rendered on the landing page AND above the pricing table,
+   so the "why is this worth paying for" answer sits next to the price. */
+const ICON = (d: string) => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" dangerouslySetInnerHTML={{ __html: d }} />
+);
+
+const STRENGTHS: { title: string; desc: string; icon: string }[] = [
+  { title: "Musicians always free", desc: "The leader subscribes; every musician plays free.",
+    icon: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>' },
+  { title: "Works on any device", desc: "Web-based — phone, tablet or laptop. No Apple lock-in.",
+    icon: '<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>' },
+  { title: "Snap a photo, get a song", desc: "A photo of a chord chart becomes an editable song.",
+    icon: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>' },
+  { title: "Real-time team sync", desc: "Update once — everyone sees it instantly.",
+    icon: '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>' },
+  { title: "Built for Chinese worship", desc: "Full Chinese and multilingual charts, done right.",
+    icon: '<circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>' },
+  { title: "Chord diagrams", desc: "Guitar and piano fingerings, generated automatically.",
+    icon: '<line x1="4" y1="5" x2="20" y2="5"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="19" x2="20" y2="19"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>' },
+  { title: "Made for the stage", desc: "Fullscreen, hands-free page turn, visual metronome, auto-scroll.",
+    icon: '<path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/>' },
+  { title: "Works offline", desc: "Songs and setlists stay available without WiFi.",
+    icon: '<path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>' },
+];
+
+function StrengthGrid({ compact }: { compact?: boolean }) {
+  return (
+    <div className={"grid grid-cols-1 sm:grid-cols-2 " + (compact ? "lg:grid-cols-4 gap-4" : "lg:grid-cols-4 gap-5")}>
+      {STRENGTHS.map((f) => (
+        <div key={f.title} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-500 flex items-center justify-center mb-3">
+            {ICON(f.icon)}
+          </div>
+          <div className="text-sm font-semibold text-slate-900">{f.title}</div>
+          <p className="mt-1 text-sm text-slate-500 leading-relaxed">{f.desc}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ─── Feature card ───────────────────────────────────────────────────────── */
 
 function Feature({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
@@ -23,6 +68,14 @@ function Feature({ icon, title, desc }: { icon: React.ReactNode; title: string; 
 
 // Prices, names, blurbs and features all come from PLANS (lib/plans.ts). Only
 // the call-to-action differs on this page, so that is all that lives here.
+// Per-plan one-liners for the pricing table.
+const TAGLINE: Record<"free" | "personal" | "team" | "church", string> = {
+  free:     "Everything to start",
+  personal: "Your whole library, under S$4/mo",
+  team:     "Your leader pays, your team plays free",
+  church:   "Every team, every service, one place.",
+};
+
 const CTA: Record<"free" | "personal" | "team" | "church",
   { label: string; href: string; featured?: boolean; trial?: boolean }> = {
   free:     { label: "Start free",          href: "/login" },
@@ -32,9 +85,9 @@ const CTA: Record<"free" | "personal" | "team" | "church",
 };
 
 function PriceCard({
-  name, price, period, annualPrice, annualNote, blurb, features, cta, ctaHref, featured, trial,
+  name, price, period, annualPrice, annualNote, blurb, tagline, features, cta, ctaHref, featured, trial,
 }: {
-  name: string; price: string; period?: string; annualPrice?: string; annualNote?: string; blurb: string;
+  name: string; price: string; period?: string; annualPrice?: string; annualNote?: string; blurb: string; tagline?: string;
   features: string[]; cta: string; ctaHref: string; featured?: boolean; trial?: boolean;
 }) {
   return (
@@ -60,6 +113,7 @@ function PriceCard({
           {annualNote && <span className="ml-1 text-emerald-600 font-medium">· {annualNote}</span>}
         </div>
       )}
+      {tagline && <p className="mt-2 text-[13px] font-semibold text-indigo-600">{tagline}</p>}
       <p className="mt-1 text-xs text-slate-500 min-h-[2rem]">{blurb}</p>
       <ul className="mt-5 space-y-2.5 flex-1">
         {features.map((f) => (
@@ -114,12 +168,12 @@ export default function LandingPage() {
             <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" /> Built for worship teams
           </span>
           <h1 className="text-4xl sm:text-6xl font-bold tracking-tight leading-[1.05] text-slate-900">
-            The worship app that
+            Chord charts for your
             <br className="hidden sm:block" />{" "}
-            <span className="bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600 bg-clip-text text-transparent">thinks like a musician</span>
+            <span className="bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600 bg-clip-text text-transparent">whole worship team</span>
           </h1>
           <p className="mt-6 text-lg sm:text-xl text-slate-500 max-w-2xl mx-auto leading-relaxed">
-            Chord charts that never break. AI that knows your songs. Built for worship teams, not just solo players.
+            The leader subscribes — every musician plays free. On any device, in any language, online or off.
           </p>
           <div className="mt-9 flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link href="/login" className="w-full sm:w-auto h-12 px-7 rounded-xl text-sm font-semibold bg-gradient-to-br from-indigo-500 to-violet-600 text-white hover:from-indigo-600 hover:to-violet-700 shadow-lg shadow-indigo-600/25 flex items-center justify-center transition-colors">
@@ -133,6 +187,17 @@ export default function LandingPage() {
       </section>
 
       {/* ── 2. PROBLEM ── */}
+      {/* Strengths — what actually decides it, up front. */}
+      <section className="py-16 sm:py-20 border-t border-slate-100">
+        <div className="max-w-6xl mx-auto px-5 sm:px-8">
+          <div className="text-center max-w-2xl mx-auto mb-10">
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">Why worship teams choose Worship+</h2>
+            <p className="mt-4 text-lg text-slate-500">One subscription for the leader. Everything else just works.</p>
+          </div>
+          <StrengthGrid />
+        </div>
+      </section>
+
       <section className="py-20 sm:py-24 border-t border-slate-100">
         <div className="max-w-2xl mx-auto px-5 sm:px-8 text-center">
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">You know the feeling</h2>
@@ -214,8 +279,13 @@ export default function LandingPage() {
       <section id="pricing" className="py-20 sm:py-24 bg-slate-50 border-y border-slate-100">
         <div className="max-w-6xl mx-auto px-5 sm:px-8">
           <div className="text-center max-w-2xl mx-auto mb-14">
-            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">Simple, honest pricing</h2>
-            <p className="mt-4 text-lg text-slate-500">Start free. Upgrade when your team grows.</p>
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">Simple pricing. Musicians always free.</h2>
+            <p className="mt-4 text-lg text-slate-500">Start free. Upgrade when your team grows. Annual plans include two months free.</p>
+          </div>
+          {/* The strengths sit directly above the table so the "why is this
+              worth paying for" answer is next to the price, not a scroll away. */}
+          <div className="mb-12">
+            <StrengthGrid compact />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
             {(["free", "personal", "team", "church"] as const).map((id) => {
@@ -233,12 +303,17 @@ export default function LandingPage() {
                   features={plan.features}
                   cta={cta.label}
                   ctaHref={cta.href}
+                  tagline={TAGLINE[id]}
                   featured={cta.featured}
                   trial={cta.trial}
                 />
               );
             })}
           </div>
+          <p className="mt-10 max-w-3xl mx-auto text-center text-sm text-slate-500 leading-relaxed">
+            Buy-once apps are a songbook on one device. Worship+ keeps your whole team in sync in
+            real time, on any device, <span className="font-semibold text-slate-700">musicians free</span>.
+          </p>
         </div>
       </section>
 
