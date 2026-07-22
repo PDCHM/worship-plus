@@ -3,6 +3,7 @@ import Image from "next/image";
 import VideoShowcase from "@/app/_components/VideoShowcase";
 import WordAnchoredDemo from "@/app/_components/WordAnchoredDemo";
 import SupportLink from "@/app/_components/SupportLink";
+import { PLANS } from "@/lib/plans";
 
 /* ─── Feature card ───────────────────────────────────────────────────────── */
 
@@ -20,10 +21,20 @@ function Feature({ icon, title, desc }: { icon: React.ReactNode; title: string; 
 
 /* ─── Pricing column ─────────────────────────────────────────────────────── */
 
+// Prices, names, blurbs and features all come from PLANS (lib/plans.ts). Only
+// the call-to-action differs on this page, so that is all that lives here.
+const CTA: Record<"free" | "personal" | "team" | "church",
+  { label: string; href: string; featured?: boolean; trial?: boolean }> = {
+  free:     { label: "Start free",          href: "/login" },
+  personal: { label: "Start 14-day trial",  href: "/login?plan=personal", trial: true },
+  team:     { label: "Start 14-day trial",  href: "/login?plan=team", featured: true, trial: true },
+  church:   { label: "Start 14-day trial",  href: "/login?plan=church", trial: true },
+};
+
 function PriceCard({
-  name, price, period, blurb, features, cta, ctaHref, featured, trial,
+  name, price, period, annualPrice, annualNote, blurb, features, cta, ctaHref, featured, trial,
 }: {
-  name: string; price: string; period?: string; blurb: string;
+  name: string; price: string; period?: string; annualPrice?: string; annualNote?: string; blurb: string;
   features: string[]; cta: string; ctaHref: string; featured?: boolean; trial?: boolean;
 }) {
   return (
@@ -43,6 +54,12 @@ function PriceCard({
         <span className="text-3xl font-bold tracking-tight text-slate-900">{price}</span>
         {period && <span className="text-sm text-slate-400">/{period}</span>}
       </div>
+      {annualPrice && (
+        <div className="mt-0.5 text-xs text-slate-500">
+          or <span className="font-semibold text-slate-700">{annualPrice}</span>/year
+          {annualNote && <span className="ml-1 text-emerald-600 font-medium">· {annualNote}</span>}
+        </div>
+      )}
       <p className="mt-1 text-xs text-slate-500 min-h-[2rem]">{blurb}</p>
       <ul className="mt-5 space-y-2.5 flex-1">
         {features.map((f) => (
@@ -201,45 +218,26 @@ export default function LandingPage() {
             <p className="mt-4 text-lg text-slate-500">Start free. Upgrade when your team grows.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            <PriceCard
-              name="Free"
-              price="S$0"
-              blurb="For trying it out and solo players."
-              features={["Up to 25 songs", "Word-anchored charts", "Transpose & capo tools", "Import & export"]}
-              cta="Start free"
-              ctaHref="/login"
-            />
-            <PriceCard
-              name="Personal"
-              price="S$3.90"
-              period="month"
-              blurb="For the dedicated worship musician."
-              features={["Unlimited songs", "AI chord generation", "AI song search", "Setlist bundles & PDF export"]}
-              cta="Start 14-day trial"
-              ctaHref="/login?plan=personal"
-              trial
-            />
-            <PriceCard
-              name="Team"
-              price="S$9.90"
-              period="month"
-              blurb="For a worship team that plays together."
-              features={["Everything in Personal", "Up to 30 team members", "Shared songs & setlists", "Rehearsal scheduling"]}
-              cta="Start 14-day trial"
-              ctaHref="/login?plan=team"
-              featured
-              trial
-            />
-            <PriceCard
-              name="Church"
-              price="S$19.90"
-              period="month"
-              blurb="For multiple teams across a church."
-              features={["Everything in Team", "Unlimited teams", "Multiple worship rosters", "Priority support"]}
-              cta="Start 14-day trial"
-              ctaHref="/login?plan=church"
-              trial
-            />
+            {(["free", "personal", "team", "church"] as const).map((id) => {
+              const plan = PLANS[id];
+              const cta = CTA[id];
+              return (
+                <PriceCard
+                  key={id}
+                  name={plan.name}
+                  price={plan.price}
+                  period={plan.period}
+                  annualPrice={plan.annualPrice}
+                  annualNote={plan.annualNote}
+                  blurb={plan.blurb}
+                  features={plan.features}
+                  cta={cta.label}
+                  ctaHref={cta.href}
+                  featured={cta.featured}
+                  trial={cta.trial}
+                />
+              );
+            })}
           </div>
         </div>
       </section>

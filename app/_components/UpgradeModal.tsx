@@ -88,6 +88,12 @@ export default function UpgradeModal({ currentPlan, userId, userEmail, reason, o
                   <span className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">{p.price}</span>
                   {p.period && <span className="text-xs text-slate-400">/{p.period}</span>}
                 </div>
+                {p.annualPrice && (
+                  <div className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                    or <span className="font-semibold text-slate-700 dark:text-slate-200">{p.annualPrice}</span>/year
+                    {p.annualNote && <span className="ml-1 text-emerald-600 dark:text-emerald-400 font-medium">· {p.annualNote}</span>}
+                  </div>
+                )}
                 <ul className="mt-4 space-y-2 flex-1">
                   {p.features.map((f) => (
                     <li key={f} className="flex items-start gap-2 text-[13px] text-slate-600 dark:text-slate-300">

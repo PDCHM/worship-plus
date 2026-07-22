@@ -13,37 +13,47 @@ export function isPaidPlan(plan: string | null | undefined): boolean {
 export type PlanInfo = {
   id: Plan;
   name: string;
-  price: string;     // display price, e.g. "S$3.90"
+  price: string;     // display price per month, e.g. "S$3.90"
   period?: string;   // e.g. "month"
+  // Annual price. Billed yearly at 10x the monthly rate, i.e. two months free.
+  annualPrice?: string;
+  annualNote?: string;
   blurb: string;
   features: string[];
   // Env var (server-side) holding this plan's Stripe Price ID. null for free.
   priceEnvKey: "STRIPE_PRICE_PERSONAL" | "STRIPE_PRICE_TEAM" | "STRIPE_PRICE_CHURCH" | null;
 };
 
+// SINGLE SOURCE OF TRUTH for every price shown in the app. The landing page
+// used to hardcode its own copies, which had already drifted (it said "Up to 25
+// songs" where this said "Unlimited", and 30 team members where this said 15);
+// it now reads from here so a price can only be changed in one place.
 export const PLANS: Record<Plan, PlanInfo> = {
   free: {
     id: "free", name: "Free", price: "S$0",
     blurb: "For trying it out and solo players.",
-    features: ["Unlimited songs", "Word-anchored charts", "Transpose & capo tools", "Import & export"],
+    features: ["Solo use", "Up to 25 songs", "Word-anchored charts", "Transpose & capo tools", "Import & export"],
     priceEnvKey: null,
   },
   personal: {
     id: "personal", name: "Personal", price: "S$3.90", period: "month",
+    annualPrice: "S$39", annualNote: "2 months free",
     blurb: "For the dedicated worship musician.",
-    features: ["Unlimited songs", "AI chord generation", "AI song search", "Setlist bundles & PDF export"],
+    features: ["Solo use", "Unlimited songs", "AI chord generation", "AI song search", "Setlist bundles & PDF export"],
     priceEnvKey: "STRIPE_PRICE_PERSONAL",
   },
   team: {
-    id: "team", name: "Team", price: "S$9.90", period: "month",
+    id: "team", name: "Team", price: "S$8.90", period: "month",
+    annualPrice: "S$89", annualNote: "2 months free",
     blurb: "For a worship team that plays together.",
-    features: ["Everything in Personal", "Up to 15 team members", "Shared songs & setlists", "Rehearsal scheduling"],
+    features: ["Everything in Personal", "1 team, up to 30 musicians", "Musicians join free", "Shared songs & setlists", "Rehearsal scheduling"],
     priceEnvKey: "STRIPE_PRICE_TEAM",
   },
   church: {
-    id: "church", name: "Church", price: "S$19.90", period: "month",
+    id: "church", name: "Church", price: "S$15.90", period: "month",
+    annualPrice: "S$159", annualNote: "2 months free",
     blurb: "For multiple teams across a church.",
-    features: ["Everything in Team", "Unlimited teams", "Multiple worship rosters", "Priority support"],
+    features: ["Everything in Team", "Multiple teams", "Unlimited musicians", "Musicians join free", "Priority support"],
     priceEnvKey: "STRIPE_PRICE_CHURCH",
   },
 };
