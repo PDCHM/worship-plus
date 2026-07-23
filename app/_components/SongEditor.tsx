@@ -316,7 +316,7 @@ function ViewToggle({
         title={label}
         aria-label={label}
         aria-pressed={active}
-        className={`w-10 h-9 flex items-center justify-center transition-colors ${
+        className={`w-8 sm:w-10 h-8 sm:h-9 flex items-center justify-center transition-colors ${
           active
             ? "bg-indigo-600 text-white"
             : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
@@ -3250,28 +3250,28 @@ export default function SongEditor({
         </div>
       </div>
 
-      <div className={"mb-3 sm:mb-5 flex items-center justify-between gap-x-2 gap-y-1.5 sm:gap-3 flex-wrap print:hidden" + (presenting ? " hidden" : "")}>
-        <div className="flex items-center gap-2">
+      <div className={"mb-3 sm:mb-5 flex items-center justify-between gap-x-1.5 gap-y-1.5 sm:gap-3 flex-wrap print:hidden" + (presenting ? " hidden" : "")}>
+        <div className="flex items-center gap-1 sm:gap-2">
           <button type="button" onClick={onBack} title="Back" aria-label="Back"
-            className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+            className="w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
           </button>
           <ViewToggle viewMode={viewMode} onChange={switchView} />
           <button type="button" onClick={enterPresent} title="Fullscreen performance mode" aria-label="Fullscreen performance mode"
-            className="w-9 h-9 shrink-0 rounded-lg flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors">
+            className="w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-lg flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
           </button>
         </div>
-        <div className="flex items-center gap-2 flex-wrap justify-end">
+        <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-end">
           {canGenerateChords && (
             <button type="button" onClick={canUseAiChords ? openGenerate : onRequireUpgrade}
               title="Generate chords with AI"
               aria-label="Generate chords with AI"
-              className="h-9 px-3 rounded-lg text-sm font-medium flex items-center gap-1.5 bg-gradient-to-br from-indigo-500 to-violet-600 text-white hover:from-indigo-600 hover:to-violet-700 shadow-sm shadow-indigo-600/30 transition-colors">
+              className="h-8 sm:h-9 px-2 sm:px-3 rounded-lg text-sm font-medium flex items-center gap-1.5 bg-gradient-to-br from-indigo-500 to-violet-600 text-white hover:from-indigo-600 hover:to-violet-700 shadow-sm shadow-indigo-600/30 transition-colors">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z"/>
               </svg>
-              <span>Generate Chords</span>
+              <span className="hidden sm:inline">Generate Chords</span>
             </button>
           )}
           {canEdit && (
@@ -3280,7 +3280,7 @@ export default function SongEditor({
               aria-pressed={editMode}
               aria-label={editMode ? "Switch to read-only performance mode" : "Switch to edit mode"}
               className={
-                "h-9 w-9 rounded-lg flex items-center justify-center transition-colors " +
+                "h-8 w-8 sm:h-9 sm:w-9 rounded-lg flex items-center justify-center transition-colors " +
                 (editMode
                   ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-600/30"
                   : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300")
@@ -3299,7 +3299,7 @@ export default function SongEditor({
               aria-pressed={markupMode}
               aria-label={markupMode ? "Exit markup mode" : "Enter markup mode"}
               className={
-                "h-9 w-9 rounded-lg flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed " +
+                "h-8 w-8 sm:h-9 sm:w-9 rounded-lg flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed " +
                 (markupMode
                   ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-600/30"
                   : "bg-slate-100 enabled:hover:bg-slate-200 dark:bg-slate-800 dark:enabled:hover:bg-slate-700 text-slate-600 dark:text-slate-300")
@@ -3314,7 +3314,7 @@ export default function SongEditor({
             <div ref={refsMenuRef} className="relative">
               <button type="button" onClick={() => setRefsOpen((o) => !o)}
                 title="References" aria-label="References" aria-haspopup="menu" aria-expanded={refsOpen}
-                className={"relative h-9 w-9 rounded-lg flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors " +
+                className={"relative h-8 w-8 sm:h-9 sm:w-9 rounded-lg flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors " +
                   (songLinks.length > 0 ? "text-slate-600 dark:text-slate-300" : "text-slate-400 dark:text-slate-500")}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                 {songLinks.length > 0 && (
@@ -3341,7 +3341,7 @@ export default function SongEditor({
             </div>
           )}
           <button type="button" onClick={() => setMoreOpen(true)} title="More" aria-label="More actions"
-            className="h-9 w-9 rounded-lg flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors">
+            className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
           </button>
           {!canEdit ? (
