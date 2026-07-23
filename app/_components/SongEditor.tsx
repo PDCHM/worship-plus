@@ -568,7 +568,7 @@ function SongFlowBar({
   };
 
   return (
-    <div className={(compact ? "" : "mb-4") + " print:hidden"}>
+    <div className={(compact ? "" : "mb-2 sm:mb-4") + " print:hidden"}>
       <div ref={containerRef} className="flex items-center gap-1.5 overflow-x-auto pb-1.5 -mx-1 px-1">
         {sections.map((s, i) => {
           const isActive = s.id === activeId;
@@ -3067,7 +3067,7 @@ export default function SongEditor({
         ))}
       </datalist>
 
-      <div className={"mb-5" + (presenting ? " hidden" : "")}>
+      <div className={"mb-2 sm:mb-5" + (presenting ? " hidden" : "")}>
         {editingTitle && !readOnly ? (
           <input
             autoFocus
@@ -3096,7 +3096,7 @@ export default function SongEditor({
               type="button"
               onClick={() => !readOnly && setEditingTitle(true)}
               disabled={readOnly}
-              className="text-2xl md:text-3xl font-bold tracking-tight text-left rounded-lg px-2 -mx-2 py-1 enabled:hover:bg-slate-50 dark:enabled:hover:bg-slate-900 transition-colors disabled:cursor-default"
+              className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight text-left rounded-lg px-2 -mx-2 py-0.5 sm:py-1 enabled:hover:bg-slate-50 dark:enabled:hover:bg-slate-900 transition-colors disabled:cursor-default"
               title={readOnly ? undefined : "Click to rename song"}
             >
               {song.title || (
@@ -3139,7 +3139,7 @@ export default function SongEditor({
             )}
           </div>
         )}
-        <div className="text-sm text-slate-500 dark:text-slate-400 mt-1 px-0.5 flex items-center gap-2 flex-wrap">
+        <div className="text-[13px] sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5 sm:mt-1 px-0.5 flex items-center gap-x-2 gap-y-0.5 sm:gap-2 flex-wrap">
           {readOnly ? (
             <span className="px-1.5 py-0.5">{song.artist || "Unknown artist"}</span>
           ) : (
@@ -3250,7 +3250,7 @@ export default function SongEditor({
         </div>
       </div>
 
-      <div className={"mb-5 flex items-center justify-between gap-3 flex-wrap print:hidden" + (presenting ? " hidden" : "")}>
+      <div className={"mb-3 sm:mb-5 flex items-center justify-between gap-x-2 gap-y-1.5 sm:gap-3 flex-wrap print:hidden" + (presenting ? " hidden" : "")}>
         <div className="flex items-center gap-2">
           <button type="button" onClick={onBack} title="Back" aria-label="Back"
             className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
@@ -3436,7 +3436,7 @@ export default function SongEditor({
           Remembered per user via prefs.showChordDiagrams; hidden in present
           mode and in print, which have their own handling. */}
       {!presenting && showChords && diagramSymbols.length > 0 && (
-        <div className="mb-3 print:hidden">
+        <div className="mb-2 sm:mb-3 print:hidden">
           {prefs.showChordDiagrams ? (
             <ChordDiagramStrip
               symbols={diagramSymbols}
