@@ -1039,6 +1039,11 @@ export default function SongEditor({
   // "Verse 1" indicator. rootRef is the fullscreen target + scroll container.
   // Seed from the lifted prop so a cross-song remount stays in present mode.
   const [presenting, setPresenting] = useState(initialPresenting);
+  // Live mirror of `presenting`, read inside the auto-scroll rAF so the tick can
+  // never act on a stale value — the loop must always target the container
+  // that's active RIGHT NOW, not the one active when the effect closure was made.
+  const presentingRef = useRef(presenting);
+  useEffect(() => { presentingRef.current = presenting; }, [presenting]);
   const [presentControls, setPresentControls] = useState(false);
   const [presentSection, setPresentSection] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
@@ -1438,18 +1443,36 @@ export default function SongEditor({
     }
     const pxPerSec = scrollSpeed * 12;
     let last = 0;
+    // Carry the sub-pixel remainder between frames. scrollBy / scrollTop ROUND
+    // to a whole pixel per call, so a small per-frame delta (~0.2px at the
+    // slowest speed, ~0.6px at the default) rounds to zero every frame and the
+    // chart never moves — which is the "nothing scrolls" half of the iPhone
+    // bug. Accumulating the fraction and applying only whole pixels makes every
+    // speed advance smoothly. Verified: 0.3px/frame moves 0px via scrollBy but
+    // ~18px via this accumulator.
+    let carry = 0;
     const tick = (t: number) => {
       if (last) {
-        const dy = pxPerSec * (t - last) / 1000;
-        // In fullscreen present mode the scroll container is rootRef (fixed
-        // overflow-y-auto), not the window — scroll whichever is active.
-        const el = presenting ? rootRef.current : null;
-        if (el) {
-          el.scrollBy(0, dy);
-          if (el.scrollTop + el.clientHeight >= el.scrollHeight - 10) { setAutoScrolling(false); return; }
-        } else {
-          window.scrollBy(0, dy);
-          if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 10) { setAutoScrolling(false); return; }
+        carry += pxPerSec * (t - last) / 1000;
+        const step = Math.trunc(carry);
+        if (step) {
+          carry -= step;
+          // Resolve the target FROM THE DOM at tick time, via the live ref —
+          // in present mode that's rootRef (the fixed overlay), the same
+          // element goNext/goPrev scroll. In present mode we NEVER fall back to
+          // window: if rootRef somehow isn't scrollable we simply don't move,
+          // rather than scrolling the page behind the overlay (the "wrong
+          // container" half of the bug).
+          const el = presentingRef.current ? rootRef.current : null;
+          if (presentingRef.current) {
+            if (el) {
+              el.scrollTop += step;
+              if (el.scrollTop + el.clientHeight >= el.scrollHeight - 10) { setAutoScrolling(false); return; }
+            }
+          } else {
+            window.scrollBy(0, step);
+            if (window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 10) { setAutoScrolling(false); return; }
+          }
         }
       }
       last = t;
@@ -1457,7 +1480,7 @@ export default function SongEditor({
     };
     scrollRafRef.current = requestAnimationFrame(tick);
     return () => { if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current); };
-  }, [autoScrolling, scrollSpeed, presenting]);
+  }, [autoScrolling, scrollSpeed]);
 
   // Fit mode has nothing to continuously scroll, so any running autoscroll is
   // stopped when entering it. (The control itself is also hidden — see below.)
