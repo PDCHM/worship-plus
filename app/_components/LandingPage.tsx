@@ -34,6 +34,20 @@ const STRENGTHS: { title: string; desc: string; icon: string }[] = [
     icon: '<path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>' },
 ];
 
+// Add-to-home-screen steps, one per platform. Feather-style icons match the
+// strengths grid; step text is the exact tap path, not prose.
+const INSTALL_STEPS: { platform: string; browser: string; step: string; icon: string }[] = [
+  { platform: "iPhone & iPad", browser: "Safari",
+    step: "Tap the Share button, then choose \u201CAdd to Home Screen.\u201D",
+    icon: '<path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/>' },
+  { platform: "Android", browser: "Chrome",
+    step: "Tap the menu (\u22EE), then choose \u201CInstall app.\u201D",
+    icon: '<circle cx="12" cy="5" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="12" cy="19" r="1.4"/>' },
+  { platform: "Desktop", browser: "Chrome & Edge",
+    step: "Click the install icon at the right of the address bar.",
+    icon: '<rect x="2" y="4" width="20" height="14" rx="2"/><line x1="12" y1="11" x2="12" y2="15"/><polyline points="9 13 12 16 15 13"/>' },
+];
+
 function StrengthGrid({ compact }: { compact?: boolean }) {
   return (
     <div className={"grid grid-cols-1 sm:grid-cols-2 " + (compact ? "lg:grid-cols-4 gap-4" : "lg:grid-cols-4 gap-5")}>
@@ -317,7 +331,39 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── 6. FOOTER CTA ── */}
+      {/* ── 6. INSTALL / Add to Home Screen ──
+          It's a PWA — no store download — so tell people how to pin it. Three
+          per-platform steps, icon + label each, in the same card idiom as the
+          strengths grid. Kept to one scannable row on desktop. */}
+      <section id="install" className="py-20 sm:py-24 border-t border-slate-100">
+        <div className="max-w-5xl mx-auto px-5 sm:px-8">
+          <div className="text-center max-w-2xl mx-auto mb-10">
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">Add to your home screen</h2>
+            <p className="mt-4 text-lg text-slate-500 leading-relaxed">
+              Worship+ runs in your browser — no download needed. Add it to your home screen for the
+              best experience: fullscreen, its own icon, works offline.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+            {INSTALL_STEPS.map((step) => (
+              <div key={step.platform} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                <div className="flex items-center gap-2.5 mb-3">
+                  <span className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-500 flex items-center justify-center shrink-0">
+                    {ICON(step.icon)}
+                  </span>
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">{step.platform}</div>
+                    <div className="text-xs text-slate-400">{step.browser}</div>
+                  </div>
+                </div>
+                <p className="text-sm text-slate-500 leading-relaxed">{step.step}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── 7. FOOTER CTA ── */}
       <section className="py-24 sm:py-28">
         <div className="max-w-3xl mx-auto px-5 sm:px-8 text-center">
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">Start free today.</h2>
