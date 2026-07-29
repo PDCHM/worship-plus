@@ -1029,6 +1029,13 @@ export default function SongEditor({
   // Seeded from this song's saved view prefs (SongEditor is keyed by song id, so
   // this runs per song). Defaults when none saved.
   const [viewMode, setViewMode] = useState<ViewMode>(() => readSongView(song.id).viewMode ?? "standard");
+  // Has the reader made an explicit column choice with the 1/2/3 switcher (this
+  // session, or a stored one from a previous visit to this song)? Fit-to-screen
+  // auto-picks a column count, and it used to do so UNCONDITIONALLY — so in fit
+  // layout the switcher set state, persisted it, and changed nothing on screen.
+  // A pinned choice now wins: fit auto-sizes the font for the count the reader
+  // asked for instead of overruling it.
+  const [columnsPinned, setColumnsPinned] = useState(() => readSongView(song.id).viewMode != null);
   const sectionsRef = useRef<HTMLDivElement>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [keyPickerOpen, setKeyPickerOpen] = useState(false);
@@ -1567,6 +1574,42 @@ export default function SongEditor({
     const w = wrap.clientWidth;
     const maxCols = Math.max(1, Math.min(3, Math.floor(w / MIN_COL_PX)));
 
+    const userPref = Math.max(MIN_FIT_FONT, LYRIC_FONT_SIZE_PX[prefs.lyricFontSize]);
+    // Largest font (<= the reader's preference, >= the floor) at which the whole
+    // song fits BOTH dimensions at column count n. Returns null when even the
+    // floor doesn't fit.
+    const bestFontAt = (n: number): number | null => {
+      setCols(n);
+      setFont(userPref);
+      if (bothFit()) return userPref;
+      setFont(MIN_FIT_FONT);
+      if (!bothFit()) return null;
+      let lo = MIN_FIT_FONT, hi = userPref, b = MIN_FIT_FONT;
+      for (let i = 0; i < 8; i++) {
+        const mid = (lo + hi) / 2;
+        setFont(mid);
+        if (bothFit()) { b = mid; lo = mid; } else { hi = mid; }
+      }
+      return b;
+    };
+
+    if (columnsPinned) {
+      // The reader used the 1/2/3 switcher: that count is the answer, full stop.
+      // Fit mode's job here is only to size the TEXT for it. Deliberately NOT
+      // clamped to maxCols — an explicit ask is never silently downgraded; if the
+      // chart can't be shrunk into that many columns it renders at the legibility
+      // floor and scrolls, which is visible and recoverable (tap 1 or 2).
+      const cols = numCols;
+      const f = zoomOffset !== 0
+        ? Math.max(MIN_FIT_FONT, baseFontSize)   // manual zoom outranks auto-size
+        : bestFontAt(cols) ?? MIN_FIT_FONT;
+      setCols(cols);
+      setFont(f);
+      setFitColumns(cols);
+      setFitFont(f);
+      return;
+    }
+
     if (zoomOffset !== 0) {
       // User has taken manual control of the size — honor it. Keep the most
       // columns whose width the zoomed font fits (so it never spills sideways);
@@ -1583,35 +1626,11 @@ export default function SongEditor({
       return;
     }
 
-    const userPref = Math.max(MIN_FIT_FONT, LYRIC_FONT_SIZE_PX[prefs.lyricFontSize]);
     let chosen = { cols: 1, font: MIN_FIT_FONT, fits: false };
     for (let n = 1; n <= maxCols; n++) {
-      setCols(n);
-      let best = MIN_FIT_FONT;
-      let ok = false;
-      // Fast path: does the user's preferred size already fit both dimensions?
-      setFont(userPref);
-      if (bothFit()) {
-        best = userPref;
-        ok = true;
-      } else {
-        // Only worth searching if the floor itself fits both dimensions.
-        setFont(MIN_FIT_FONT);
-        if (bothFit()) {
-          ok = true;
-          let lo = MIN_FIT_FONT;
-          let hi = userPref;
-          let b = MIN_FIT_FONT;
-          for (let i = 0; i < 8; i++) {
-            const mid = (lo + hi) / 2;
-            setFont(mid);
-            if (bothFit()) { b = mid; lo = mid; } else { hi = mid; }
-          }
-          best = b;
-        }
-      }
+      const best = bestFontAt(n);
       // Maximize readable font; tie → more columns (better use of wide screens).
-      if (ok && (best > chosen.font + 0.01 || (Math.abs(best - chosen.font) <= 0.01 && n > chosen.cols))) {
+      if (best != null && (best > chosen.font + 0.01 || (Math.abs(best - chosen.font) <= 0.01 && n > chosen.cols))) {
         chosen = { cols: n, font: best, fits: true };
       }
     }
@@ -1622,8 +1641,11 @@ export default function SongEditor({
     setFont(font);
     setFitColumns(cols);
     setFitFont(font);
+    // columnsPinned/numCols MUST be here: without them a tap on the 1/2/3
+    // switcher never re-runs the pass, so fit mode keeps the count it measured
+    // earlier — the switcher would look dead all over again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fitMode, zoomOffset, baseFontSize, prefs.lyricFontSize, lineHeight, lyricFontFamily, showChords, song, resizeTick]);
+  }, [fitMode, columnsPinned, numCols, zoomOffset, baseFontSize, prefs.lyricFontSize, lineHeight, lyricFontFamily, showChords, song, resizeTick]);
 
   const switchView = (mode: ViewMode) => {
     setEditingChord(null);
@@ -1632,6 +1654,9 @@ export default function SongEditor({
     setEditingTitle(false);
     setContextMenu(null);
     setViewMode(mode);
+    // From here on the reader's choice outranks fit-to-screen's auto-pick, in
+    // every layout mode — the switcher must never be a control that does nothing.
+    setColumnsPinned(true);
   };
 
   // ── Fullscreen performance mode ─────────────────────────────────────────────
@@ -2802,10 +2827,11 @@ export default function SongEditor({
   // JS (chunkSectionsForColumns) so the flow always has enough SIBLINGS to fill
   // every column — see that function for why asking the engine to fragment
   // inside a section is the thing that failed on Android.
-  // Fit mode is judged against a constant 3 rather than its own measured column
-  // count: the chunking changes the height the fit pass measures, so feeding the
-  // measured count back in would make the pass depend on its own output.
-  const flowCols = fitMode ? 3 : numCols;
+  // Auto fit mode is judged against a constant 3 rather than its own measured
+  // column count: the chunking changes the height the fit pass measures, so
+  // feeding the measured count back in would make the pass depend on its own
+  // output. A pinned choice is a fixed number, so it can be used directly.
+  const flowCols = fitMode && !columnsPinned ? 3 : numCols;
   const columnBlocks = effColumnView
     ? chunkSectionsForColumns(song.sections, flowCols)
     : chunkSectionsForColumns(song.sections, 1);
