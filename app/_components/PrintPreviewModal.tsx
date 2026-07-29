@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { ChordDiagramSheet, preloadChordData } from "@/app/_components/ChordDiagrams";
 import { uniqueChordSymbols } from "@/lib/chords/diagrams";
-import { CHORD_FONT_CLAMP, LYRIC_FONT_CLAMP, buildChordLine, capoChord, capoChords, playKey, getEffectiveStyle, getSectionColorKey, getSectionStyleKey, type SectionStyles, type Song, type Settings } from "@/lib/song";
+import { CHORD_FONT_CLAMP, LYRIC_FONT_CLAMP, buildChordLine, capoChord, capoChords, chunkSectionsForColumns, playKey, getEffectiveStyle, getSectionColorKey, getSectionStyleKey, type SectionStyles, type Song, type Settings } from "@/lib/song";
 
 const FONT_CSS: Record<string, string> = {
   system: "ui-sans-serif, system-ui, -apple-system, sans-serif",
@@ -158,8 +158,8 @@ function PaperContent({ song, settings, sectionStyles, cols, paperW, paperH }: {
   const showChords  = settings.showChords ?? true;
   const colorMap    = settings.darkMode ? settings.sectionColorsDark : settings.sectionColorsLight;
   // Mirrors SongSheet: with fewer sections than columns there's nothing for the
-  // column flow to break between, so let sections split and keep lines whole.
-  const splitSections = cols > 1 && song.sections.length < cols;
+  // column flow to break between, so sections are pre-split into chunks.
+  const blocks = chunkSectionsForColumns(song.sections, cols);
 
   return (
     <div style={{
@@ -217,25 +217,30 @@ function PaperContent({ song, settings, sectionStyles, cols, paperW, paperH }: {
 
       {/* Sections — multi-column flow so they pack continuously down each
           column (no per-row gaps); each section avoids breaking across columns. */}
-      <div style={cols > 1 ? {
+      <div style={cols > 1 ? ({
         columnCount: cols,
+        WebkitColumnCount: cols,
         columnGap: cols === 3 ? "1.5rem" : "2rem",
-      } : {}}>
-        {song.sections.map((section) => {
+        WebkitColumnGap: cols === 3 ? "1.5rem" : "2rem",
+        columnFill: "balance",
+        WebkitColumnFill: "balance",
+      } as React.CSSProperties) : {}}>
+        {blocks.map((block) => {
+          const section = block.section;
           const color = colorMap[getSectionColorKey(section.label)];
           const chordColor = getEffectiveStyle(getSectionStyleKey(section.label), sectionStyles.styles).chordColor;
           return (
-            <div key={section.id} style={{
-              breakInside: splitSections ? "auto" : "avoid",
-              pageBreakInside: splitSections ? "auto" : "avoid",
-              marginBottom: "1em",
-              overflow: splitSections ? "visible" : "hidden",
+            <div key={block.key} style={{
+              breakInside: "avoid",
+              WebkitColumnBreakInside: "avoid",
+              pageBreakInside: "avoid",
+              marginBottom: block.last ? "1em" : 0,
+              overflow: "hidden",
               minWidth: 0,
               wordBreak: "break-word",
-            }}>
+            } as React.CSSProperties}>
+              {block.first && (
               <div style={{
-                breakAfter: splitSections ? "avoid" : undefined,
-                pageBreakAfter: splitSections ? "avoid" : undefined,
                 display: "inline-block",
                 background: color.bg, color: color.fg,
                 fontSize: `${fontSize * 0.68}px`, fontWeight: 700,
@@ -244,7 +249,8 @@ function PaperContent({ song, settings, sectionStyles, cols, paperW, paperH }: {
               }}>
                 {section.label}
               </div>
-              {section.lines.map((line) => (
+              )}
+              {block.lines.map((line) => (
                 <div key={line.id} style={{ marginBottom: "0.05em", overflow: "hidden", width: "100%", breakInside: "avoid", pageBreakInside: "avoid" }}>
                   {showChords && line.chords.length > 0 && (
                     <pre style={{

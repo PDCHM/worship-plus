@@ -1135,6 +1135,76 @@ export function cloneSection(section: Section): Section {
   };
 }
 
+// ─── Column feed ─────────────────────────────────────────────────────────────
+// One renderable block of a multi-column chart flow: a whole section, or one
+// consecutive slice of a section that was too big to leave whole.
+export type ColumnBlock = {
+  key: string;
+  section: Section;
+  sectionIndex: number;
+  lines: Line[];
+  lineStart: number; // index of lines[0] within section.lines
+  first: boolean;    // carries the section's label chip
+  last: boolean;     // carries the section's bottom margin / trailing controls
+};
+
+// Split a song's sections into the blocks a `column-count: N` flow should lay
+// out, so the flow ALWAYS has at least N sibling blocks to distribute.
+//
+// Why not just let CSS do it: a section is the unbreakable unit (break-inside:
+// avoid), so a song with fewer sections than columns — the classic import whose
+// source had no section markers, leaving the whole chart in one section — has
+// nothing to break BETWEEN and stacks entirely in column 1. Relaxing that to
+// break-inside: auto asks the engine to fragment INSIDE a tall bordered block,
+// which is the least consistently implemented corner of CSS multi-column: Blink
+// only rewrote intra-block fragmentation with LayoutNG, and Android Chrome /
+// Samsung Internet ship older Blink than an auto-updating desktop Chrome. That
+// is how column splitting could work on a laptop and do nothing on a tablet.
+//
+// Pre-splitting here means every engine only ever has to break BETWEEN sibling
+// blocks — the one multicol behaviour that has been correct everywhere for a
+// decade. Nothing is asked of the fragmenter at all.
+//
+// Chunking is INVISIBLE when it doesn't split: only the first chunk renders the
+// label chip and only the last carries the trailing margin, so consecutive
+// chunks that land in the same column read as the one section they came from.
+export function chunkSectionsForColumns(sections: Section[], cols: number): ColumnBlock[] {
+  const whole = (section: Section, sectionIndex: number): ColumnBlock => ({
+    key: section.id,
+    section,
+    sectionIndex,
+    lines: section.lines,
+    lineStart: 0,
+    first: true,
+    last: true,
+  });
+  if (cols < 2 || sections.length === 0) return sections.map(whole);
+  // How many pieces each section must yield for the flow to have >= cols blocks.
+  const perSection = Math.ceil(cols / sections.length);
+  if (perSection < 2) return sections.map(whole);
+
+  const blocks: ColumnBlock[] = [];
+  sections.forEach((section, sectionIndex) => {
+    // A section with fewer lines than pieces can't be usefully cut — one line per
+    // chunk is the floor, and a 0/1-line section stays whole.
+    const size = Math.max(1, Math.ceil(section.lines.length / perSection));
+    const count = Math.max(1, Math.ceil(section.lines.length / size));
+    if (count < 2) { blocks.push(whole(section, sectionIndex)); return; }
+    for (let ci = 0; ci < count; ci++) {
+      blocks.push({
+        key: `${section.id}#${ci}`,
+        section,
+        sectionIndex,
+        lines: section.lines.slice(ci * size, (ci + 1) * size),
+        lineStart: ci * size,
+        first: ci === 0,
+        last: ci === count - 1,
+      });
+    }
+  });
+  return blocks;
+}
+
 export function serializeSong(song: Song): string {
   const body = song.sections
     .map((s) => {

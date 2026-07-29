@@ -4,7 +4,7 @@ import { ChordDiagramSheet } from "@/app/_components/ChordDiagrams";
 import { uniqueChordSymbols } from "@/lib/chords/diagrams";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { buildChordLine, capoChord, capoChords, printColumnChars, wrapChordLinePairs, playKey, getEffectiveStyle, getSectionColorKey, getSectionStyleKey, type SectionStyles, type Song, type Settings } from "@/lib/song";
+import { buildChordLine, capoChord, capoChords, chunkSectionsForColumns, printColumnChars, wrapChordLinePairs, playKey, getEffectiveStyle, getSectionColorKey, getSectionStyleKey, type SectionStyles, type Song, type Settings } from "@/lib/song";
 
 const FONT_CSS: Record<string, string> = {
   system: "ui-sans-serif, system-ui, -apple-system, sans-serif",
@@ -40,13 +40,13 @@ export function SongSheet({ song, settings, sectionStyles }: Props) {
   // Display columns across ONE print column, from the real page geometry
   // (@page size + 0.6in margin) — adapts to A4/Letter and orientation.
   const colChars   = printColumnChars(fontSize, cols, settings.printLayout ?? "A4", settings.printOrientation ?? "portrait");
-  // A multi-column flow can only break BETWEEN unbreakable blocks, so a song with
-  // fewer sections than columns (e.g. an import whose source had no section
-  // markers → one section for the whole chart) would print everything in column 1
-  // with the rest blank. Let sections break there and make the LINE the
-  // unbreakable unit instead, so the chart fills the page and no chord/lyric row
-  // is cut across a column edge.
-  const splitSections = cols > 1 && song.sections.length < cols;
+  // The blocks the column flow lays out. A multi-column flow can only break
+  // BETWEEN unbreakable blocks, so a song with fewer sections than columns (e.g.
+  // an import whose source had no section markers → one section for the whole
+  // chart) would print everything in column 1 with the rest blank. Sections are
+  // pre-split in JS instead of relying on the engine to fragment inside one —
+  // see chunkSectionsForColumns.
+  const blocks = chunkSectionsForColumns(song.sections, cols);
   const colorMap   = settings.darkMode
     ? settings.sectionColorsDark
     : settings.sectionColorsLight;
@@ -102,34 +102,39 @@ export function SongSheet({ song, settings, sectionStyles }: Props) {
 
       {/* ── Sections — multi-column flow so sections pack continuously down each
           column (no per-row gaps); each section avoids breaking across columns. ── */}
-      <div style={cols > 1 ? {
+      <div style={cols > 1 ? ({
         columnCount: cols,
+        WebkitColumnCount: cols,
         columnGap: cols === 3 ? "1.5rem" : "2rem",
-      } : {}}>
-        {song.sections.map((section) => {
+        WebkitColumnGap: cols === 3 ? "1.5rem" : "2rem",
+        columnFill: "balance",
+        WebkitColumnFill: "balance",
+      } as React.CSSProperties) : {}}>
+        {blocks.map((block) => {
+          const section  = block.section;
           const colorKey = getSectionColorKey(section.label);
           const color    = colorMap[colorKey];
           const chordColor = getEffectiveStyle(getSectionStyleKey(section.label), sectionStyles.styles).chordColor;
 
           return (
             <div
-              key={section.id}
+              key={block.key}
               style={{
-                breakInside: splitSections ? "auto" : "avoid",
-                pageBreakInside: splitSections ? "auto" : "avoid",
-                marginBottom: "1.1em",
-                // A scroll/clip container is monolithic to the fragmenter, so it
-                // must stay visible for the section to be splittable. Each line's
-                // own overflow:hidden still clips over-wide chord rows.
-                overflow: splitSections ? "visible" : "hidden",
+                breakInside: "avoid",
+                // Legacy alias — still the only form older Blink/WebKit honour.
+                WebkitColumnBreakInside: "avoid",
+                pageBreakInside: "avoid",
+                // Only the LAST chunk of a section carries the gap, so chunks that
+                // land in the same column stack as the one section they came from.
+                marginBottom: block.last ? "1.1em" : 0,
+                overflow: "hidden",
                 minWidth: 0,
                 wordBreak: "break-word",
-              }}
+              } as React.CSSProperties}
             >
-              {/* Label badge */}
+              {/* Label badge — first chunk only */}
+              {block.first && (
               <div style={{
-                breakAfter: splitSections ? "avoid" : undefined,
-                pageBreakAfter: splitSections ? "avoid" : undefined,
                 display: "inline-block",
                 background: color.bg,
                 color: color.fg,
@@ -143,9 +148,10 @@ export function SongSheet({ song, settings, sectionStyles }: Props) {
               }}>
                 {section.label}
               </div>
+              )}
 
               {/* Lines */}
-              {section.lines.map((line) => {
+              {block.lines.map((line) => {
                 const hasChords = line.chords.length > 0;
                 // Cut the chord row and the lyric at MATCHING points so a long
                 // line wraps inside its column instead of being clipped by

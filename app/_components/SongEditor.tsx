@@ -25,6 +25,7 @@ import {
   LYRIC_FONT_SIZE_PX,
   PREFER_FLAT_KEYS,
   SECTION_PRESETS,
+  chunkSectionsForColumns,
   collectStyleKeys,
   cloneSection,
   defaultStyleForKey,
@@ -1554,9 +1555,17 @@ export default function SongEditor({
     const heightFits = () => inner.scrollHeight <= wrapH + 1;
     const bothFit = () => widthFits() && heightFits();
 
-    // Don't try more columns than the width can sensibly carry.
+    // Don't try more columns than the width can sensibly carry — measured as a
+    // minimum readable COLUMN width, not as desktop device-class breakpoints.
+    // The old 640/1024 gates were laptop-shaped: an Android tablet (roughly
+    // 600–800 CSS px in portrait) was pinned to 1–2 columns however short the
+    // song's lines were, while any laptop cleared 1024 and always got the full 3.
+    // That alone made columns look like a desktop-only feature. Past this floor
+    // the per-line width test below is the real judge, so a column is only ever
+    // used when the chart genuinely fits it.
+    const MIN_COL_PX = 260;
     const w = wrap.clientWidth;
-    const maxCols = w >= 1024 ? 3 : w >= 640 ? 2 : 1;
+    const maxCols = Math.max(1, Math.min(3, Math.floor(w / MIN_COL_PX)));
 
     if (zoomOffset !== 0) {
       // User has taken manual control of the size — honor it. Keep the most
@@ -2754,10 +2763,24 @@ export default function SongEditor({
   // container keeps an auto (natural) height; the wrapper supplies the fixed
   // viewport height + vertical scroll, so overflow scrolls cleanly instead of
   // spilling into extra columns.
+  //
+  // -webkit-column-* mirrors every column property. Blink/WebKit have accepted
+  // the unprefixed forms for years, but Samsung Internet and the Android WebView
+  // that an installed PWA can be running trail desktop Chrome by many versions,
+  // and the prefixed aliases are still honoured there — they cost nothing and
+  // remove a whole class of "works on the laptop, not on the tablet".
+  // column-fill is stated EXPLICITLY rather than left to the initial value: fit
+  // mode gives the wrapper a definite height, and an engine that treats the flow
+  // as height-constrained fills column 1 to the brim before starting column 2 —
+  // which looks exactly like "it didn't split".
   const sectionsContainerStyle: React.CSSProperties = fitMode
     ? ({
         columnCount: fitColumns,
+        WebkitColumnCount: fitColumns,
         columnGap: `${fitColumns === 3 ? 16 : 24}px`,
+        WebkitColumnGap: `${fitColumns === 3 ? 16 : 24}px`,
+        columnFill: "balance",
+        WebkitColumnFill: "balance",
         // Locked to the available width so columns can never push the layout
         // wider than the viewport (the hard stop against sideways scroll).
         width: "100%",
@@ -2765,46 +2788,50 @@ export default function SongEditor({
         "--fit-font": `${fitFont}px`,
       } as React.CSSProperties)
     : columnView
-    ? {
+    ? ({
         columnCount: numCols,
+        WebkitColumnCount: numCols,
         columnGap: colGap,
-      }
+        WebkitColumnGap: colGap,
+        columnFill: "balance",
+        WebkitColumnFill: "balance",
+      } as React.CSSProperties)
     : {};
+  // The blocks the column flow actually lays out. A section is normally one
+  // block; a song with fewer sections than columns has its sections pre-split in
+  // JS (chunkSectionsForColumns) so the flow always has enough SIBLINGS to fill
+  // every column — see that function for why asking the engine to fragment
+  // inside a section is the thing that failed on Android.
+  // Fit mode is judged against a constant 3 rather than its own measured column
+  // count: the chunking changes the height the fit pass measures, so feeding the
+  // measured count back in would make the pass depend on its own output.
+  const flowCols = fitMode ? 3 : numCols;
+  const columnBlocks = effColumnView
+    ? chunkSectionsForColumns(song.sections, flowCols)
+    : chunkSectionsForColumns(song.sections, 1);
   // Word-block lines wrap within the column on their own, so chords can never
   // be clipped regardless of column width — no overflow clipping needed.
-  // break-inside: avoid keeps a section whole within one column; marginBottom
-  // gives vertical separation between stacked sections.
-  //
-  // …EXCEPT when there aren't enough sections to fill the columns. A multi-column
-  // flow can only break BETWEEN unbreakable blocks, so a song with fewer sections
-  // than columns (the classic case: an import whose source had no section markers,
-  // so the whole chart is one section) puts everything in column 1 and leaves the
-  // rest blank. There, sections are allowed to break and the LINE becomes the
-  // unbreakable unit instead — the song fills every column, and no chord/lyric row
-  // is ever cut across a column edge. Fit mode measures up to 3 columns, so it's
-  // judged against 3 (a constant — measuring against the *chosen* count would feed
-  // the fit pass's own output back into its input).
-  const flowCols = fitMode ? 3 : numCols;
-  const splitSections = effColumnView && song.sections.length < flowCols;
+  // break-inside: avoid keeps a block whole within one column (with the legacy
+  // -webkit-column-break-inside alias for older Blink/WebKit, where the
+  // unprefixed property is ignored); the bottom margin is applied per block, so
+  // only the LAST chunk of a section carries it and chunks that land in the same
+  // column stack seamlessly.
   const sectionInColumnStyle: React.CSSProperties = effColumnView
-    ? {
+    ? ({
         minWidth: 0,
         overflow: "visible",
         paddingRight: "0.4rem",
         wordBreak: "normal",
         overflowWrap: "break-word",
-        breakInside: splitSections ? "auto" : "avoid",
-        pageBreakInside: splitSections ? "auto" : "avoid",
-        marginBottom: "1.5rem",
-      }
+        breakInside: "avoid",
+        WebkitColumnBreakInside: "avoid",
+        pageBreakInside: "avoid",
+      } as React.CSSProperties)
     : {};
-  // Keeps a broken-up section readable: its label chip never strands alone at the
-  // foot of a column, and a line's chord row always travels with its lyric.
-  const sectionHeaderInColumnStyle: React.CSSProperties = splitSections
-    ? { breakInside: "avoid", breakAfter: "avoid", pageBreakAfter: "avoid" }
-    : {};
-  const lineInColumnStyle: React.CSSProperties = splitSections
-    ? { breakInside: "avoid", pageBreakInside: "avoid" }
+  // A line's chord row must always travel with its lyric. Belt-and-braces: with
+  // chunking, no block is ever fragmented in the first place.
+  const lineInColumnStyle: React.CSSProperties = effColumnView
+    ? ({ breakInside: "avoid", WebkitColumnBreakInside: "avoid", pageBreakInside: "avoid" } as React.CSSProperties)
     : {};
 
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -3507,7 +3534,9 @@ export default function SongEditor({
               reprojectKey={`${zoomOffset}|${Math.round(fitFont)}|${playLayout}|${viewMode}|${fitColumns}|${effColumnView}|${song.key}|${song.capo ?? "-"}`}
             />
           )}
-          {song.sections.map((section, sIdx) => {
+          {columnBlocks.map((block) => {
+            const section = block.section;
+            const sIdx = block.sectionIndex;
             const colorKey = getSectionColorKey(section.label);
             const c = colors[colorKey];
             const styleKey = getSectionStyleKey(section.label);
@@ -3515,10 +3544,17 @@ export default function SongEditor({
             const chordColor = sectionStyle.chordColor;
             const labelWeightClass = sectionStyle.bold ? "font-extrabold" : "font-semibold";
             const sectionClassName = "group/section";
+            const blockStyle: React.CSSProperties = effColumnView
+              ? { ...sectionInColumnStyle, marginBottom: block.last ? "1.5rem" : 0 }
+              : sectionInColumnStyle;
             return (
-              <Fragment key={section.id}>
+              <Fragment key={block.key}>
               <section
                 ref={(el) => {
+                  // Only the first chunk registers as THE section: scroll-to-section,
+                  // the active-section observer and markup anchoring all want the top
+                  // of the section, not each of its pieces.
+                  if (!block.first) return;
                   if (el) sectionRefs.current.set(section.id, el);
                   else sectionRefs.current.delete(section.id);
                 }}
@@ -3527,9 +3563,14 @@ export default function SongEditor({
                 // In present mode, offset section-jump targets below the fixed top
                 // header (title + flow-bar) so scrollToSection doesn't land them
                 // underneath it. No effect in normal view.
-                style={presenting ? { ...sectionInColumnStyle, scrollMarginTop: "calc(env(safe-area-inset-top, 0px) + 5rem)" } : sectionInColumnStyle}
+                style={presenting ? { ...blockStyle, scrollMarginTop: "calc(env(safe-area-inset-top, 0px) + 5rem)" } : blockStyle}
               >
-                <div className="flex items-center gap-2 mb-3 flex-wrap" style={sectionHeaderInColumnStyle}>
+                {/* Label chip + section tools ride the FIRST chunk only, so a
+                    section that was pre-split for the column flow shows its name
+                    once — and consecutive chunks in one column read as one
+                    section, exactly as they did before any splitting. */}
+                {block.first && (
+                <div className="flex items-center gap-2 mb-3 flex-wrap">
                   {editingSection === section.id && !readOnly ? (
                     <input
                       autoFocus
@@ -3633,12 +3674,14 @@ export default function SongEditor({
                     </div>
                   )}
                 </div>
+                )}
 
                 <div
                   className={effColumnView ? "pl-3" : "pl-4"}
                   style={{ borderLeft: `3px solid ${c.bg}` }}
                 >
-                  {section.lines.map((line, lIdx) => {
+                  {block.lines.map((line, i) => {
+                    const lIdx = block.lineStart + i;
                     const isFirstLine = sIdx === 0 && lIdx === 0;
                     const tokens = tokenizeWords(line.lyric);
                     const hasWords = tokens.length > 0;
@@ -4142,7 +4185,7 @@ export default function SongEditor({
                     );
                   })}
 
-                  {!readOnly && (
+                  {!readOnly && block.last && (
                     <button
                       type="button"
                       onClick={() => addLineToSection(section.id)}
@@ -4157,7 +4200,7 @@ export default function SongEditor({
                   )}
                 </div>
               </section>
-              {clipboard && !readOnly && (
+              {clipboard && !readOnly && block.last && (
                 <PasteHint
                   label={clipboard.label}
                   onClick={() => pasteSection(section.id, "below")}
