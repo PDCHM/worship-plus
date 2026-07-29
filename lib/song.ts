@@ -1438,9 +1438,37 @@ function parseSbpContent(content: string, title: string): Section[] {
   const rawLines = content.replace(/♯/g, "#").replace(/♭/g, "b").replace(/\r/g, "").split("\n");
   const sections: Section[] = [];
   let current: Section | null = null;
+  // Was `current` created from a REAL label ({c:…} / inline header), or auto-
+  // created because content arrived with no label? Only auto-created runs get
+  // split on blank lines (below) — a labelled section is never cut in two, so
+  // its chip can't be duplicated or mis-titled.
+  let currentLabelled = false;
+  // A blank line inside an UNLABELLED run separates stanzas — SongBook Pro's
+  // only structure signal for songs written without {c:} markers. Without this
+  // the whole song lands in ONE section, and the reader's 2/3-column split has
+  // a single unbreakable block to lay out, so everything stacks in column 1.
+  // The break is deferred to the next content line so trailing/repeated blanks
+  // (and a blank before a {c:} marker) never create an empty section.
+  let pendingBreak = false;
+  let autoVerse = 1;
+  const startNew = (label: string, labelled: boolean) => {
+    current = { id: uid(), label, lines: [] };
+    currentLabelled = labelled;
+    pendingBreak = false;
+    sections.push(current);
+  };
+  // Annotated local widens past TS's flow-narrowing of `current` to null (it's
+  // only ever assigned inside startNew, so the checker can't see it change) —
+  // the same trick parsePastedChart uses.
+  const hasContent = (): boolean => {
+    const cur: Section | null = current;
+    return !!cur && cur.lines.length > 0;
+  };
   const ensure = () => {
-    if (!current) { current = { id: uid(), label: "Verse 1", lines: [] }; sections.push(current); }
-    return current;
+    if (pendingBreak && hasContent()) startNew(`Verse ${++autoVerse}`, false);
+    pendingBreak = false;
+    if (!current) startNew("Verse 1", false);
+    return current!;
   };
   let titleSkipped = false;
   for (let i = 0; i < rawLines.length; i++) {
@@ -1449,11 +1477,13 @@ function parseSbpContent(content: string, title: string): Section[] {
     // {c: Label} → new section.
     const dir = t.match(/^\{c:\s*(.*)\}$/i);
     if (dir) {
-      current = { id: uid(), label: dir[1].trim() || "Section", lines: [] };
-      sections.push(current);
+      startNew(dir[1].trim() || "Section", true);
       continue;
     }
-    if (t === "") continue;
+    if (t === "") {
+      if (!currentLabelled && hasContent()) pendingBreak = true;
+      continue;
+    }
     // Top-of-song noise (before any section): the title line (case-insensitive
     // — SongBook Pro often Title-Cases it) and the flow/structure line. Skipping
     // the title keeps `current` null so the flow line is also skipped.
@@ -1467,7 +1497,7 @@ function parseSbpContent(content: string, title: string): Section[] {
     // ENGLISH, Bridge:3x … → start a new section (conservative; chords/lyrics
     // are left untouched by detectInlineSectionLabel).
     const inlineLabel = detectInlineSectionLabel(t);
-    if (inlineLabel) { current = { id: uid(), label: inlineLabel, lines: [] }; sections.push(current); continue; }
+    if (inlineLabel) { startNew(inlineLabel, true); continue; }
     // Chord-only line followed by a lyric line → chord-above pair.
     if (isChordLine(l) && i + 1 < rawLines.length && rawLines[i + 1].trim()) {
       const next = rawLines[i + 1];

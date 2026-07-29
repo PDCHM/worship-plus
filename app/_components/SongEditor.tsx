@@ -2774,6 +2774,18 @@ export default function SongEditor({
   // be clipped regardless of column width — no overflow clipping needed.
   // break-inside: avoid keeps a section whole within one column; marginBottom
   // gives vertical separation between stacked sections.
+  //
+  // …EXCEPT when there aren't enough sections to fill the columns. A multi-column
+  // flow can only break BETWEEN unbreakable blocks, so a song with fewer sections
+  // than columns (the classic case: an import whose source had no section markers,
+  // so the whole chart is one section) puts everything in column 1 and leaves the
+  // rest blank. There, sections are allowed to break and the LINE becomes the
+  // unbreakable unit instead — the song fills every column, and no chord/lyric row
+  // is ever cut across a column edge. Fit mode measures up to 3 columns, so it's
+  // judged against 3 (a constant — measuring against the *chosen* count would feed
+  // the fit pass's own output back into its input).
+  const flowCols = fitMode ? 3 : numCols;
+  const splitSections = effColumnView && song.sections.length < flowCols;
   const sectionInColumnStyle: React.CSSProperties = effColumnView
     ? {
         minWidth: 0,
@@ -2781,10 +2793,18 @@ export default function SongEditor({
         paddingRight: "0.4rem",
         wordBreak: "normal",
         overflowWrap: "break-word",
-        breakInside: "avoid",
-        pageBreakInside: "avoid",
+        breakInside: splitSections ? "auto" : "avoid",
+        pageBreakInside: splitSections ? "auto" : "avoid",
         marginBottom: "1.5rem",
       }
+    : {};
+  // Keeps a broken-up section readable: its label chip never strands alone at the
+  // foot of a column, and a line's chord row always travels with its lyric.
+  const sectionHeaderInColumnStyle: React.CSSProperties = splitSections
+    ? { breakInside: "avoid", breakAfter: "avoid", pageBreakAfter: "avoid" }
+    : {};
+  const lineInColumnStyle: React.CSSProperties = splitSections
+    ? { breakInside: "avoid", pageBreakInside: "avoid" }
     : {};
 
   const swipeStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -3509,7 +3529,7 @@ export default function SongEditor({
                 // underneath it. No effect in normal view.
                 style={presenting ? { ...sectionInColumnStyle, scrollMarginTop: "calc(env(safe-area-inset-top, 0px) + 5rem)" } : sectionInColumnStyle}
               >
-                <div className="flex items-center gap-2 mb-3 flex-wrap">
+                <div className="flex items-center gap-2 mb-3 flex-wrap" style={sectionHeaderInColumnStyle}>
                   {editingSection === section.id && !readOnly ? (
                     <input
                       autoFocus
@@ -3769,7 +3789,7 @@ export default function SongEditor({
                         key={line.id}
                         data-line-id={line.id}
                         className="group/line flex items-start gap-1"
-                        style={{ marginTop: lineTopGap }}
+                        style={{ marginTop: lineTopGap, ...lineInColumnStyle }}
                         onClick={readOnly ? undefined : () => setActiveLine(line.id)}
                       >
                         <div className="flex-1 min-w-0" data-fit-line>

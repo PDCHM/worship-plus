@@ -157,6 +157,9 @@ function PaperContent({ song, settings, sectionStyles, cols, paperW, paperH }: {
   const fontSize    = settings.fontSize ?? 17;
   const showChords  = settings.showChords ?? true;
   const colorMap    = settings.darkMode ? settings.sectionColorsDark : settings.sectionColorsLight;
+  // Mirrors SongSheet: with fewer sections than columns there's nothing for the
+  // column flow to break between, so let sections split and keep lines whole.
+  const splitSections = cols > 1 && song.sections.length < cols;
 
   return (
     <div style={{
@@ -223,14 +226,16 @@ function PaperContent({ song, settings, sectionStyles, cols, paperW, paperH }: {
           const chordColor = getEffectiveStyle(getSectionStyleKey(section.label), sectionStyles.styles).chordColor;
           return (
             <div key={section.id} style={{
-              breakInside: "avoid",
-              pageBreakInside: "avoid",
+              breakInside: splitSections ? "auto" : "avoid",
+              pageBreakInside: splitSections ? "auto" : "avoid",
               marginBottom: "1em",
-              overflow: "hidden",
+              overflow: splitSections ? "visible" : "hidden",
               minWidth: 0,
               wordBreak: "break-word",
             }}>
               <div style={{
+                breakAfter: splitSections ? "avoid" : undefined,
+                pageBreakAfter: splitSections ? "avoid" : undefined,
                 display: "inline-block",
                 background: color.bg, color: color.fg,
                 fontSize: `${fontSize * 0.68}px`, fontWeight: 700,
@@ -240,7 +245,7 @@ function PaperContent({ song, settings, sectionStyles, cols, paperW, paperH }: {
                 {section.label}
               </div>
               {section.lines.map((line) => (
-                <div key={line.id} style={{ marginBottom: "0.05em", overflow: "hidden", width: "100%" }}>
+                <div key={line.id} style={{ marginBottom: "0.05em", overflow: "hidden", width: "100%", breakInside: "avoid", pageBreakInside: "avoid" }}>
                   {showChords && line.chords.length > 0 && (
                     <pre style={{
                       margin: 0, fontFamily: MONO_FAMILY,

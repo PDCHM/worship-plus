@@ -40,6 +40,13 @@ export function SongSheet({ song, settings, sectionStyles }: Props) {
   // Display columns across ONE print column, from the real page geometry
   // (@page size + 0.6in margin) — adapts to A4/Letter and orientation.
   const colChars   = printColumnChars(fontSize, cols, settings.printLayout ?? "A4", settings.printOrientation ?? "portrait");
+  // A multi-column flow can only break BETWEEN unbreakable blocks, so a song with
+  // fewer sections than columns (e.g. an import whose source had no section
+  // markers → one section for the whole chart) would print everything in column 1
+  // with the rest blank. Let sections break there and make the LINE the
+  // unbreakable unit instead, so the chart fills the page and no chord/lyric row
+  // is cut across a column edge.
+  const splitSections = cols > 1 && song.sections.length < cols;
   const colorMap   = settings.darkMode
     ? settings.sectionColorsDark
     : settings.sectionColorsLight;
@@ -108,16 +115,21 @@ export function SongSheet({ song, settings, sectionStyles }: Props) {
             <div
               key={section.id}
               style={{
-                breakInside: "avoid",
-                pageBreakInside: "avoid",
+                breakInside: splitSections ? "auto" : "avoid",
+                pageBreakInside: splitSections ? "auto" : "avoid",
                 marginBottom: "1.1em",
-                overflow: "hidden",
+                // A scroll/clip container is monolithic to the fragmenter, so it
+                // must stay visible for the section to be splittable. Each line's
+                // own overflow:hidden still clips over-wide chord rows.
+                overflow: splitSections ? "visible" : "hidden",
                 minWidth: 0,
                 wordBreak: "break-word",
               }}
             >
               {/* Label badge */}
               <div style={{
+                breakAfter: splitSections ? "avoid" : undefined,
+                pageBreakAfter: splitSections ? "avoid" : undefined,
                 display: "inline-block",
                 background: color.bg,
                 color: color.fg,
@@ -147,7 +159,7 @@ export function SongSheet({ song, settings, sectionStyles }: Props) {
                   colChars,
                 );
                 return (
-                  <div key={line.id} style={{ marginBottom: "0.05em", width: "100%" }}>
+                  <div key={line.id} style={{ marginBottom: "0.05em", width: "100%", breakInside: "avoid", pageBreakInside: "avoid" }}>
                     {segments.map((seg, si) => (
                       <div key={si} style={{ width: "100%" }}>
                         {/* Chord row font MATCHES the lyric: both rows share one
