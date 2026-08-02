@@ -1752,8 +1752,10 @@ export default function SongEditor({
   };
   const onPresentPointerCancel = () => { tapStartRef.current = null; };
 
-  // Exit when the browser leaves fullscreen (Esc / OS gesture); also Esc directly
-  // for the overlay fallback (where no fullscreenchange fires).
+  // Track fullscreen loss (browser Esc / OS gesture) — which DEMOTES to the
+  // overlay rather than leaving performance mode — plus the keyboard/page-turner
+  // bindings. Esc is handled directly here so it also works in the overlay
+  // fallback, where no fullscreenchange fires.
   useEffect(() => {
     if (!presenting) return;
     const doc = document as Document & { webkitFullscreenElement?: Element };
@@ -1761,9 +1763,19 @@ export default function SongEditor({
     // fullscreen. During a cross-song remount the outgoing element's teardown
     // fires fullscreenchange; without this guard it would drop the incoming song
     // (which is in overlay mode, enteredRealFsRef=false) out of present mode.
+    // Losing real fullscreen DEMOTES to the overlay — it does NOT quit performance
+    // mode. iPadOS dismisses element fullscreen on a downward swipe, the exact
+    // gesture used to read further down a chart, so treating "left fullscreen" as
+    // "left performance mode" threw the musician out of the song mid-service. The
+    // overlay (fixed inset-0, z-9999) is already the iOS Safari/PWA path, so the
+    // chart keeps filling the screen; the controls are revealed so the Exit button
+    // is unmissable. Performance mode is now left ONLY by Exit or Esc.
     const onFsChange = () => {
       if (!enteredRealFsRef.current) return;
-      if (!doc.fullscreenElement && !doc.webkitFullscreenElement) { enteredRealFsRef.current = false; setPresenting(false); onPresentChange?.(false); }
+      if (!doc.fullscreenElement && !doc.webkitFullscreenElement) {
+        enteredRealFsRef.current = false;
+        revealControls();
+      }
     };
     // Keyboard / page-turner navigation (desktop + Bluetooth pedals that emulate
     // PageUp/PageDown). All routed through goNext/goPrev (scroll + setlist cross).
@@ -2878,11 +2890,17 @@ export default function SongEditor({
     const dx = t.clientX - start.x;
     const dy = t.clientY - start.y;
     // Only a clearly-HORIZONTAL swipe navigates: far enough sideways (≥50px) AND
-    // more horizontal than vertical. A mostly-vertical drag falls through here and
-    // scrolls the song normally; a tap (tiny movement) is handled by the pointer
-    // tap-toggle path. Never preventDefault, so vertical scrolling stays native.
+    // decisively more horizontal than vertical. A mostly-vertical drag falls
+    // through here and scrolls the song normally; a tap (tiny movement) is handled
+    // by the pointer tap-toggle path. Never preventDefault, so vertical scrolling
+    // stays native.
+    //
+    // The 1.5× bias protects READING: scrolling a chart with a thumb drifts
+    // sideways, and a bare |dx| > |dy| test turned such a drag into a page-turn.
+    // Vertical intent always wins a close call — scrolling is the gesture a
+    // musician makes constantly, page-turning is occasional.
     if (Math.abs(dx) < 50) return;
-    if (Math.abs(dx) < Math.abs(dy)) return;
+    if (Math.abs(dx) < Math.abs(dy) * 1.5) return;
     if (presenting) {
       // Present mode: route through goNext/goPrev (in-song scroll + setlist cross).
       if (dx < 0) goNext();
@@ -2914,7 +2932,12 @@ export default function SongEditor({
       className={presenting
         // Fullscreen performance mode: full-bleed, its own scroll container, over
         // all chrome (fixed inset-0 also fills the real-fullscreen viewport).
-        ? "fixed inset-0 z-[9999] w-full overflow-y-auto bg-white dark:bg-slate-950 focus:outline-none"
+        // overscroll-y-contain keeps a vertical drag INSIDE this scroller: without
+        // it, dragging at the top/bottom boundary (or anywhere at all in fit
+        // layout, where the card owns the scrolling and this root has nothing to
+        // move) chains out to the page, and iPadOS reads that as its own
+        // dismiss-fullscreen gesture — a scroll turning into an exit.
+        ? "fixed inset-0 z-[9999] w-full overflow-y-auto overscroll-y-contain bg-white dark:bg-slate-950 focus:outline-none"
         : ("relative w-full mx-auto px-4 sm:px-6 py-6 md:py-8 transition-[max-width] duration-200 " +
           // Read-only performance/view mode goes full-bleed (fills the width freed
           // by the auto-collapsed nav — important on tablet), capped at 1600px so
@@ -2933,6 +2956,12 @@ export default function SongEditor({
             paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)",
             paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.75rem)",
             paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.75rem)",
+            // Declare vertical dragging as THIS element's scroll, so the engine
+            // stops offering it to the OS as a system gesture. pinch-zoom is kept
+            // (musicians zoom a chart); horizontal panning is not — there's nothing
+            // to pan sideways, and a horizontal drag is the prev/next-song swipe,
+            // which is read in JS from the touch coordinates.
+            touchAction: "pan-y pinch-zoom",
           } as React.CSSProperties
         : {
             "--lyric-font-size": `${lyricCeiling}px`,
@@ -3542,7 +3571,13 @@ export default function SongEditor({
         // Fit mode turns this card into the scroll viewport: fixed height with
         // vertical overflow, so the song scrolls inside it only when it can't be
         // shrunk to fit. Scroll mode keeps the card's natural auto height.
-        style={fitMode ? { height: fitHeight ?? undefined, overflowY: "auto", overflowX: "hidden" } : undefined}
+        // overscroll-behavior:contain applies ONLY in fit mode, where the card has
+        // real internal scroll room: hitting its top/bottom then stops instead of
+        // chaining out to the page, where iPadOS would take the drag as its
+        // dismiss-fullscreen gesture. Scroll mode deliberately keeps chaining —
+        // the card has no scroll room there and MUST hand the gesture upward
+        // (containing it is what once froze scrolling on Chrome/Android).
+        style={fitMode ? { height: fitHeight ?? undefined, overflowY: "auto", overflowX: "hidden", overscrollBehavior: "contain" } : undefined}
       >
         <div
           ref={sectionsRef}
