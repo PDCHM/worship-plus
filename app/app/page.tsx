@@ -8,7 +8,7 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import {
   cacheEnsureUser, clearCache, cacheGetAll, cacheReplace, cacheGetMeta, cacheSetMeta,
-  cacheGetContent, cachePutContent,
+  cacheGetContent, cachePutContent, cacheGetIdentity, cacheSetIdentity,
 } from "@/lib/offline/cache";
 import { useOnlineStatus } from "@/lib/offline/useOnlineStatus";
 import OfflineBadge from "@/app/_components/OfflineBadge";
@@ -252,6 +252,68 @@ function logErr(label: string, err: { message?: string; details?: string; hint?:
 }
 
 type SaveResult = { ok: true } | { ok: false; message: string };
+
+// ── Offline-tolerant auth ───────────────────────────────────────────────────
+// Who is signed in, WITHOUT ever requiring the network to answer.
+//
+// supabase.auth.getUser() validates the access token against /auth/v1/user — a
+// live request. With no WiFi it fails and returns {user: null}, which the boot
+// path used to read as "not signed in" and answer with a redirect to /login.
+// Google OAuth then needs internet, so a musician on a stage with no signal was
+// locked out of a library that was sitting complete in IndexedDB on the device.
+//
+// The ladder below, cheapest and most local first:
+//   1. Offline (or auth unreachable) → never ask the server at all.
+//   2. getSession() — reads the session Supabase persisted in its cookie (400-day
+//      max-age, so it survives closing the app). No network while the access
+//      token is unexpired.
+//   3. The cached identity — for an expired access token that cannot be
+//      refreshed because there is no network. The cached library still opens;
+//      writes will fail until the session refreshes itself when signal returns.
+// A redirect to /login is reserved for the one case we're SURE of: the server
+// was reachable and said there is no session, or nobody has ever signed in here.
+type ResolvedAuth = { user: User | null; offline: boolean };
+
+// An auth failure that means "couldn't reach the server", not "you're signed
+// out". supabase-js surfaces these as AuthRetryableFetchError / status 0.
+function isAuthNetworkError(err: { name?: string; status?: number; message?: string } | null): boolean {
+  if (!err) return false;
+  if (err.name === "AuthRetryableFetchError") return true;
+  if (err.status === 0 || err.status == null) return true;
+  return /fetch|network|timeout|failed to fetch|load failed/i.test(err.message ?? "");
+}
+
+async function resolveUser(supabase: SupabaseClient): Promise<ResolvedAuth> {
+  const online = typeof navigator === "undefined" ? true : navigator.onLine;
+
+  if (online) {
+    const { data, error } = await supabase.auth.getUser();
+    if (data?.user) return { user: data.user, offline: false };
+    // A definite "no session" answer from a reachable server → sign-in needed.
+    if (!isAuthNetworkError(error)) return { user: null, offline: false };
+    // Otherwise the browser claimed to be online but the request never landed.
+  }
+
+  // ── No usable network from here on ──
+  const { data: sessionData } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
+  const sessionUser = sessionData?.session?.user ?? null;
+  if (sessionUser) return { user: sessionUser, offline: true };
+
+  const cached = await cacheGetIdentity().catch(() => undefined);
+  if (!cached) return { user: null, offline: true };
+  // Minimal stand-in built from the cached identity. Only id / email /
+  // user_metadata are ever read from this object; it authorises nothing on its
+  // own — every server read still goes through the real session and RLS.
+  const offlineUser = {
+    id: cached.id,
+    email: cached.email ?? undefined,
+    user_metadata: cached.meta ?? {},
+    app_metadata: {},
+    aud: "authenticated",
+    created_at: "",
+  } as unknown as User;
+  return { user: offlineUser, offline: true };
+}
 
 // Serialize saves per song id. The write does delete-then-reinsert, which is
 // not atomic across the section/line/chord inserts — if two saves of the same
@@ -747,7 +809,7 @@ export default function Home() {
     const aborts: AbortController[] = [];
     (async () => {
       try {
-        const { data: { user: u } } = await supabase.auth.getUser();
+        const { user: u, offline: authOffline } = await resolveUser(supabase);
         if (cancelled) return;
         if (!u) {
           setAuthChecked(true);
@@ -756,6 +818,9 @@ export default function Home() {
         }
         setUser(u);
         setAuthChecked(true);
+        // Refresh the offline identity on every successful ONLINE boot, so the
+        // no-network path always has a current answer to "who is signed in".
+        if (!authOffline) void cacheSetIdentity(u.id, u.email ?? null, u.user_metadata ?? {});
 
         // ── Offline cache seed (Phase 2) ──────────────────────────────────
         // Hydrate state from IndexedDB FIRST, so the library paints instantly
@@ -789,9 +854,12 @@ export default function Home() {
         if (cGroupSongs.length) setGroupSongs(cGroupSongs);
         if (cProfile) setProfile(cProfile);
         if (cStyles && !sectionStylesTouched.current) setSectionStyles(cStyles);
-        if (!navigator.onLine) {
+        if (!navigator.onLine || authOffline) {
           // Offline: the seed above is all we have. Mark loaders done so the UI
           // renders the cached library instead of a perpetual spinner.
+          // authOffline covers the case navigator.onLine lies about (venue WiFi
+          // that associates but routes nowhere): auth couldn't be reached, so
+          // the data reads behind it would only hang too.
           setSongsLoaded(true);
           setGroupsLoaded(true);
           return;
@@ -1038,7 +1106,15 @@ export default function Home() {
     })();
 
     const { data: subscription } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_OUT") { void clearCache(); router.replace("/login"); }
+      // Only act on a sign-out we can trust. Offline, a failed token refresh can
+      // surface as SIGNED_OUT — and wiping the cache then would destroy the
+      // offline library at the worst possible moment (mid-service, no signal)
+      // and bounce the user to a login page they cannot complete. Offline we
+      // keep both the cache and the session; the next online boot re-checks.
+      if (event !== "SIGNED_OUT") return;
+      if (typeof navigator !== "undefined" && !navigator.onLine) return;
+      void clearCache();
+      router.replace("/login");
     });
 
     return () => {

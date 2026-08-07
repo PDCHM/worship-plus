@@ -97,6 +97,31 @@ export function cacheSetMeta(key: string, value: unknown): Promise<void> {
   return run(async (db) => { await db.put("meta", value, key); }, undefined);
 }
 
+// ── Cached sign-in identity ─────────────────────────────────────────────────
+// WHO is signed in, kept locally so a cold start with no network never has to
+// ask the server. Supabase's getUser() validates the access token over the
+// wire; on stage with no WiFi that call fails and, read naively, looks exactly
+// like "signed out" — which locked musicians out of a library already sitting
+// in this very database. This is the offline answer to "who are you".
+//
+// It is NOT a credential and grants nothing: the refresh token still lives in
+// the Supabase cookie, every server read is still governed by RLS, and signing
+// out clears the whole cache (clearCache) along with it. It only lets the app
+// open the CACHED library for the account that last used this device.
+export type CachedIdentity = {
+  id: string;
+  email: string | null;
+  // Snapshot of user_metadata (name/avatar) so the offline UI isn't blank.
+  meta: Record<string, unknown>;
+  savedAt: number;
+};
+export function cacheGetIdentity(): Promise<CachedIdentity | undefined> {
+  return cacheGetMeta<CachedIdentity>("authIdentity");
+}
+export function cacheSetIdentity(id: string, email: string | null, meta: Record<string, unknown>): Promise<void> {
+  return cacheSetMeta("authIdentity", { id, email, meta, savedAt: Date.now() } satisfies CachedIdentity);
+}
+
 // ── Per-song content (sections/lines/chords), stamped with the song's updatedAt
 //    so the background refresh loop only re-fetches when the server is newer. ──
 export type CachedContent = { id: string; sections: unknown[]; updatedAt: number };
