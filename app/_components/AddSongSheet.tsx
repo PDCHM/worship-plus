@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { FEATURE_ONLINE_SEARCH } from "@/lib/flags";
 
 type Props = {
   onBuildNew: () => void;
@@ -111,10 +112,15 @@ export default function AddSongSheet({ onBuildNew, onPasteChart, onAiChords, onI
             <SheetBtn onClick={() => { onBuildNew(); onClose(); }}
               icon={ICON_EDIT}
               label="Build New" desc="Start from a blank editor" />
-            <SheetBtn onClick={() => { onSearchOnline(); onClose(); }}
-              icon={ICON_GLOBE}
-              label="Search Online" badge="Beta"
-              desc="Find a song by lyrics — experimental, results vary" />
+            {/* Hidden for V1 — see FEATURE_ONLINE_SEARCH. The whole path below
+                this button (SongSearchSheet + its API) is still wired; flipping
+                the flag brings the entry point back. */}
+            {FEATURE_ONLINE_SEARCH && (
+              <SheetBtn onClick={() => { onSearchOnline(); onClose(); }}
+                icon={ICON_GLOBE}
+                label="Search Online" badge="Beta"
+                desc="Find a song by lyrics — experimental, results vary" />
+            )}
           </div>
         )}
         <div className="h-safe-area-bottom" />
