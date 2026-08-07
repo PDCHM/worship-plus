@@ -2,6 +2,18 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import OAuthButtons from "@/app/_components/OAuthButtons";
+
+// Module scope, not re-created per render (a fresh component identity each
+// render remounts its subtree).
+const Logo = () => (
+  <div className="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center mx-auto mb-5">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+    </svg>
+  </div>
+);
 
 export default function JoinPage() {
   const params = useParams();
@@ -10,7 +22,7 @@ export default function JoinPage() {
   const slotId = searchParams.get("slot");
   const router = useRouter();
   const supabase = createClient();
-  const [status, setStatus] = useState<"loading"|"found"|"notfound"|"joined"|"already"|"error"|"incomplete">("loading");
+  const [status, setStatus] = useState<"loading"|"signin"|"found"|"notfound"|"joined"|"already"|"error"|"incomplete">("loading");
   const [groupName, setGroupName] = useState("");
   const [slotName, setSlotName] = useState("");
   const [joining, setJoining] = useState(false);
@@ -20,8 +32,10 @@ export default function JoinPage() {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        const next = `/join/${token}${slotId?`?slot=${slotId}`:""}`;
-        await supabase.auth.signInWithOAuth({ provider:"google", options:{ redirectTo:`https://worshipplus.vercel.app/auth/callback?next=${encodeURIComponent(next)}` }});
+        // Ask WHICH provider instead of firing straight at Google — an invitee on
+        // an iPhone may only have an Apple ID. The sign-in card below carries the
+        // same buttons as /login and returns here via ?next=.
+        setStatus("signin");
         return;
       }
       const { data, error } = await supabase.rpc("lookup_invite", { p_token: token, p_slot: slotId });
@@ -50,19 +64,23 @@ export default function JoinPage() {
     setTimeout(() => router.replace("/app"), 1500);
   };
 
-  const Logo = () => (
-    <div className="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center mx-auto mb-5">
-      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-      </svg>
-    </div>
-  );
-
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden">
         {status==="loading" && <div className="p-8 text-center"><Logo /><h1 className="text-xl font-bold mb-2">Loading…</h1><div className="w-6 h-6 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin mx-auto mt-4" /></div>}
+        {status==="signin" && (
+          <div className="p-8 text-center">
+            <Logo />
+            <h1 className="text-xl font-bold mb-1">Sign in to join</h1>
+            <p className="text-sm text-slate-500 mb-6">You&apos;ll come straight back to this invite.</p>
+            <div className="space-y-3 text-left">
+              <OAuthButtons
+                redirectTo={`${typeof window !== "undefined" ? window.location.origin : ""}/auth/callback?next=${encodeURIComponent(`/join/${token}${slotId ? `?slot=${slotId}` : ""}`)}`}
+                onError={(m) => { if (m) { setErrorMsg(m); setStatus("error"); } }}
+              />
+            </div>
+          </div>
+        )}
         {status==="notfound" && <div className="p-8 text-center"><Logo /><h1 className="text-xl font-bold mb-2">Link not found</h1><p className="text-sm text-slate-500 mb-6">This invite link is invalid or has expired.</p><button onClick={() => router.replace("/app")} className="w-full h-10 rounded-xl bg-indigo-600 text-white text-sm font-semibold">Go to Worship+</button></div>}
         {status==="found" && (
           <div className="p-8 text-center">
