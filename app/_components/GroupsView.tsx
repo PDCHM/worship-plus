@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import type { Song } from "@/lib/song";
+import { initialsFrom, PersonGlyph } from "@/app/_components/Avatar";
 import type { Folder } from "@/app/_components/FoldersView";
 import ConfirmDialog from "@/app/_components/ConfirmDialog";
 
@@ -303,7 +304,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
               {members.map((m, idx) => (
                 <div key={m.id} className={"flex items-center gap-3 px-4 py-3 "+(idx<members.length-1?"border-b border-slate-100 dark:border-slate-800":"")}>
                   <div className="w-9 h-9 rounded-full bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400 text-sm font-semibold shrink-0">
-                    {(m.displayName?.[0]??"?").toUpperCase()}
+                    {initialsFrom(m.displayName, m.email) || <PersonGlyph />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{m.displayName ?? "Unknown"}</div>
@@ -524,7 +525,7 @@ function AddMemberModal({ groupId, suggestions, onAdd, onClose, showToast }: { g
                 {matches.map(s => (
                   <button key={s.id} type="button" onMouseDown={(e) => { e.preventDefault(); pick(s); }}
                     className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2">
-                    <span className="w-7 h-7 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 text-xs font-semibold flex items-center justify-center shrink-0">{(s.displayName?.[0] ?? "?").toUpperCase()}</span>
+                    <span className="w-7 h-7 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 text-xs font-semibold flex items-center justify-center shrink-0">{initialsFrom(s.displayName) || <PersonGlyph />}</span>
                     <span className="min-w-0">
                       <span className="block text-sm font-medium truncate">{s.displayName}</span>
                       {insLabel(s) && <span className="block text-xs text-slate-400 truncate">{insLabel(s)}</span>}

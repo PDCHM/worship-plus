@@ -12,6 +12,7 @@ import {
 } from "@/lib/offline/cache";
 import { useOnlineStatus } from "@/lib/offline/useOnlineStatus";
 import OfflineBadge from "@/app/_components/OfflineBadge";
+import Avatar from "@/app/_components/Avatar";
 import AddSongSheet from "@/app/_components/AddSongSheet";
 import PhotoImportModal from "@/app/_components/PhotoImportModal";
 import HelpModal from "@/app/_components/HelpModal";
@@ -3304,7 +3305,6 @@ function TopNav({
   useEffect(() => { setMenuOpen(false); }, [view]);
 
   const displayName = profile?.full_name || profile?.email?.split("@")[0] || "Account";
-  const initial = (profile?.full_name?.[0] ?? profile?.email?.[0] ?? "?").toUpperCase();
 
   return (
     <header className="border-b border-slate-200 dark:border-slate-800 backdrop-blur-md bg-white/80 dark:bg-slate-950/80 sticky top-0 z-30 print:hidden">
@@ -3329,11 +3329,8 @@ function TopNav({
         <div className="flex items-center gap-2 shrink-0">
           <button type="button" ref={triggerRef} onClick={() => setMenuOpen((o) => !o)}
             aria-haspopup="menu" aria-expanded={menuOpen} aria-label="User menu"
-            className="w-9 h-9 rounded-full overflow-hidden bg-gradient-to-br from-indigo-400 to-violet-500 text-white text-sm font-semibold flex items-center justify-center shadow-sm hover:ring-2 hover:ring-indigo-300 dark:hover:ring-indigo-700 transition-all">
-            {profile?.avatar_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={profile.avatar_url} alt="" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-            ) : initial}
+            className="w-9 h-9 rounded-full overflow-hidden shadow-sm hover:ring-2 hover:ring-indigo-300 dark:hover:ring-indigo-700 transition-all">
+            <Avatar url={profile?.avatar_url} name={profile?.full_name} email={profile?.email} className="w-full h-full text-sm" />
           </button>
         </div>
       </div>
@@ -3342,12 +3339,7 @@ function TopNav({
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-start sm:justify-end print:hidden">
           <div ref={panelRef} className="w-full sm:max-w-xs sm:mr-4 sm:mt-16 bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden pb-[env(safe-area-inset-bottom)]">
             <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 dark:border-slate-800">
-              <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-indigo-400 to-violet-500 text-white text-sm font-semibold flex items-center justify-center shrink-0">
-                {profile?.avatar_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={profile.avatar_url} alt="" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
-                ) : initial}
-              </div>
+              <Avatar url={profile?.avatar_url} name={profile?.full_name} email={profile?.email} className="w-10 h-10 text-sm shrink-0" />
               <div className="min-w-0">
                 <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{displayName}</div>
                 {profile?.email && <div className="text-xs text-slate-500 dark:text-slate-400 truncate">{profile.email}</div>}
