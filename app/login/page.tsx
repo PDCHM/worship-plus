@@ -6,12 +6,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import OAuthButtons from "@/app/_components/OAuthButtons";
+import EmailSignIn from "@/app/_components/EmailSignIn";
 import { cacheGetIdentity } from "@/lib/offline/cache";
 import { isPaidPlan } from "@/lib/plans";
-
-// OAuth now owns its own pending state inside OAuthButtons; this tracks only
-// the email magic-link flow.
-type LoadingState = null | "email";
 
 // Where to send the user after auth. If they arrived from a paid pricing CTA
 // (/login?plan=team), carry the plan so /app can auto-resume Stripe Checkout.
@@ -31,7 +28,6 @@ export default function LoginPage() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
-  const [loading, setLoading] = useState<LoadingState>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -68,8 +64,16 @@ export default function LoginPage() {
   }, [router]);
 
   useEffect(() => {
+    // Reasons handed back by /auth/callback. A magic link that silently does
+    // nothing is the worst failure mode there is — the user can't tell whether
+    // to wait, retry, or check a different inbox — so each case says what to do.
     const params = new URLSearchParams(window.location.search);
-    if (params.get("error") === "auth_failed") {
+    const reason = params.get("error");
+    if (reason === "link_expired") {
+      setError("That sign-in link has expired. Enter your email below for a fresh one.");
+    } else if (reason === "link_unusable") {
+      setError("That link couldn't be used — open it in the same browser you requested it from, and only once. Send yourself a new one below.");
+    } else if (reason) {
       setError("Sign-in failed. Please try again.");
     }
   }, []);
@@ -104,26 +108,6 @@ export default function LoginPage() {
       </div>
     );
   }
-
-  const handleEmail = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email.trim()) return;
-    setLoading("email");
-    setError(null);
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: {
-        emailRedirectTo: authCallbackUrl(),
-      },
-    });
-    setLoading(null);
-    if (error) {
-      setError(error.message);
-    } else {
-      setSent(true);
-    }
-  };
 
   return (
     <div className="min-h-screen flex items-center justify-center px-6 py-12 bg-gradient-to-b from-slate-50 via-white to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 text-slate-900 dark:text-slate-100">
@@ -176,7 +160,6 @@ export default function LoginPage() {
             <OAuthButtons
               redirectTo={authCallbackUrl()}
               onError={(m) => setError(m || null)}
-              disabled={loading !== null}
             />
 
             <div className="relative my-1">
@@ -190,29 +173,10 @@ export default function LoginPage() {
               </div>
             </div>
 
-            <form onSubmit={handleEmail} className="space-y-3">
-              <div>
-                <label className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  placeholder="you@example.com"
-                  autoComplete="email"
-                  className="w-full h-11 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-indigo-400 dark:focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 transition-colors text-sm"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={loading !== null || !email.trim()}
-                className="w-full h-11 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-60 disabled:cursor-not-allowed text-slate-700 dark:text-slate-200 text-sm font-medium border border-slate-200 dark:border-slate-700 transition-colors"
-              >
-                {loading === "email" ? "Sending link…" : "Sign in with Email"}
-              </button>
-            </form>
+            <EmailSignIn
+              redirectTo={authCallbackUrl()}
+              onSent={(address) => { setEmail(address); setSent(true); }}
+            />
 
             {error && (
               <p

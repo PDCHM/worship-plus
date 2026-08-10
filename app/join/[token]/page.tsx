@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import OAuthButtons from "@/app/_components/OAuthButtons";
+import EmailSignIn from "@/app/_components/EmailSignIn";
 
 // Module scope, not re-created per render (a fresh component identity each
 // render remounts its subtree).
@@ -27,6 +28,11 @@ export default function JoinPage() {
   const [slotName, setSlotName] = useState("");
   const [joining, setJoining] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  // Where every sign-in method returns to: this invite, so accepting it is the
+  // first thing that happens after auth rather than a detour via /app.
+  const joinCallbackUrl =
+    `${typeof window !== "undefined" ? window.location.origin : ""}/auth/callback` +
+    `?next=${encodeURIComponent(`/join/${token}${slotId ? `?slot=${slotId}` : ""}`)}`;
 
   useEffect(() => {
     (async () => {
@@ -75,9 +81,19 @@ export default function JoinPage() {
             <p className="text-sm text-slate-500 mb-6">You&apos;ll come straight back to this invite.</p>
             <div className="space-y-3 text-left">
               <OAuthButtons
-                redirectTo={`${typeof window !== "undefined" ? window.location.origin : ""}/auth/callback?next=${encodeURIComponent(`/join/${token}${slotId ? `?slot=${slotId}` : ""}`)}`}
+                redirectTo={joinCallbackUrl}
                 onError={(m) => { if (m) { setErrorMsg(m); setStatus("error"); } }}
               />
+              {/* An invitee is whoever the leader emailed — they may have no
+                  Google or Apple account at all, so the universal option has to
+                  be here too. The link returns to THIS invite, not to /app. */}
+              <div className="relative py-1">
+                <div className="absolute inset-0 flex items-center"><div className="w-full h-px bg-slate-200" /></div>
+                <div className="relative flex justify-center">
+                  <span className="px-2 bg-white text-[11px] text-slate-400 uppercase tracking-wider">or</span>
+                </div>
+              </div>
+              <EmailSignIn redirectTo={joinCallbackUrl} />
             </div>
           </div>
         )}
