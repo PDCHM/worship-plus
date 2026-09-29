@@ -1,6 +1,8 @@
 // Subscription plans. Shared between the UpgradeModal (display), the checkout
 // route (maps a plan → its Stripe price env var), and plan gating in the app.
 
+import { BETA_MODE } from "@/lib/flags";
+
 export type Plan = "free" | "personal" | "team" | "church";
 
 export const PAID_PLANS = ["personal", "team", "church"] as const;
@@ -98,7 +100,9 @@ export function planRank(plan: string | null | undefined): number {
 }
 
 // True if `plan` is allowed to use `feature`.
+// BETA_MODE overrides the gate (everyone gets Church-tier access).
 export function canUse(feature: Feature, plan: string | null | undefined): boolean {
+  if (BETA_MODE) return true;
   return planRank(plan) >= PLAN_RANK[FEATURE_MIN_PLAN[feature]];
 }
 
@@ -106,5 +110,5 @@ export function canUse(feature: Feature, plan: string | null | undefined): boole
 // own a team (create_team gate), so lower tiers fall through to the Team cap as
 // a safe floor; Church is unlimited.
 export function teamMemberCap(plan: string | null | undefined): number | null {
-  return (plan as Plan) === "church" ? null : 15;
+  return BETA_MODE || (plan as Plan) === "church" ? null : 15;
 }
