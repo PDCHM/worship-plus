@@ -15,6 +15,7 @@ import OfflineBadge from "@/app/_components/OfflineBadge";
 import Avatar from "@/app/_components/Avatar";
 import AddSongSheet from "@/app/_components/AddSongSheet";
 import PhotoImportModal from "@/app/_components/PhotoImportModal";
+import MultiSongImportModal from "@/app/_components/MultiSongImportModal";
 import HelpModal from "@/app/_components/HelpModal";
 import { prepareImageFile, fileToBase64 } from "@/lib/image/prepare";
 import SongSearchSheet, { type SongSearchResult } from "@/app/_components/SongSearchSheet";
@@ -48,6 +49,8 @@ import {
   mergeSectionStyles,
   parseSongText,
   parseSbp,
+  splitMultiSongText,
+  songSignature,
   markSongOpened,
   uid,
   KEYS,
@@ -625,6 +628,11 @@ export default function Home() {
   // Import-from-photo (Claude vision). Separate hidden input (images only) + a
   // busy flag for the full-screen "reading photo" overlay.
   const [photoModalOpen, setPhotoModalOpen] = useState(false);
+  // Multi-song files (a songbook PDF) awaiting review before save. A queue so a
+  // batch import of several such files reviews them one at a time.
+  const [pendingSplits, setPendingSplits] = useState<
+    { fileName: string; songs: Song[]; wholeText: string; linkTarget: string | null }[]
+  >([]);
   // Help / icon legend — display only, opened from the user menu.
   const [helpOpen, setHelpOpen] = useState(false);
   const [importingPhoto, setImportingPhoto] = useState(false);
@@ -2190,6 +2198,7 @@ export default function Home() {
     const TEXT_EXTS = ["txt", "chopro", "cho", "onsong"];
     const EXTRACT_EXTS = ["docx", "pdf", "pptx", "sbp", "sbpbackup", "rtf"];
     let text: string;
+    let pdfPages: string[] | undefined;
     try {
       if (TEXT_EXTS.includes(ext)) {
         text = await file.text();
@@ -2203,6 +2212,7 @@ export default function Home() {
           return;
         }
         text = String(data.text ?? "");
+        if (Array.isArray(data.pages)) pdfPages = data.pages.map((p: unknown) => String(p ?? ""));
       } else {
         showToast(`.${ext} import isn't supported`);
         return;
@@ -2223,11 +2233,7 @@ export default function Home() {
       // Dedup by name + normalized content against the existing library so a
       // re-import doesn't double-add. The signature ignores ids/timestamps and
       // keys on title + each line's lyric + chord names.
-      const sig = (s: Song) =>
-        s.title.trim().toLowerCase() + " " +
-        s.sections
-          .map((sec) => sec.lines.map((l) => l.lyric.trim() + "|" + l.chords.map((c) => c.chord).join(" ")).join("\n"))
-          .join("\n");
+      const sig = songSignature;
       const existingBySig = new Map<string, string>();
       for (const s of songs) existingBySig.set(sig(s), s.id);
 
@@ -2339,6 +2345,19 @@ export default function Home() {
       return;
     }
 
+    // Multi-song PDF (a songbook / setlist printout): split on song boundaries
+    // recovered from the page text, then let the user review before saving.
+    // One detected song → the cleaned chunk falls through to the normal path.
+    if (ext === "pdf" && pdfPages) {
+      const chunks = splitMultiSongText(pdfPages);
+      if (chunks.length > 1) {
+        const parsedSongs = chunks.map((c) => parseSongText(c));
+        setPendingSplits((prev) => [...prev, { fileName: file.name, songs: parsedSongs, wholeText: text, linkTarget }]);
+        return;
+      }
+      if (chunks.length === 1) text = chunks[0];
+    }
+
     try {
       const parsed = { ...parseSongText(text), userId: user?.id };
       hydratedIdsRef.current.add(parsed.id);
@@ -2361,6 +2380,66 @@ export default function Home() {
       }
     } catch {
       showToast("Could not parse file");
+    }
+  };
+
+  // Confirm handler for the multi-song review sheet. Mirrors the .sbp multi-song
+  // path: dedup against the library by content signature, add the new songs,
+  // persist, then link every resolved song to the folder/setlist the import
+  // was launched from (in order).
+  const importReviewedSongs = async (
+    pending: { linkTarget: string | null },
+    chosen: Song[],
+  ) => {
+    setPendingSplits((prev) => prev.slice(1));
+    const existingBySig = new Map<string, string>();
+    for (const s of songs) existingBySig.set(songSignature(s), s.id);
+    const toCreate: Song[] = [];
+    const resolvedIds: string[] = [];
+    for (const song of chosen) {
+      const now = Date.now();
+      const stamped: Song = { ...song, userId: user?.id, favorite: false, createdAt: now, updatedAt: now };
+      const sig = songSignature(stamped);
+      const existingId = existingBySig.get(sig);
+      if (existingId) { resolvedIds.push(existingId); continue; }
+      const fresh: Song = { ...stamped, id: uid() };
+      toCreate.push(fresh);
+      existingBySig.set(sig, fresh.id);
+      resolvedIds.push(fresh.id);
+    }
+    for (const s of toCreate) hydratedIdsRef.current.add(s.id);
+    if (toCreate.length) setSongs((prev) => [...toCreate, ...prev]);
+
+    let failed = 0;
+    if (user) {
+      for (const s of toCreate) {
+        try { const r = await saveSongToDb(supabase, s, user.id); if (!r.ok) failed++; } catch { failed++; }
+      }
+      await linkSongsToTarget(pending.linkTarget, resolvedIds);
+    }
+    const reused = resolvedIds.length - toCreate.length;
+    showToast(
+      `Imported ${toCreate.length} song${toCreate.length === 1 ? "" : "s"}` +
+        (reused ? ` (${reused} already in library)` : "") +
+        " — PDF import is best-effort; chords & sections may need touch-up",
+    );
+    if (failed) showToast(`${failed} of ${toCreate.length} songs failed to save`);
+    if (resolvedIds.length === 1) navigateTo({ kind: "editor", songId: resolvedIds[0] });
+    else navigateTo({ kind: "library", filter: "all" });
+  };
+
+  // "Import as one song instead" — the pre-split behaviour, for when the split
+  // guessed wrong.
+  const importSplitAsOne = async (pending: { wholeText: string; linkTarget: string | null }) => {
+    setPendingSplits((prev) => prev.slice(1));
+    const parsed = { ...parseSongText(pending.wholeText), userId: user?.id };
+    hydratedIdsRef.current.add(parsed.id);
+    setSongs((prev) => [parsed, ...prev]);
+    navigateTo({ kind: "editor", songId: parsed.id });
+    showToast(`Imported "${parsed.title}"`);
+    if (user) {
+      await saveSongToDb(supabase, parsed, user.id);
+      await linkSongsToTarget(pending.linkTarget, [parsed.id]);
     }
   };
 
@@ -2861,6 +2940,18 @@ export default function Home() {
       {/* Photo import — staging sheet (add one or several pages), then vision. */}
       {photoModalOpen && (
         <PhotoImportModal onClose={() => setPhotoModalOpen(false)} onImport={importFromPhotos} busy={importingPhoto} />
+      )}
+
+      {/* Multi-song file import — review the detected songs before saving. */}
+      {pendingSplits[0] && (
+        <MultiSongImportModal
+          key={pendingSplits[0].fileName + pendingSplits[0].songs[0]?.id}
+          fileName={pendingSplits[0].fileName}
+          songs={pendingSplits[0].songs}
+          onImport={(chosen) => void importReviewedSongs(pendingSplits[0], chosen)}
+          onImportAsOne={() => void importSplitAsOne(pendingSplits[0])}
+          onClose={() => setPendingSplits((prev) => prev.slice(1))}
+        />
       )}
 
       {/* Full-screen "reading photo" overlay — only when the staging sheet isn't

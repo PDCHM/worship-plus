@@ -90,6 +90,16 @@ export async function extractPptx(buf: ArrayBuffer): Promise<string> {
 // character columns using the page's left margin + an estimated char width, so
 // a chord row's chords land roughly above the words beneath them.
 export async function extractPdf(buf: ArrayBuffer): Promise<string> {
+  return joinPdfPages(await extractPdfPages(buf));
+}
+
+export function joinPdfPages(pages: string[]): string {
+  return pages.join("\n\n").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+// One string per page, kept separate so the client can use page breaks as
+// song-boundary hints for multi-song PDFs (splitMultiSongText in lib/song.ts).
+export async function extractPdfPages(buf: ArrayBuffer): Promise<string[]> {
   const { getDocumentProxy } = await import("unpdf");
   const pdf = await getDocumentProxy(new Uint8Array(buf));
   type Tok = { x: number; y: number; str: string; w: number };
@@ -129,7 +139,7 @@ export async function extractPdf(buf: ArrayBuffer): Promise<string> {
     });
     pages.push(lineStrs.join("\n"));
   }
-  return pages.join("\n\n").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  return pages;
 }
 
 // RTF — strip control words/groups to recover plain text.

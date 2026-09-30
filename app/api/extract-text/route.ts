@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
-import { extractDocx, extractPptx, extractPdf, extractRtf, extractSbp } from "@/lib/extract-text";
+import { extractDocx, extractPptx, extractPdfPages, joinPdfPages, extractRtf, extractSbp } from "@/lib/extract-text";
 
 // Extracts plain text from uploaded song files so the client can parse them
 // with the normal chord-chart parser. Binary/zip formats (docx, pptx, pdf, sbp)
@@ -37,9 +37,11 @@ export async function POST(request: Request) {
   const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
   try {
     let text = "";
+    // PDFs also return per-page text so the client can split multi-song PDFs.
+    let pages: string[] | undefined;
     if (ext === "docx") text = await extractDocx(await file.arrayBuffer());
     else if (ext === "pptx") text = await extractPptx(await file.arrayBuffer());
-    else if (ext === "pdf") text = await extractPdf(await file.arrayBuffer());
+    else if (ext === "pdf") { pages = await extractPdfPages(await file.arrayBuffer()); text = joinPdfPages(pages); }
     else if (ext === "sbp" || ext === "sbpbackup") text = await extractSbp(await file.arrayBuffer());
     else if (ext === "rtf") text = extractRtf(await file.text());
     else if (ext === "txt" || ext === "worship") text = await file.text();
@@ -48,7 +50,7 @@ export async function POST(request: Request) {
     if (!text.trim()) {
       return NextResponse.json({ error: "No readable text found in the file." }, { status: 422 });
     }
-    return NextResponse.json({ text });
+    return NextResponse.json(pages ? { text, pages } : { text });
   } catch (error) {
     console.error("[extract-text] failed", ext, error);
     Sentry.captureException(error);

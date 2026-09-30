@@ -1438,6 +1438,177 @@ export function parseSongText(text: string): Song {
   };
 }
 
+// ─── Multi-song text split (PDF) ─────────────────────────────────────────────
+// A .sbp carries an explicit song list, so it splits for free. A PDF is just
+// text, so a songbook-style PDF (4–5 songs back to back) came in as ONE merged
+// song. splitMultiSongText recovers the boundaries from the page text before
+// each chunk goes through the normal parseSongText.
+//
+// ERRS TOWARD NOT SPLITTING — a false split chops a real song in two, which is
+// worse than a merge the user can still see. Signals, strongest first:
+//   1) ChordPro: 2+ {title:}/{t:}/{new_song} directives → split before each.
+//   2) Page start: a page whose first line is title-like AND is followed (before
+//      any chord row) by a metadata line (Key:/Tempo/CCLI/"by …") or a section
+//      label starts a new song. A first line that repeats the current song's
+//      title is a running header (continuation page) and is dropped instead.
+//   3) Mid-page: a title-like line followed within 3 lines by a METADATA line —
+//      the header block of a song that starts partway down a page. A section
+//      label alone is NOT enough here (a Title-Cased lyric can precede "Chorus").
+// Footer/metadata lines (CCLI, ©, page numbers, Key/Tempo/Time, "Words and
+// Music by") are never lyrics, so they're stripped from every chunk.
+
+const PDF_META_LINE =
+  /^(?:key(?:\s+of\s|\s*[:\-–=|])|(?:tempo|bpm|time(?:\s+signature)?|capo|ccli(?:\s+song)?)\s*[:\-–=#|]|(?:words\s*(?:and|&)\s*music|music\s*(?:and|&)\s*words|words|music|lyrics|written)\s+by\b|by\s+\S)/i;
+const PDF_FOOTER_LINE =
+  /^(?:©|\(c\)\s|copyright\b|ccli\b|for use solely|all rights reserved|used by permission|admin(?:\.|istered)?\s+by\b|page\s+\d+(?:\s+of\s+\d+)?$|-?\s*\d{1,3}\s*-?$)/i;
+const CHORDPRO_SONG_START = /^\s*\{(?:title|t|new_song|ns)\s*[:}]/i;
+
+function isTitleLike(line: string): boolean {
+  const t = line.trim();
+  if (t.length < 2 || t.length > 60) return false;
+  if (isChordLine(t) || detectInlineSectionLabel(t) || /^\s*\[[^\]]+\]\s*$/.test(t)) return false;
+  if (PDF_META_LINE.test(t) || PDF_FOOTER_LINE.test(t)) return false;
+  if (/[,;:]$/.test(t)) return false;
+  if (containsCjk(t)) return t.length <= 24;
+  const words = t.split(/\s+/).filter((w) => /[A-Za-z0-9]/.test(w));
+  if (words.length > 10) return false;
+  const letters = t.replace(/[^A-Za-z]/g, "");
+  if (letters && letters === letters.toUpperCase()) return true; // ALL CAPS title
+  // Title Case: every significant word (4+ letters) is capitalised. A lyric
+  // line ("You are here moving in our midst") fails this.
+  const significant = words.filter((w) => w.replace(/[^A-Za-z]/g, "").length >= 4);
+  if (!significant.length) return /^[A-Z0-9]/.test(t);
+  return significant.every((w) => /^[^A-Za-z]*[A-Z]/.test(w));
+}
+
+const normTitle = (s: string) =>
+  s.toLowerCase().replace(/\(?\s*(?:cont(?:inued|'d|\.)?|page\s*\d+(?:\s*of\s*\d+)?)\s*\)?/g, "").replace(/[^\p{L}\p{N}]+/gu, "");
+
+// Does a song header start at lines[i]? `pageStart` enables the section-label
+// signal (see signal 2 vs 3 above); `metaBefore` = a metadata line sits right
+// above this line (charts that print "Key: D" ABOVE the title).
+function songStartsAt(lines: string[], i: number, pageStart: boolean, metaBefore: boolean): boolean {
+  if (!isTitleLike(lines[i])) return false;
+  if (metaBefore) return true;
+  const lookahead = pageStart ? 4 : 3;
+  for (let j = i + 1; j < lines.length && j <= i + lookahead; j++) {
+    const t = lines[j].trim();
+    if (PDF_META_LINE.test(t)) return true;
+    if (isChordLine(t)) return false;
+    if (pageStart && (detectInlineSectionLabel(t) || /^\s*\[[^\]]+\]\s*$/.test(t))) return true;
+  }
+  return false;
+}
+
+// A printed "Key: D" / "Key - Bb" header → a KEYS value, or null (minor or
+// unrecognised keys are left to chord-based detection).
+function metaKey(line: string): string | null {
+  const m = line.trim().match(/^key\s*(?:of\s+)?[:\-–=|]?\s*([A-G])\s*([#b♯♭])?(?![A-Za-z#])/i);
+  if (!m) return null;
+  const acc = m[2] ? (m[2] === "#" || m[2] === "♯" ? "#" : "b") : "";
+  const key = m[1].toUpperCase() + acc;
+  return (KEYS as readonly string[]).includes(key) ? key : null;
+}
+
+// `pages` = one string per PDF page (a single-element array is fine for other
+// sources). Returns one text chunk per detected song, ready for parseSongText;
+// always at least one chunk when there's any text. A printed key header is
+// carried as a {key:} directive so the author's key wins over detection.
+export function splitMultiSongText(pages: string[]): string[] {
+  const all = pages.join("\n");
+  const cpStarts = all.split("\n").filter((l) => CHORDPRO_SONG_START.test(l)).length;
+  if (cpStarts >= 2) {
+    const out: string[][] = [];
+    for (const l of all.split("\n")) {
+      if (CHORDPRO_SONG_START.test(l) || !out.length) out.push([]);
+      out[out.length - 1].push(l);
+    }
+    return out.map((c) => c.join("\n").trim()).filter(Boolean);
+  }
+
+  type Chunk = { lines: string[]; key: string | null };
+  const songs: Chunk[] = [];
+  let cur: Chunk = { lines: [], key: null };
+  let curTitle = "";
+
+  pages.forEach((page, p) => {
+    const lines = page.split("\n").filter((l) => l.trim() && !PDF_FOOTER_LINE.test(l.trim()));
+    let i = 0;
+    let pageStart = p > 0 && cur.lines.length > 0;
+    // Running header: continuation pages often repeat the song title.
+    if (pageStart) {
+      while (i < lines.length && curTitle && normTitle(lines[i]) && normTitle(lines[i]).startsWith(normTitle(curTitle))) i++;
+    }
+    let metaKeys: (string | null)[] = []; // metadata lines seen since the last content line
+    for (; i < lines.length; i++) {
+      const t = lines[i].trim();
+      if (PDF_META_LINE.test(t)) { metaKeys.push(metaKey(t)); continue; }
+      // Mid-page song start: only once the current song has a real body (a
+      // chord row / section label, or 4+ lines), so a title/artist/album
+      // header block never splits against itself.
+      const hasBody = cur.lines.length >= 4 || cur.lines.some((c) => isChordLine(c) || !!detectInlineSectionLabel(c));
+      if ((pageStart || hasBody) && cur.lines.length && songStartsAt(lines, i, pageStart, metaKeys.length > 0)) {
+        songs.push(cur);
+        cur = { lines: [], key: null };
+      }
+      pageStart = false;
+      if (!cur.lines.length) curTitle = t;
+      // Metadata above/inside the header belongs to the song it precedes.
+      if (!cur.key && cur.lines.length < 4) cur.key = metaKeys.find((k) => k) ?? null;
+      metaKeys = [];
+      cur.lines.push(lines[i]);
+    }
+    // Trailing metadata (e.g. "Key: G" right under a title that ends a page).
+    if (!cur.key && cur.lines.length < 4) cur.key = metaKeys.find((k) => k) ?? null;
+  });
+  if (cur.lines.length) songs.push(cur);
+  return songs
+    .map((c) => {
+      const { lines, directives } = tidySongHeader(c.lines);
+      if (c.key) directives.unshift(`{key: ${c.key}}`);
+      return [...directives, ...lines].join("\n").trim();
+    })
+    .filter(Boolean);
+}
+
+// Header tidy for one split song, so the header block doesn't become a bogus
+// leading "Verse 1": the line right under the title becomes {artist:} when it
+// reads like a name (Title-Cased) and is followed by a section label / flow
+// line / another header line rather than a chord row; a SongBook-style flow
+// line ("Intro, V1, C, V2, C, B") in the header is dropped.
+function tidySongHeader(lines: string[]): { lines: string[]; directives: string[] } {
+  const directives: string[] = [];
+  if (!lines.length || !isTitleLike(lines[0])) return { lines, directives };
+  const out = [lines[0]];
+  let k = 1;
+  const next = lines[1]?.trim() ?? "";
+  const after = lines[2]?.trim() ?? "";
+  if (
+    next && isTitleLike(next) && !looksLikeSbpFlowLine(next) &&
+    (!!detectInlineSectionLabel(after) || looksLikeSbpFlowLine(after) || isTitleLike(after))
+  ) {
+    directives.push(`{artist: ${next}}`);
+    k = 2;
+  }
+  for (; k < lines.length; k++) {
+    if (k <= 3 && looksLikeSbpFlowLine(lines[k].trim())) continue;
+    out.push(lines[k]);
+  }
+  return { lines: out, directives };
+}
+
+// Content signature for import dedup — title + every line's lyric + chord
+// names, ignoring ids/timestamps. Shared by the .sbp and multi-song PDF paths
+// so re-importing the same file doesn't double-add songs.
+export function songSignature(s: Song): string {
+  return (
+    s.title.trim().toLowerCase() + "\u0000" +
+    s.sections
+      .map((sec) => sec.lines.map((l) => l.lyric.trim() + "|" + l.chords.map((c) => c.chord).join(" ")).join("\n"))
+      .join("\n")
+  );
+}
+
 // ─── SongBook Pro (.sbp) ─────────────────────────────────────────────────────
 // An .sbp is a ZIP; the extract-text route unzips it and hands us the raw
 // dataFile.txt — a version line ("1.0") then a JSON object
