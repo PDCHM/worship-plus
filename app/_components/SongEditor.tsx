@@ -1699,19 +1699,32 @@ export default function SongEditor({
   // opened FROM A SETLIST (setlistContext present), cross to the adjacent song —
   // which remounts SongEditor still in present mode (see initialPresenting) at the
   // top. Standalone songs (no setlistContext) just clamp — Stage 1 behavior.
-  const goNext = () => {
+  // `allowCross` = false keeps a HELD pedal (key auto-repeat) scrolling within
+  // the song without tumbling through the setlist at the end.
+  const goNext = (allowCross = true) => {
     const el = rootRef.current;
     if (!el) return;
     const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 4;
-    if (atBottom && setlistContext?.onNext) { setlistContext.onNext(); return; }
+    if (atBottom && allowCross && setlistContext?.onNext) { setlistContext.onNext(); return; }
     el.scrollBy({ top: Math.round(el.clientHeight * 0.85), behavior: "smooth" });
   };
-  const goPrev = () => {
+  const goPrev = (allowCross = true) => {
     const el = rootRef.current;
     if (!el) return;
     const atTop = el.scrollTop <= 4;
-    if (atTop && setlistContext?.onPrev) { setlistContext.onPrev(); return; }
+    if (atTop && allowCross && setlistContext?.onPrev) { setlistContext.onPrev(); return; }
     el.scrollBy({ top: -Math.round(el.clientHeight * 0.85), behavior: "smooth" });
+  };
+  // Direct song change (pedal Left/Right). Inside a setlist: jump to the
+  // adjacent song wherever we are in this one. A standalone song has no
+  // neighbours, so the same pedal pages through it instead of doing nothing.
+  const goNextSong = () => {
+    if (setlistContext) { setlistContext.onNext?.(); return; }
+    goNext();
+  };
+  const goPrevSong = () => {
+    if (setlistContext) { setlistContext.onPrev?.(); return; }
+    goPrev();
   };
   // The present-mode keydown listener is subscribed once per session (deps:
   // [presenting]); route it through these refs so it always invokes the CURRENT
@@ -1719,8 +1732,12 @@ export default function SongEditor({
   // setlistContext, the listener would keep calling a stale closure.
   const goNextRef = useRef(goNext);
   const goPrevRef = useRef(goPrev);
+  const goNextSongRef = useRef(goNextSong);
+  const goPrevSongRef = useRef(goPrevSong);
   goNextRef.current = goNext;
   goPrevRef.current = goPrev;
+  goNextSongRef.current = goNextSong;
+  goPrevSongRef.current = goPrevSong;
 
   // Slim controls: reveal + auto-hide after 3s; tapping the chart toggles them.
   const revealControls = () => {
@@ -1778,16 +1795,33 @@ export default function SongEditor({
         revealControls();
       }
     };
-    // Keyboard / page-turner navigation (desktop + Bluetooth pedals that emulate
-    // PageUp/PageDown). All routed through goNext/goPrev (scroll + setlist cross).
-    // preventDefault stops the browser also scrolling the page on Space/arrows.
+    // Keyboard + Bluetooth foot pedals. Pedals (AirTurn, PageFlip, Donner…)
+    // present as a keyboard, so the keys below ARE pedal support:
+    //   SCROLL ~one screen (85%)  ↓ ArrowDown · PageDown · Space   ↑ ArrowUp · PageUp
+    //     — at the very end/start of a setlist song this continues to the
+    //       next/previous song, so a single scroll pedal can run a whole set;
+    //   CHANGE SONG               → ArrowRight = next   ← ArrowLeft = previous
+    //   Esc exits performance mode.
+    // preventDefault stops the browser also scrolling the page / activating a
+    // focused button on Space and arrows.
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") { exitPresent(); return; }
-      if (e.key === "ArrowRight" || e.key === "ArrowDown" || e.key === "PageDown" || e.key === " " || e.key === "Spacebar") {
-        e.preventDefault(); goNextRef.current(); return;
-      }
-      if (e.key === "ArrowLeft" || e.key === "ArrowUp" || e.key === "PageUp") {
-        e.preventDefault(); goPrevRef.current(); return;
+      // Never hijack typing (an input/select in the header or a dialog over the
+      // chart) or browser/OS shortcuts (Cmd/Ctrl/Alt + arrow).
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      switch (e.key) {
+        case "ArrowDown": case "PageDown": case " ": case "Spacebar":
+          e.preventDefault(); goNextRef.current(!e.repeat); return;
+        case "ArrowUp": case "PageUp":
+          e.preventDefault(); goPrevRef.current(!e.repeat); return;
+        // Song change ignores auto-repeat: a pedal held a beat too long must
+        // not skip several songs.
+        case "ArrowRight":
+          e.preventDefault(); if (!e.repeat) goNextSongRef.current(); return;
+        case "ArrowLeft":
+          e.preventDefault(); if (!e.repeat) goPrevSongRef.current(); return;
       }
     };
     document.addEventListener("fullscreenchange", onFsChange);
