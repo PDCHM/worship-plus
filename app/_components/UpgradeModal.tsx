@@ -1,5 +1,6 @@
 "use client";
 
+import { backdropDismiss } from "@/lib/backdropDismiss";
 import { useState } from "react";
 import { UPGRADE_PLANS, PLANS, type Plan } from "@/lib/plans";
 
@@ -46,7 +47,7 @@ export default function UpgradeModal({ currentPlan, userId, userEmail, reason, o
   };
 
   return (
-    <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" {...backdropDismiss(onClose)}>
       <div className="w-full sm:max-w-2xl bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden max-h-[92vh] overflow-y-auto pb-[env(safe-area-inset-bottom)]" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800">
           <div>

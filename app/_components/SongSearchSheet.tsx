@@ -1,5 +1,6 @@
 "use client";
 
+import { backdropDismiss } from "@/lib/backdropDismiss";
 import { useState } from "react";
 
 export type SongSearchResult = {
@@ -90,7 +91,7 @@ export default function SongSearchSheet({ findInLibrary, onOpenExisting, onCreat
   const existingId = result?.found ? findInLibrary(result.title) : null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4" {...backdropDismiss(onClose)}>
       <div className="w-full sm:max-w-md bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden flex flex-col max-h-[88vh]" onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">

@@ -1,5 +1,6 @@
 "use client";
 
+import { backdropDismiss } from "@/lib/backdropDismiss";
 import { useEffect, useState } from "react";
 
 export type SongLink = {
@@ -65,7 +66,7 @@ function PlayerModal({ videoId, title, onClose }: { videoId: string; title: stri
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6" {...backdropDismiss(onClose)}>
       <div className="w-full max-w-3xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between gap-3 mb-2">
           <span className="text-sm font-medium text-white/90 truncate">{title}</span>

@@ -1,5 +1,6 @@
 "use client";
 
+import { backdropDismiss } from "@/lib/backdropDismiss";
 import { useState } from "react";
 import { FEATURE_ONLINE_SEARCH } from "@/lib/flags";
 
@@ -47,7 +48,7 @@ export default function AddSongSheet({ onBuildNew, onPasteChart, onAiChords, onI
   const subOpen = pasteSubOpen || importSubOpen;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4" {...backdropDismiss(onClose)}>
       <div className="w-full sm:max-w-sm bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-1.5">

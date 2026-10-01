@@ -1,5 +1,6 @@
 "use client";
 
+import { backdropDismiss } from "@/lib/backdropDismiss";
 import { useEffect, useRef, useState } from "react";
 import type { Song } from "@/lib/song";
 import ConfirmDialog from "@/app/_components/ConfirmDialog";
@@ -943,7 +944,7 @@ function SetlistDetail({
       {linksSong && (() => {
         const s = currentSongs.find((x) => x.id === linksSong.id);
         return (
-          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={() => setLinksSong(null)}>
+          <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" {...backdropDismiss(() => setLinksSong(null))}>
             <div className="w-full sm:max-w-md bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl max-h-[85vh] overflow-y-auto pb-[env(safe-area-inset-bottom)]" onClick={(e) => e.stopPropagation()}>
               <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
                 <span className="font-semibold text-sm truncate pr-2">{s?.title?.trim() || "References"}</span>
@@ -1060,7 +1061,7 @@ function AddEventModal({ type, defaultLabel, defaultDate, edit, onSave, onClose 
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" {...backdropDismiss(onClose)}>
       <div className="w-full sm:max-w-sm bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl max-h-[90vh] overflow-y-auto pb-[env(safe-area-inset-bottom)]" onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <span className="font-semibold text-sm">{edit ? "Edit schedule item" : "Add to schedule"}</span>

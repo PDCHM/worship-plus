@@ -1,4 +1,5 @@
 "use client";
+import { backdropDismiss } from "@/lib/backdropDismiss";
 import { useState } from "react";
 import type { Song } from "@/lib/song";
 import { initialsFrom, PersonGlyph } from "@/app/_components/Avatar";
@@ -503,7 +504,7 @@ function AddMemberModal({ groupId, suggestions, onAdd, onClose, showToast }: { g
     onClose();
   };
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" {...backdropDismiss(onClose)}>
       <div className="w-full sm:max-w-sm bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800">
           <h3 className="font-semibold text-sm">Add Member</h3>
