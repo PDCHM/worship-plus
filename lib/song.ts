@@ -1104,7 +1104,9 @@ export function buildChordLine(chords: Chord[], lyric: string, pxPerChar = 1): s
     // two columns, which is what keeps the chord sitting over its character
     // instead of drifting left as the line goes on.
     const col = pxPerChar === 1 ? displayColumn(lyric, p.col) : p.col / pxPerChar;
-    const target = Math.max(displayWidth(result) + 1, Math.round(col));
+    // ≥1-space gap from the previous label; the FIRST chord sits at its exact
+    // column (a chord over the first word belongs at column 0, not 1).
+    const target = result ? Math.max(displayWidth(result) + 1, Math.round(col)) : Math.max(0, Math.round(col));
     result = result.padEnd(result.length + Math.max(0, target - displayWidth(result))) + p.chord;
   }
   return result;
@@ -2118,23 +2120,6 @@ function detectInlineSectionLabel(text: string): string | null {
   return null;
 }
 
-function isChordLikeToken(t: string): boolean {
-  return CHORD_TOKEN.test(t);
-}
-
-function isPastedChordLine(text: string): boolean {
-  const tokens = text.trim().split(/\s+/).filter(Boolean);
-  if (tokens.length === 0) return false;
-  if (!tokens.every(isChordLikeToken)) return false;
-  if (tokens.length === 1) return true;
-  // Multi-token: typical chord-above-lyric spacing has 2+ space gaps,
-  // OR tokens contain distinctly chord-shaped chars (digits / # / b accidental / slash).
-  if (/\S\s{2,}\S/.test(text)) return true;
-  return tokens.some(
-    (t) => /[0-9#/]/.test(t) || /^[A-G]b/.test(t),
-  );
-}
-
 function chordPositionsFromLine(chordLine: string, maxLen?: number): Chord[] {
   const result: Chord[] = [];
   const re = /\S+/g;
@@ -2167,12 +2152,239 @@ function chordPositionsFromLine(chordLine: string, maxLen?: number): Chord[] {
   return result;
 }
 
+// ─── Paste-song parser ──────────────────────────────────────────────────────
+// Turns a pasted chord chart into the app's word-anchored chord-over-lyric
+// model (each chord = wordIndex + sub-word offset, exactly what the editor and
+// print renderers draw). Detected formats, per line/run:
+//   chordpro     "[C]Bless the [G]Lord"            → chord at the bracket's spot
+//   chords-above chord row spaced over a lyric row  → chord at its display column
+//   interleaved  web copy: each chord on its OWN line between lyric fragments
+//                ("Bless the / C / Lord O my / G / soul") → fragments rejoined
+//                into flowing lines, chord over the fragment it preceded
+//   inline       chord tokens mixed into the lyric ("Bless the C Lord O my G soul")
+//                → chord over the word that follows it
+//   chord-only   "C // G // D/F# // Em" → one chord row, spacing kept
+// plus section headers ("Verse 1", "[Chorus]", "Intro:", "Chorus: C G D") and
+// ChordPro directives ({title:}, {c: Bridge}, {soc}).
+export type PasteFormat = "chordpro" | "chords-above" | "interleaved" | "inline" | "chord-only";
+
+// Tokens on a chord-only row that are NOT chords: beat slashes, bar lines,
+// dashes, dots, repeat counts ("x2", "(2x)"), "N.C." and the % repeat sign.
+const PASTE_FILLER = /^(?:[/|\\\-–—.:%*~]+|\(?(?:x\s*\d+|\d+\s*x)\)?|\(?n\.?c\.?\)?|[()])$/i;
+
+// Web copies carry non-breaking spaces (chord alignment via &nbsp;), zero-width
+// joiners and tabs. Normalise so columns and token splits are reliable.
+function cleanPasteLine(l: string): string {
+  return l.replace(/ /g, " ").replace(/[​-‍⁠﻿]/g, "").replace(/\t/g, "    ").replace(/\s+$/, "");
+}
+
+// A token → chord name, or null. Accepts "(G)", "C(add9)" and unicode ♯/♭.
+function pasteChordName(tok: string): string | null {
+  const t = normalizeChordName(tok.replace(/^\(+|\)+$/g, "").replace(/[()]/g, ""));
+  return t && isValidChord(t) ? t : null;
+}
+
+// Chords on a chord-only row with their columns, or null if any token is a
+// real word (→ not a chord row). Separator-joined chords ("Dsus|C", "Am7–D")
+// are split, each keeping its own column.
+function pasteChordRow(line: string): { chord: string; col: number }[] | null {
+  const out: { chord: string; col: number }[] = [];
+  let filler = false;
+  const re = /\S+/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(line)) !== null) {
+    if (PASTE_FILLER.test(m[0])) { filler = true; continue; }
+    const partRe = /[^|–—]+/g;
+    let p: RegExpExecArray | null;
+    while ((p = partRe.exec(m[0])) !== null) {
+      if (PASTE_FILLER.test(p[0])) { filler = true; continue; }
+      const name = pasteChordName(p[0]);
+      if (!name) return null;
+      out.push({ chord: name, col: m.index + p.index });
+    }
+  }
+  if (!out.length) return null;
+  if (out.length === 1 && !filler) return out;
+  // Several bare chords: require something chord-row-shaped so a lyric made of
+  // capital letters can't qualify — wide spacing, a beat/bar filler, or a token
+  // that only a chord would have (digit, #, slash, m, sus, flat).
+  if (filler || /\S\s{2,}\S/.test(line.trim())) return out;
+  if (out.some((c) => /[0-9#/]|m|sus|add|dim|aug|^[A-G]b/.test(c.chord))) return out;
+  return null;
+}
+
+// Display column (CJK glyph = 2) → character index into `s`. A column inside a
+// wide glyph maps to that glyph; past the end, one column per character.
+function charIndexAtDisplayCol(s: string, col: number): number {
+  let w = 0;
+  let i = 0;
+  for (const ch of s) {
+    const cw = displayWidth(ch);
+    if (col < w + cw) return i;
+    w += cw;
+    i += ch.length;
+  }
+  return i + Math.max(0, col - w);
+}
+
+// Character positions → word-anchored chords (wordIndex + sub-word offset),
+// strictly increasing so no two chords collapse onto one spot. Positions past
+// the lyric end stay there (offset beyond the last word), as in the editor.
+function anchorPasteChords(lyric: string, placed: { chord: string; idx: number }[]): Chord[] {
+  const hasWords = tokenizeWords(lyric).length > 0;
+  let last = -1;
+  return [...placed]
+    .sort((a, b) => a.idx - b.idx)
+    .map(({ chord, idx }) => {
+      const pos = Math.max(Math.max(0, Math.round(idx)), last + 1);
+      last = pos;
+      if (!hasWords) return { id: uid(), pos, chord };
+      const wi = findNearestWordIndex(pos, lyric);
+      return { id: uid(), pos, chord, wordIndex: wi, offset: Math.max(0, pos - wordStartOffset(lyric, wi)) };
+    });
+}
+
+// Chord row over a lyric row. Columns are DISPLAY columns (what the author saw
+// in a monospace view; a CJK glyph is two wide — the same convention the print
+// renderer pads by), converted to character indices against the lyric. The
+// lyric's leading indent is dropped and the chord columns shifted with it.
+function pairChordRow(row: { chord: string; col: number }[], rawLyric: string): Line {
+  const lead = rawLyric.length - rawLyric.trimStart().length;
+  const lyric = rawLyric.trim();
+  const placed = row.map((c) => ({ chord: c.chord, idx: charIndexAtDisplayCol(lyric, Math.max(0, c.col - lead)) }));
+  return { id: uid(), lyric, chords: anchorPasteChords(lyric, placed) };
+}
+
+function chordOnlyLine(row: { chord: string; col: number }[]): Line {
+  return { id: uid(), lyric: "", chords: anchorPasteChords("", row.map((c) => ({ chord: c.chord, idx: c.col }))) };
+}
+
+// Chord tokens mixed into a lyric line → each chord over the word after it.
+// "A" is ambiguous (article vs chord), so it only counts as a chord when it
+// isn't followed by a lowercase word ("A mighty fortress" stays a lyric).
+function inlineChordLine(line: string): Line | null {
+  const toks = line.trim().split(/\s+/);
+  const isChordAt = (k: number): boolean => {
+    const name = pasteChordName(toks[k]);
+    if (!name) return false;
+    if (name === "A") return !/^[a-z]/.test(toks[k + 1] ?? "");
+    return true;
+  };
+  const flags = toks.map((_, k) => isChordAt(k));
+  const nChords = flags.filter(Boolean).length;
+  const nWords = toks.length - nChords;
+  // Need real lyric words AND a confident chord presence — at least two chord
+  // tokens, or one that's unmistakably a chord (not a lone capital letter).
+  const strong = toks.some((t, k) => flags[k] && /[0-9#/]|m|sus|add|dim|aug|^[A-G]b/.test(t));
+  if (!nWords || !nChords || (nChords < 2 && !strong)) return null;
+  let lyric = "";
+  const placed: { chord: string; idx: number }[] = [];
+  let pending: string[] = [];
+  toks.forEach((t, k) => {
+    if (flags[k]) { pending.push(pasteChordName(t)!); return; }
+    const start = lyric ? lyric.length + 1 : 0;
+    lyric = lyric ? `${lyric} ${t}` : t;
+    pending.forEach((c, j) => placed.push({ chord: c, idx: start + j }));
+    pending = [];
+  });
+  pending.forEach((c, j) => placed.push({ chord: c, idx: lyric.length + 1 + j }));
+  return { id: uid(), lyric, chords: anchorPasteChords(lyric, placed) };
+}
+
+const MID_LINE_END = /\b(?:the|a|an|my|our|your|his|her|their|its|of|to|and|in|on|for|with|from|is|are|be|all|o|oh|i|you|we|will|let|this|that|who|so)$/i;
+
+// Between two lyric fragments split by a chord line, does the lyric line carry
+// on (vs. a new line starting)? Trailing space on the first fragment, a
+// lowercase start on the next, or the first ending on a word that can't end a
+// line ("the", "my", "of"…) all say "same line".
+function joinsMidLine(prevRaw: string, next: string): boolean {
+  const prev = prevRaw.trimEnd();
+  if (/[.!?;:,]$/.test(prev)) return false;
+  return /\s$/.test(prevRaw) || /^[a-z]/.test(next.trim()) || MID_LINE_END.test(prev);
+}
+
+// Interleaved web copy (see header). Given a run of consecutive non-blank lines
+// starting at `from`, returns the rebuilt lines + where the run ended, or null
+// when the run is ordinary chord-above / lyrics (left to the normal path).
+function tryInterleavedRun(
+  raw: string[], clean: string[], from: number, isOther: (l: string) => boolean,
+): { lines: Line[]; end: number } | null {
+  type El = { kind: "chord"; row: { chord: string; col: number }[] } | { kind: "frag"; raw: string; text: string };
+  const els: El[] = [];
+  let j = from;
+  for (; j < clean.length && clean[j].trim() !== ""; j++) {
+    const l = clean[j];
+    if (isOther(l)) break;
+    const row = pasteChordRow(l);
+    if (row) {
+      // Interleaved chord lines are short and unindented — an indented chord
+      // row carries real column alignment, i.e. genuine chords-above.
+      if (row.length > 3 || l.length - l.trimStart().length > 1) return null;
+      els.push({ kind: "chord", row });
+    } else {
+      els.push({ kind: "frag", raw: raw[j].replace(/ /g, " "), text: l.trim() });
+    }
+  }
+  const chordCount = els.filter((e) => e.kind === "chord").length;
+  if (chordCount < 2) return null;
+  // Joins = fragment, chord line(s), fragment. Interleaved when a real share of
+  // them read as mid-line breaks; genuine one-chord-per-line charts with whole
+  // lyric lines read as line ends and are left alone.
+  let joins = 0;
+  let mid = 0;
+  for (let k = 0; k < els.length; k++) {
+    const a = els[k];
+    if (a.kind !== "frag") continue;
+    let n = k + 1;
+    while (n < els.length && els[n].kind === "chord") n++;
+    const b = els[n];
+    if (n === k + 1 || !b || b.kind !== "frag") continue;
+    joins++;
+    if (joinsMidLine(a.raw, b.text)) mid++;
+  }
+  if (!mid || mid * 3 < joins) return null;
+
+  const lines: Line[] = [];
+  let text = "";
+  let placed: { chord: string; idx: number }[] = [];
+  let pending: string[] = [];
+  let prevFrag: { raw: string } | null = null;
+  let chordSinceFrag = false;
+  const flush = () => {
+    if (text) lines.push({ id: uid(), lyric: text, chords: anchorPasteChords(text, placed) });
+    text = "";
+    placed = [];
+  };
+  for (const e of els) {
+    if (e.kind === "chord") { pending.push(...e.row.map((c) => c.chord)); chordSinceFrag = true; continue; }
+    // New lyric line when two fragments meet with no chord between them, or the
+    // join reads as a line end and the current line already has some length.
+    if (text && prevFrag && (!chordSinceFrag || (!joinsMidLine(prevFrag.raw, e.text) && text.length >= 12))) flush();
+    const start = text ? text.length + 1 : 0;
+    text = text ? `${text} ${e.text}` : e.text;
+    pending.forEach((c, k) => placed.push({ chord: c, idx: start + k }));
+    pending = [];
+    prevFrag = e;
+    chordSinceFrag = false;
+  }
+  flush();
+  if (pending.length) lines.push(chordOnlyLine(pending.map((c, k) => ({ chord: c, col: k * (c.length + 2) }))));
+  return { lines, end: j - 1 };
+}
+
+const PASTE_DIRECTIVE = /^\s*\{\s*([\w_]+)\s*(?::\s*(.*?))?\s*\}\s*$/;
+
 export function parsePastedChart(text: string): {
   sections: Section[];
   key: string;
+  formats: PasteFormat[];
+  meta: { title?: string; artist?: string; key?: string };
 } {
-  const rawLines = text.replace(/\r/g, "").split("\n");
+  const raw = text.replace(/\r/g, "").split("\n");
+  const clean = raw.map(cleanPasteLine);
   const sections: Section[] = [];
+  const formats = new Set<PasteFormat>();
+  const meta: { title?: string; artist?: string; key?: string } = {};
   let current: Section | null = null;
   const startNew = (label: string) => {
     current = { id: uid(), label, lines: [] };
@@ -2201,59 +2413,105 @@ export function parsePastedChart(text: string): {
     return ensure();
   };
 
-  for (let i = 0; i < rawLines.length; i++) {
-    const l = rawLines[i];
+  const sectionLabel = (l: string): string | null => detectSectionLabel(l) ?? detectInlineSectionLabel(l);
+  const isChordPro = (l: string) => [...l.matchAll(/\[([^\]]+)\]/g)].some((mm) => !!pasteChordName(mm[1]));
+  // "Intro: C // G // D" — a label and its chords on one line.
+  const labelWithChords = (l: string) => {
+    const m = l.trim().match(/^(.+?)\s*[:\-–]\s+(.+)$/) ?? l.trim().match(/^(\S+(?:\s+\d+)?)\s{2,}(.+)$/);
+    if (!m) return null;
+    const label = sectionLabel(m[1]);
+    const row = label ? pasteChordRow(m[2]) : null;
+    return label && row ? { label, row } : null;
+  };
+  const isOther = (l: string) =>
+    !!sectionLabel(l) || PASTE_DIRECTIVE.test(l) || isChordPro(l) || !!labelWithChords(l) || !!inlineChordLine(l);
+
+  for (let i = 0; i < clean.length; i++) {
+    const l = clean[i];
     if (l.trim() === "") {
       if (hasContent()) pendingBreak = true;
       continue;
     }
 
-    const label = detectSectionLabel(l);
+    const d = l.match(PASTE_DIRECTIVE);
+    if (d) {
+      const k = d[1].toLowerCase();
+      const v = (d[2] ?? "").trim();
+      if (k === "title" || k === "t") meta.title = v;
+      else if (k === "artist" || k === "subtitle" || k === "st") meta.artist ??= v;
+      else if (k === "key") meta.key = v;
+      else if (["c", "comment", "ci", "section"].includes(k) && v) { startNew(sectionLabel(v) ?? v); pendingBreak = false; }
+      else if (["soc", "start_of_chorus", "chorus"].includes(k)) { startNew(v || "Chorus"); pendingBreak = false; }
+      else if (["sov", "start_of_verse", "verse"].includes(k)) { startNew(v || "Verse"); pendingBreak = false; }
+      else if (["sob", "start_of_bridge", "bridge"].includes(k)) { startNew(v || "Bridge"); pendingBreak = false; }
+      formats.add("chordpro");
+      continue;
+    }
+
+    const label = sectionLabel(l);
     if (label) {
       startNew(label);
       pendingBreak = false;
       continue;
     }
 
-    if (/\[[A-G][^\]]*\]/.test(l)) {
-      target().lines.push(parseChordProLine(l));
+    const lc = labelWithChords(l);
+    if (lc) {
+      startNew(lc.label);
+      pendingBreak = false;
+      ensure().lines.push(chordOnlyLine(lc.row));
+      formats.add("chord-only");
       continue;
     }
 
-    if (isPastedChordLine(l)) {
-      let nextIdx = i + 1;
-      while (
-        nextIdx < rawLines.length &&
-        rawLines[nextIdx].trim() === ""
-      ) {
-        nextIdx++;
-      }
-      const next = nextIdx < rawLines.length ? rawLines[nextIdx] : "";
-      const nextIsLyric =
-        next.trim() !== "" &&
-        !isPastedChordLine(next) &&
-        !detectSectionLabel(next);
+    if (isChordPro(l)) {
+      target().lines.push(parseChordProLine(l.trim()));
+      formats.add("chordpro");
+      continue;
+    }
 
+    const run = tryInterleavedRun(raw, clean, i, isOther);
+    if (run) {
+      target().lines.push(...run.lines);
+      formats.add("interleaved");
+      i = run.end;
+      continue;
+    }
+
+    const row = pasteChordRow(l);
+    if (row) {
+      let nextIdx = i + 1;
+      while (nextIdx < clean.length && clean[nextIdx].trim() === "") nextIdx++;
+      const next = nextIdx < clean.length ? clean[nextIdx] : "";
+      const nextIsLyric = next.trim() !== "" && !pasteChordRow(next) && !isOther(next);
       // A chord line pairs with its lyric across blank lines, so resolve the
       // target section once before consuming the pair (don't break between them).
       const sec = target();
       if (nextIsLyric) {
-        const chords = chordPositionsFromLine(l, next.length);
-        sec.lines.push({ id: uid(), lyric: next, chords });
+        sec.lines.push(pairChordRow(row, next));
+        formats.add("chords-above");
         i = nextIdx;
       } else {
-        const chords = chordPositionsFromLine(l);
-        sec.lines.push({ id: uid(), lyric: "", chords });
+        sec.lines.push(chordOnlyLine(row));
+        formats.add("chord-only");
       }
       continue;
     }
 
-    target().lines.push({ id: uid(), lyric: l, chords: [] });
+    const inline = inlineChordLine(l);
+    if (inline) {
+      target().lines.push(inline);
+      formats.add("inline");
+      continue;
+    }
+
+    target().lines.push({ id: uid(), lyric: l.trim(), chords: [] });
   }
 
   if (!sections.length) startNew("Verse 1");
-
-  return { sections, key: detectKeyFromSections(sections) };
+  const out = foldEmptySectionLabels(sections);
+  const directiveKey = meta.key && (KEYS as readonly string[]).includes(meta.key) ? meta.key : null;
+  return { sections: out, key: directiveKey ?? detectKeyFromSections(out), formats: [...formats], meta };
 }
 
 export function pastedChartToSong(
@@ -2261,12 +2519,12 @@ export function pastedChartToSong(
   title: string,
   artist: string,
 ): Song {
-  const { sections, key } = parsePastedChart(text);
+  const { sections, key, meta } = parsePastedChart(text);
   const now = Date.now();
   return {
     id: songUid(),
-    title: title.trim() || "Untitled Song",
-    artist: artist.trim(),
+    title: title.trim() || meta.title || "Untitled Song",
+    artist: artist.trim() || meta.artist || "",
     key,
     capo: null,
     bpm: null,
