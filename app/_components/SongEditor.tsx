@@ -3010,7 +3010,22 @@ export default function SongEditor({
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
                 {presentControls && "Exit"}
               </button>
-              <span className="flex-1 min-w-0 text-center text-sm font-semibold truncate text-slate-500 dark:text-slate-400">{song.title || "Untitled Song"}</span>
+              {/* Title + capo reminder. The chip only appears when a capo is set
+                  (same `(song.capo ?? 0) > 0` test as the normal-view pill) and
+                  sits INSIDE the centred title slot so the header stays
+                  symmetric; it never shrinks — the title truncates first, so
+                  "Capo N" survives on a narrow phone. Display only: the chart's
+                  chords already come through capoChord(). Key = the song's
+                  (sounding) key, as on a printed chart: "Capo 3 · Key G". */}
+              <span className="flex-1 min-w-0 flex items-center justify-center gap-2">
+                <span className="min-w-0 truncate text-sm font-semibold text-slate-500 dark:text-slate-400">{song.title || "Untitled Song"}</span>
+                {(song.capo ?? 0) > 0 && (
+                  <span className="shrink-0 px-1.5 py-px rounded-md bg-slate-200/70 dark:bg-slate-800/80 text-[11px] font-semibold leading-4 tabular-nums text-slate-600 dark:text-slate-300 whitespace-nowrap"
+                    title={`Sounding key ${song.key} · chords shown as ${playKey(song.key, song.capo)} shapes`}>
+                    Capo {song.capo}<span className="font-normal text-slate-400 dark:text-slate-500"> · Key {song.key}</span>
+                  </span>
+                )}
+              </span>
               {presentControls && diagramSymbols.length > 0 && (
                 <button type="button" title="Chord diagrams" aria-label="Toggle chord diagrams"
                   aria-pressed={presentDiagrams}
