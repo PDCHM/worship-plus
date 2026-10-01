@@ -16,6 +16,7 @@ import Avatar from "@/app/_components/Avatar";
 import AddSongSheet from "@/app/_components/AddSongSheet";
 import PhotoImportModal from "@/app/_components/PhotoImportModal";
 import MultiSongImportModal from "@/app/_components/MultiSongImportModal";
+import SbpSetlistModal, { type SbpSetlistChoice } from "@/app/_components/SbpSetlistModal";
 import HelpModal from "@/app/_components/HelpModal";
 import { prepareImageFile, fileToBase64 } from "@/lib/image/prepare";
 import SongSearchSheet, { type SongSearchResult } from "@/app/_components/SongSearchSheet";
@@ -57,10 +58,28 @@ import {
   type Chord,
   type Line,
   type Section,
+  type SbpFolder,
   type SectionStyles,
   type Settings,
   type Song,
 } from "@/lib/song";
+
+// A parsed .sbp import paused on the "where does its setlist go?" question.
+// Songs are resolved (deduped against the library) but NOT yet added/saved.
+type SbpPending = {
+  toCreate: Song[];
+  resolved: { sbpId: string | null; id: string; title: string; created: boolean }[];
+  idMap: Map<string, string>;
+  folders: SbpFolder[];
+  setOrders: { name: string; ids: string[] }[];
+  linkTarget: string | null;
+  baseName: string;
+};
+
+const dedupeIds = (ids: string[]) => {
+  const seen = new Set<string>();
+  return ids.filter((id) => (seen.has(id) ? false : (seen.add(id), true)));
+};
 
 type View =
   | { kind: "library"; filter: "all" | "favorites" | "recent" }
@@ -628,6 +647,10 @@ export default function Home() {
   // Import-from-photo (Claude vision). Separate hidden input (images only) + a
   // busy flag for the full-screen "reading photo" overlay.
   const [photoModalOpen, setPhotoModalOpen] = useState(false);
+  // .sbp import waiting on "where should its setlist go?" (SbpSetlistModal).
+  // Nothing from the file is saved until the user answers.
+  const [sbpChoices, setSbpChoices] = useState<SbpPending[]>([]);
+  const sbpChoice = sbpChoices[0] ?? null;
   // Multi-song files (a songbook PDF) awaiting review before save. A queue so a
   // batch import of several such files reviews them one at a time.
   const [pendingSplits, setPendingSplits] = useState<
@@ -2257,14 +2280,26 @@ export default function Home() {
         }
       }
 
-      for (const s of toCreate) hydratedIdsRef.current.add(s.id);
-      if (toCreate.length) setSongs((prev) => [...toCreate, ...prev]);
-
       const hasSetlists = bundle.setlists.some((sl) => sl.items.length > 0);
       const hasFolders = bundle.folders.some((f) => f.sbpIds.length > 0);
 
+      // Each SBP set → its song ids in set order (deduped); empty sets dropped so
+      // they can never become empty setlists.
+      const setOrders = bundle.setlists
+        .map((sl) => ({
+          name: sl.name?.trim() || "",
+          ids: dedupeIds(sl.items.map((it) => (it.sbpId ? idMap.get(it.sbpId) : undefined)).filter((v): v is string => !!v)),
+        }))
+        .filter((sl) => sl.ids.length > 0);
+      const pending: SbpPending = {
+        toCreate, resolved, idMap, folders: bundle.folders, setOrders, linkTarget,
+        baseName: file.name.replace(/\.[^.]+$/, ""),
+      };
+
       // Single song, no sets/folders → preserve the old single-import UX.
       if (parsedSongs.length === 1 && !hasSetlists && !hasFolders) {
+        for (const s of toCreate) hydratedIdsRef.current.add(s.id);
+        if (toCreate.length) setSongs((prev) => [...toCreate, ...prev]);
         const r0 = resolved[0];
         navigateTo({ kind: "editor", songId: r0.id });
         showToast(r0.created ? `Imported "${r0.title}"` : `"${r0.title}" is already in your library`);
@@ -2278,70 +2313,17 @@ export default function Home() {
         return;
       }
 
-      if (!user) {
-        showToast(`Imported ${toCreate.length} song${toCreate.length === 1 ? "" : "s"}`);
-        navigateTo({ kind: "library", filter: "all" });
-        return;
-      }
-
-      // Persist the new songs.
-      let failed = 0;
-      for (const s of toCreate) {
-        try { const r = await saveSongToDb(supabase, s, user.id); if (!r.ok) failed++; } catch { failed++; }
-      }
-
-      // Folder flow: link every resolved song (created + already-in-library) to
-      // the target the import was launched from, in parse order.
-      await linkSongsToTarget(linkTarget, resolved.map((r) => r.id));
-
-      // Recreate each set as a setlist, in Order. NOTE: folder_songs has no
-      // per-entry key/capo column (unique per (folder, song)), so SongBook Pro's
-      // keyOfset/Capo per entry can't be persisted — songs go in at base key.
-      const addInOrder = async (folderId: string, ids: string[]) => {
-        const rows: FolderSong[] = [];
-        for (let i = 0; i < ids.length; i++) {
-          const { data: r, error } = await supabase.rpc("add_song_to_folder", { p_folder_id: folderId, p_song_id: ids[i], p_position: i });
-          if (error) { logErr("import .sbp: add song to folder", error); continue; }
-          const row = r as { id: string; folder_id: string; song_id: string; position: number };
-          rows.push({ id: row.id, folderId: row.folder_id, songId: row.song_id, position: row.position });
-        }
-        if (rows.length) setFolderSongs((prev) => [...prev, ...rows]);
-      };
-      const dedupeOrder = (ids: string[]) => {
-        const seen = new Set<string>();
-        return ids.filter((id) => (seen.has(id) ? false : (seen.add(id), true)));
-      };
-      const baseName = file.name.replace(/\.[^.]+$/, "");
-
-      let setlistsMade = 0;
-      let firstSetlistId: string | null = null;
-      for (const sl of bundle.setlists) {
-        const ids = dedupeOrder(sl.items.map((it) => (it.sbpId ? idMap.get(it.sbpId) : undefined)).filter((v): v is string => !!v));
-        if (!ids.length) continue;
-        const folder = await createFolder(sl.name?.trim() || baseName || "Imported setlist", "setlist", null);
-        if (!folder) continue;
-        await addInOrder(folder.id, ids);
-        if (!firstSetlistId) firstSetlistId = folder.id;
-        setlistsMade++;
-      }
-
-      let foldersMade = 0;
-      for (const f of bundle.folders) {
-        const ids = dedupeOrder(f.sbpIds.map((id) => idMap.get(id)).filter((v): v is string => !!v));
-        if (!ids.length) continue;
-        const folder = await createFolder(f.name?.trim() || "Imported folder", "folder", null);
-        if (!folder) continue;
-        await addInOrder(folder.id, ids);
-        foldersMade++;
-      }
-
-      const bits = [`${toCreate.length} song${toCreate.length === 1 ? "" : "s"}`];
-      if (setlistsMade) bits.push(`${setlistsMade} setlist${setlistsMade === 1 ? "" : "s"}`);
-      if (foldersMade) bits.push(`${foldersMade} folder${foldersMade === 1 ? "" : "s"}`);
-      const reused = resolved.filter((r) => !r.created).length;
-      showToast(`Imported ${bits.join(" and ")}` + (reused ? ` (${reused} already in library)` : ""));
-      if (failed) showToast(`${failed} of ${toCreate.length} songs failed to save`);
-      navigateTo(firstSetlistId ? { kind: "folders", subview: firstSetlistId } : { kind: "library", filter: "all" });
+      // WHERE do the file's set(s) go? Decided BEFORE anything is saved, so the
+      // user never gets a surprise second setlist:
+      //  • launched from a setlist's "+ Add Songs" → straight into THAT setlist
+      //    (no prompt — the user already picked it);
+      //  • no sets in the file → nothing to decide;
+      //  • otherwise → ask (existing setlist / new setlist / library only), with
+      //    the setlist currently open preselected when there is one.
+      const targetFolder = linkTarget ? folders.find((f) => f.id === linkTarget) : undefined;
+      if (!setOrders.length) { await finishSbpImport(pending, { kind: "library" }); return; }
+      if (targetFolder?.type === "setlist") { await finishSbpImport(pending, { kind: "existing", folderId: targetFolder.id }); return; }
+      setSbpChoices((prev) => [...prev, pending]);
       return;
     }
 
@@ -2381,6 +2363,94 @@ export default function Home() {
     } catch {
       showToast("Could not parse file");
     }
+  };
+
+  // Second half of the .sbp import, once we know where its set(s) go (see the
+  // decision in handleImport). Adds + saves the new songs, links them to the
+  // folder the import was launched from, places the set(s) per `choice`, and
+  // recreates the file's plain folders. Setlists are only ever created for
+  // `choice.kind === "new"`, and never empty.
+  const finishSbpImport = async (p: SbpPending, choice: SbpSetlistChoice) => {
+    const { toCreate, resolved, idMap } = p;
+    for (const s of toCreate) hydratedIdsRef.current.add(s.id);
+    if (toCreate.length) setSongs((prev) => [...toCreate, ...prev]);
+    if (!user) {
+      showToast(`Imported ${toCreate.length} song${toCreate.length === 1 ? "" : "s"}`);
+      navigateTo({ kind: "library", filter: "all" });
+      return;
+    }
+
+    // Persist the new songs (the folder_songs RPC has an FK on song_id).
+    let failed = 0;
+    for (const s of toCreate) {
+      try { const r = await saveSongToDb(supabase, s, user.id); if (!r.ok) failed++; } catch { failed++; }
+    }
+
+    // Set songs first (in set order), then any other songs from the file.
+    const allIds = resolved.map((r) => r.id);
+    const setFirst = dedupeIds([...p.setOrders.flatMap((sl) => sl.ids), ...allIds]);
+
+    // Launched from a plain folder's "+ Add Songs": every song goes in there,
+    // as before. (A setlist target is handled by choice "existing" below, so
+    // songs are never linked twice.)
+    const target = p.linkTarget ? folders.find((f) => f.id === p.linkTarget) : undefined;
+    if (p.linkTarget && target?.type !== "setlist") await linkSongsToTarget(p.linkTarget, allIds);
+
+    // NOTE: folder_songs has no per-entry key/capo column (unique per (folder,
+    // song)), so SongBook Pro's keyOfset/Capo per entry can't be persisted —
+    // songs go in at base key.
+    const addInOrder = async (folderId: string, ids: string[]) => {
+      const rows: FolderSong[] = [];
+      for (let i = 0; i < ids.length; i++) {
+        const { data: r, error } = await supabase.rpc("add_song_to_folder", { p_folder_id: folderId, p_song_id: ids[i], p_position: i });
+        if (error) { logErr("import .sbp: add song to folder", error); continue; }
+        if (!r) continue;
+        const row = r as { id: string; folder_id: string; song_id: string; position: number };
+        rows.push({ id: row.id, folderId: row.folder_id, songId: row.song_id, position: row.position });
+      }
+      if (rows.length) setFolderSongs((prev) => [...prev, ...rows]);
+    };
+
+    let where = "";
+    let landOn: string | null = null;
+    if (choice.kind === "existing") {
+      // Append after what's already in the setlist (bulkAdd skips duplicates).
+      await bulkAddSongsToSetlist(setFirst, choice.folderId);
+      const f = folders.find((x) => x.id === choice.folderId);
+      where = ` into "${f?.name ?? "setlist"}"`;
+      landOn = choice.folderId;
+    } else if (choice.kind === "new") {
+      const made: string[] = [];
+      for (let i = 0; i < p.setOrders.length; i++) {
+        const sl = p.setOrders[i];
+        const name = (choice.names[i] ?? "").trim() || sl.name || p.baseName || "Imported setlist";
+        const folder = await createFolder(name, "setlist", null);
+        if (!folder) continue;
+        await addInOrder(folder.id, sl.ids);
+        landOn ??= folder.id;
+        made.push(`"${name}"`);
+      }
+      if (made.length) where = ` into new setlist${made.length === 1 ? "" : "s"} ${made.join(", ")}`;
+    }
+
+    let foldersMade = 0;
+    for (const f of p.folders) {
+      const ids = dedupeIds(f.sbpIds.map((id) => idMap.get(id)).filter((v): v is string => !!v));
+      if (!ids.length) continue;
+      const folder = await createFolder(f.name?.trim() || "Imported folder", "folder", null);
+      if (!folder) continue;
+      await addInOrder(folder.id, ids);
+      foldersMade++;
+    }
+
+    const reused = resolved.filter((r) => !r.created).length;
+    showToast(
+      `Imported ${toCreate.length} song${toCreate.length === 1 ? "" : "s"}${where}` +
+        (foldersMade ? ` and ${foldersMade} folder${foldersMade === 1 ? "" : "s"}` : "") +
+        (reused ? ` (${reused} already in library)` : ""),
+    );
+    if (failed) showToast(`${failed} of ${toCreate.length} songs failed to save`);
+    navigateTo(landOn ? { kind: "folders", subview: landOn } : { kind: "library", filter: "all" });
   };
 
   // Confirm handler for the multi-song review sheet. Mirrors the .sbp multi-song
@@ -2940,6 +3010,24 @@ export default function Home() {
       {/* Photo import — staging sheet (add one or several pages), then vision. */}
       {photoModalOpen && (
         <PhotoImportModal onClose={() => setPhotoModalOpen(false)} onImport={importFromPhotos} busy={importingPhoto} />
+      )}
+
+      {/* .sbp with a setlist — choose where it goes before anything is saved. */}
+      {sbpChoice && (
+        <SbpSetlistModal
+          key={sbpChoice.baseName + sbpChoice.resolved[0]?.id}
+          sets={sbpChoice.setOrders.map((sl) => ({ name: sl.name || sbpChoice.baseName, count: sl.ids.length }))}
+          songCount={sbpChoice.resolved.length}
+          setlists={folders.filter((f) => f.type === "setlist")}
+          // Preselect the setlist the user has open, if any.
+          openSetlistId={
+            view.kind === "folders" && view.subview !== "all" && folders.some((f) => f.id === view.subview && f.type === "setlist")
+              ? view.subview
+              : view.kind === "editor" && view.setlistId ? view.setlistId : null
+          }
+          onConfirm={(choice) => { const p = sbpChoice; setSbpChoices((prev) => prev.slice(1)); void finishSbpImport(p, choice); }}
+          onCancel={() => { setSbpChoices((prev) => prev.slice(1)); showToast("Import cancelled — nothing was added"); }}
+        />
       )}
 
       {/* Multi-song file import — review the detected songs before saving. */}
