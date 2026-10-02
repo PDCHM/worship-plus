@@ -85,6 +85,8 @@ export type FoldersViewProps = {
   onReorderLinks: (songId: string, orderedIds: string[]) => Promise<void>;
   // Per-song edit permission (owner/editor/leader), mirroring can_write_song.
   canEditSong: (song: Song) => boolean;
+  // Team-shared songs have finished loading (see the draft hint in SetlistDetail).
+  sharedSongsReady?: boolean;
   // Live online status — YouTube inline playback needs a connection.
   online: boolean;
   setlistEvents: SetlistEvent[];
@@ -563,7 +565,7 @@ function SetlistDetail({
   folder, currentSongs, folderSongs, cachedSongIds, onNavigate, onRename, onDelete,
   onAddSongs, onRemoveSong, onCommitOrder, onOpenSong, onUpdateDate, onExportSetlist,
   setlistEvents, onAddEvent, onUpdateEvent, onDeleteEvent, canUseCalendar, onRequireUpgrade, showToast, teams, currentUserId, onMoveToTeam, canEditFolder,
-  songLinks, onAddLink, onUpdateLink, onDeleteLink, onReorderLinks, canEditSong, online,
+  songLinks, onAddLink, onUpdateLink, onDeleteLink, onReorderLinks, canEditSong, online, sharedSongsReady,
 }: { folder: Folder; currentSongs: Song[] } & FoldersViewProps) {
   const isOwner = folder.ownerId === currentUserId;
   // Leader/editor/owner may mutate; plain team members are view-only (RLS enforced).
@@ -575,6 +577,17 @@ function SetlistDetail({
   // otherwise it creates a new one of `type`.
   const [eventModal, setEventModal] = useState<{ type: "rehearsal" | "event"; edit?: SetlistEvent } | null>(null);
   const [confirmDel, setConfirmDel] = useState<DeleteConfirm>(null);
+  // Draft songs are owner-only (RLS), so in a TEAM setlist they're silently
+  // invisible to everyone else. Surface it — display only, visibility rules
+  // unchanged:
+  //  • the draft's owner sees a "Draft · hidden from team" chip on its row;
+  //  • a leader/editor who doesn't own it can't load the song at all, but can
+  //    see its link row — so the gap between links and loaded songs is the
+  //    hidden-draft count (only trusted once the shared-songs load succeeded).
+  const isTeamSetlist = !!folder.groupId;
+  const hiddenDraftCount = isTeamSetlist && canEdit && sharedSongsReady
+    ? Math.max(0, folderSongs.filter((fs) => fs.folderId === folder.id).length - currentSongs.length)
+    : 0;
   // Every song in this set has its content cached → safe to use with no network.
   const offlineReady = currentSongs.length > 0 && currentSongs.every((s) => cachedSongIds.has(s.id));
 
@@ -823,6 +836,13 @@ function SetlistDetail({
           </button>
         )}
       </div>
+      {hiddenDraftCount > 0 && (
+        <p className="mb-2 flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400"
+          title="Drafts are visible only to their owner. Ask them to turn off Draft in the song editor so the team can see it.">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+          {hiddenDraftCount === 1 ? "1 song is" : `${hiddenDraftCount} songs are`} hidden — saved as a draft by {hiddenDraftCount === 1 ? "its owner" : "their owners"}, so the team can&apos;t see {hiddenDraftCount === 1 ? "it" : "them"}.
+        </p>
+      )}
       {orderedSongs.length === 0 ? (
         <div className="py-14 text-center text-sm text-slate-400 dark:text-slate-500">
           No songs yet.{canEdit && (<>{" "}
@@ -869,7 +889,15 @@ function SetlistDetail({
                   className="flex-1 min-w-0 cursor-pointer px-1"
                   onClick={() => { if (!suppressClickRef.current) onOpenSong(song.id, { setlistId: folder.id }); }}
                 >
-                  <div className="text-sm font-medium truncate">{song.title}</div>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-sm font-medium truncate">{song.title}</span>
+                    {isTeamSetlist && song.isDraft && (
+                      <span className="shrink-0 px-1.5 py-px rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 text-[10px] font-semibold"
+                        title="Drafts are visible only to you. Turn off Draft in the song editor so your team can see it.">
+                        Draft · hidden from team
+                      </span>
+                    )}
+                  </div>
                   {song.artist && (
                     <div className="text-xs text-slate-400 truncate">{song.artist}</div>
                   )}

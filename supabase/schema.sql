@@ -732,6 +732,15 @@ set search_path = public
 as $$
 declare new_row record;
 begin
+  -- SECURITY DEFINER bypasses RLS, so guard here (mirrors
+  -- group_songs_editor_insert): leader/editor of the team, readable song only.
+  if not public.can_edit_group_content(p_group_id) then
+    raise exception 'access denied: only team leaders/editors can share songs' using errcode = '42501';
+  end if;
+  if not public.can_read_song(p_song_id) then
+    raise exception 'access denied: song not available' using errcode = '42501';
+  end if;
+
   insert into public.group_songs(group_id, song_id)
   values(p_group_id, p_song_id)
   on conflict (group_id, song_id) do nothing
@@ -751,6 +760,23 @@ set search_path = public
 as $$
 declare new_row record;
 begin
+  -- SECURITY DEFINER bypasses RLS, so guard here (mirrors folder_songs RLS):
+  -- own folder, or a team setlist the caller leads/edits; and only a song the
+  -- caller can already read (a team setlist would otherwise expose it).
+  if not exists (
+    select 1 from public.folders f
+    where f.id = p_folder_id
+      and (
+        f.user_id = auth.uid()
+        or (f.type = 'setlist' and f.group_id is not null and public.can_edit_group_content(f.group_id))
+      )
+  ) then
+    raise exception 'access denied: you cannot add songs to this setlist' using errcode = '42501';
+  end if;
+  if not public.can_read_song(p_song_id) then
+    raise exception 'access denied: song not available' using errcode = '42501';
+  end if;
+
   insert into public.folder_songs(folder_id, song_id, position)
   values(p_folder_id, p_song_id, p_position)
   on conflict (folder_id, song_id) do nothing

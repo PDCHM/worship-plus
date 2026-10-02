@@ -1,3 +1,7 @@
+-- SUPERSEDED by 20261002120000_setlist_permissions_and_plan_role.sql.
+-- Written before team roles were renamed owner/admin → leader/editor
+-- (2026-07-01); its role = 'owner' join matches nothing after that rename.
+-- Kept unchanged as history — do not re-apply on its own.
 -- effective_plan: the caller's billing tier, widened by any team they've
 -- joined. profiles_self_read lets a user read ONLY their own profile, so a
 -- member can't see their team owner's plan directly. This SECURITY DEFINER

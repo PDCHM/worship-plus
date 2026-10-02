@@ -504,6 +504,9 @@ export default function Home() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [songs, setSongs] = useState<Song[]>([]);
   const [songsLoaded, setSongsLoaded] = useState(false);
+  // True once the team-shared songs load has SUCCEEDED. Lets the setlist view
+  // tell "song hidden (owner's draft)" apart from "still loading / failed".
+  const [sharedSongsReady, setSharedSongsReady] = useState(false);
   // True once the folders/folder_songs/setlist_events have loaded FROM THE
   // NETWORK — gates the offline-cache mirror so a transient pre-load empty state
   // can never overwrite a populated cache.
@@ -1029,6 +1032,7 @@ export default function Home() {
               // `as unknown as` because the column list is now a variable, so
               // PostgREST can't infer the row shape (same as the own-songs load).
               const shared = (songRows ?? []).map((r) => rowToSong(r as unknown as SongRow));
+              setSharedSongsReady(true);
               setSongs(prev => {
                 const have = new Set(prev.map(s => s.id));
                 const newOnes = shared.filter(s => !have.has(s.id));
@@ -3018,13 +3022,17 @@ export default function Home() {
           key={sbpChoice.baseName + sbpChoice.resolved[0]?.id}
           sets={sbpChoice.setOrders.map((sl) => ({ name: sl.name || sbpChoice.baseName, count: sl.ids.length }))}
           songCount={sbpChoice.resolved.length}
-          setlists={folders.filter((f) => f.type === "setlist")}
-          // Preselect the setlist the user has open, if any.
-          openSetlistId={
-            view.kind === "folders" && view.subview !== "all" && folders.some((f) => f.id === view.subview && f.type === "setlist")
-              ? view.subview
-              : view.kind === "editor" && view.setlistId ? view.setlistId : null
-          }
+          // Only setlists the user may add to (own, or team setlists they lead/
+          // edit) — add_song_to_folder rejects the rest, so a plain team member
+          // is never offered a target that would fail.
+          setlists={folders.filter((f) => f.type === "setlist" && canEditFolder(f))}
+          // Preselect the setlist the user has open, if any (and editable).
+          openSetlistId={(() => {
+            const openId = view.kind === "folders" && view.subview !== "all" ? view.subview
+              : view.kind === "editor" && view.setlistId ? view.setlistId : null;
+            const f = openId ? folders.find((x) => x.id === openId) : undefined;
+            return f && f.type === "setlist" && canEditFolder(f) ? f.id : null;
+          })()}
           onConfirm={(choice) => { const p = sbpChoice; setSbpChoices((prev) => prev.slice(1)); void finishSbpImport(p, choice); }}
           onCancel={() => { setSbpChoices((prev) => prev.slice(1)); showToast("Import cancelled — nothing was added"); }}
         />
@@ -3214,6 +3222,7 @@ export default function Home() {
               onDeleteLink={deleteSongLink}
               onReorderLinks={reorderSongLinks}
               canEditSong={canEditSong}
+              sharedSongsReady={sharedSongsReady}
               online={online}
               setlistEvents={setlistEvents}
               onAddEvent={addSetlistEvent}
