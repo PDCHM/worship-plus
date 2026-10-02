@@ -151,6 +151,10 @@ export type Song = {
   // exist yet (migration pending) and older songs predate it — unset means the
   // 4/4 default, so no existing Song literal or row needs updating.
   timeSignature?: string | null;
+  // Private setlist version: the setlist this song belongs to, hidden from the
+  // library (see setlist_song_overrides). Unset/null = normal library song.
+  // Owner-only by construction — never loaded for other users.
+  setlistScope?: string | null;
 };
 
 // ── Time signature ──────────────────────────────────────────────────────────

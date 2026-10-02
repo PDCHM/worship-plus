@@ -16,6 +16,7 @@ import Avatar from "@/app/_components/Avatar";
 import AddSongSheet from "@/app/_components/AddSongSheet";
 import PhotoImportModal from "@/app/_components/PhotoImportModal";
 import MultiSongImportModal from "@/app/_components/MultiSongImportModal";
+import { backdropDismiss } from "@/lib/backdropDismiss";
 import SbpSetlistModal, { type SbpSetlistChoice } from "@/app/_components/SbpSetlistModal";
 import HelpModal from "@/app/_components/HelpModal";
 import { prepareImageFile, fileToBase64 } from "@/lib/image/prepare";
@@ -63,6 +64,9 @@ import {
   type Settings,
   type Song,
 } from "@/lib/song";
+
+// "In setlist folderId, show MY overrideSongId in place of originalSongId."
+type SetlistOverride = { folderId: string; originalSongId: string; overrideSongId: string };
 
 // A parsed .sbp import paused on the "where does its setlist go?" question.
 // Songs are resolved (deduped against the library) but NOT yet added/saved.
@@ -116,6 +120,10 @@ const SONG_META_COLUMNS = SONG_META_BASE + ", time_signature";
 // column hasn't been added to the DB yet (schema migration not applied), so a
 // missing column can never empty the library.
 const SONG_META_COLUMNS_OWN = SONG_META_COLUMNS + ", is_draft";
+// + setlist_scope (private setlist versions). Top tier of the own-songs load;
+// falls back to SONG_META_COLUMNS_OWN while that migration is pending, in which
+// case no private versions can exist yet.
+const SONG_META_COLUMNS_OWN_SCOPED = SONG_META_COLUMNS_OWN + ", setlist_scope";
 
 // A Postgres "column does not exist" (42703) from a not-yet-applied migration,
 // as opposed to a real query failure.
@@ -163,6 +171,7 @@ type SongRow = {
   capo: number | null;
   favorite: boolean;
   is_draft?: boolean | null;
+  setlist_scope?: string | null;
   // Absent when the migration hasn't run yet, or when a fallback select
   // dropped it — treated as unset (= 4/4).
   time_signature?: string | null;
@@ -255,6 +264,7 @@ function rowToSong(row: SongRow): Song {
     capo: row.capo,
     favorite: !!row.favorite,
     isDraft: !!row.is_draft,
+    setlistScope: row.setlist_scope ?? null,
     timeSignature: row.time_signature ?? null,
     sections,
     createdAt: new Date(row.created_at).getTime(),
@@ -382,8 +392,18 @@ async function writeSongToDb(supabase: SupabaseClient, song: Song, userId: strin
   // hard-fails on a column that hasn't been added yet. Order matters: drop the
   // newest (time_signature) first, then is_draft, then the guaranteed floor.
   const withDraft = { ...songRow, is_draft: song.isDraft ?? false };
-  const withAll = { ...withDraft, time_signature: song.timeSignature ?? null };
+  // setlist_scope is sent ONLY when set (creating a private version). An
+  // upsert leaves omitted columns untouched, so ordinary saves can never clear
+  // it — and never reference the column before its migration exists.
+  const withAll = {
+    ...withDraft,
+    time_signature: song.timeSignature ?? null,
+    ...(song.setlistScope ? { setlist_scope: song.setlistScope } : {}),
+  };
   let { error: songError } = await supabase.from("songs").upsert(withAll);
+  // Never let the column fallbacks below drop setlist_scope: a private version
+  // saved without it would silently land in the library. Fail visibly instead.
+  if (songError && song.setlistScope) { logErr("save private version failed", songError); return { ok: false, message: songError.message }; }
   if (songError && /time_signature|column|42703/i.test(songError.message || "")) {
     ({ error: songError } = await supabase.from("songs").upsert(withDraft));
   }
@@ -503,6 +523,11 @@ export default function Home() {
   const [authChecked, setAuthChecked] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [songs, setSongs] = useState<Song[]>([]);
+  // The user's LIBRARY: every song except private setlist versions (those
+  // carry setlistScope and live only inside their setlist). Use this — not
+  // `songs` — anywhere that means "my library": library views, counts,
+  // search, import dedupe, pickers.
+  const librarySongs = useMemo(() => songs.filter((s) => !s.setlistScope), [songs]);
   const [songsLoaded, setSongsLoaded] = useState(false);
   // True once the team-shared songs load has SUCCEEDED. Lets the setlist view
   // tell "song hidden (owner's draft)" apart from "still loading / failed".
@@ -513,6 +538,13 @@ export default function Home() {
   const [foldersLoaded, setFoldersLoaded] = useState(false);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [folderSongs, setFolderSongs] = useState<FolderSong[]>([]);
+  // Private setlist versions: this user's "in setlist F, show my version V in
+  // place of song O" rows (RLS returns only the caller's own).
+  // `privateVersionsReady` = the migration exists (table readable), which also
+  // guarantees songs.setlist_scope — the feature's UI is hidden until then.
+  const [overrides, setOverrides] = useState<SetlistOverride[]>([]);
+  const [privateVersionsReady, setPrivateVersionsReady] = useState(false);
+  const [deleteVersionsPrompt, setDeleteVersionsPrompt] = useState<{ folderId: string; name: string; versions: Song[] } | null>(null);
   const [setlistEvents, setSetlistEvents] = useState<SetlistEvent[]>([]);
   const [songLinks, setSongLinks] = useState<SongLink[]>([]);
   const [songLinksLoaded, setSongLinksLoaded] = useState(false);
@@ -958,7 +990,7 @@ export default function Home() {
         // Column tiers, richest first. Each step drops exactly ONE pending
         // migration's column, so a missing `time_signature` no longer costs us
         // `is_draft` too (which would silently un-draft every draft).
-        const OWN_TIERS = [SONG_META_COLUMNS_OWN, SONG_META_COLUMNS, SONG_META_BASE];
+        const OWN_TIERS = [SONG_META_COLUMNS_OWN_SCOPED, SONG_META_COLUMNS_OWN, SONG_META_COLUMNS, SONG_META_BASE];
         const loadOwnSongs = (tier: number) => {
           void supabase
             .from("songs")
@@ -1134,6 +1166,33 @@ export default function Home() {
           setGroupsLoaded(true);
         });
         /* eslint-enable @typescript-eslint/no-explicit-any */
+
+        // Private setlist versions. Kept OUT of the Promise.all above so a
+        // not-yet-applied migration (missing table) never toasts or blocks
+        // folders. The last good list is mirrored to localStorage so a musician
+        // offline on stage still sees their own versions.
+        const ovKey = "wp-overrides-" + u.id;
+        void supabase
+          .from("setlist_song_overrides")
+          .select("folder_id, original_song_id, override_song_id")
+          .then(({ data: ovRows, error: ovErr }) => {
+            if (cancelled) return;
+            if (ovErr) {
+              // Missing table = migration pending → feature stays hidden.
+              if (/setlist_song_overrides|42P01|does not exist|schema cache/i.test(ovErr.message || "")) return;
+              try {
+                const cached = JSON.parse(localStorage.getItem(ovKey) || "null");
+                if (Array.isArray(cached)) { setOverrides(cached); setPrivateVersionsReady(true); }
+              } catch { /* no cache */ }
+              return;
+            }
+            const list: SetlistOverride[] = (ovRows ?? []).map((r: { folder_id: string; original_song_id: string; override_song_id: string }) => ({
+              folderId: r.folder_id, originalSongId: r.original_song_id, overrideSongId: r.override_song_id,
+            }));
+            setOverrides(list);
+            setPrivateVersionsReady(true);
+            try { localStorage.setItem(ovKey, JSON.stringify(list)); } catch { /* quota */ }
+          });
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
@@ -1540,12 +1599,27 @@ export default function Home() {
     });
   };
 
-  // Ordered songs of a setlist (metadata-only entries are fine for listing).
+  // ── Private setlist versions: slot resolution ──
+  // folder_songs keeps the ORIGINAL song ids (so add/remove/reorder and their
+  // permission checks are untouched); only what this user SEES and OPENS for a
+  // slot is swapped to their private version, when one exists and is loaded.
+  const overrideFor = (folderId: string, originalSongId: string): Song | null => {
+    const o = overrides.find((x) => x.folderId === folderId && x.originalSongId === originalSongId);
+    return o ? songs.find((s) => s.id === o.overrideSongId) ?? null : null;
+  };
+  const resolveSetlistSongId = (folderId: string, songId: string): string =>
+    overrideFor(folderId, songId)?.id ?? songId;
+  // Reverse: an open private version → the original slot it stands in for.
+  const originalSlotId = (folderId: string, songId: string): string =>
+    overrides.find((x) => x.folderId === folderId && x.overrideSongId === songId)?.originalSongId ?? songId;
+
+  // Ordered songs of a setlist (metadata-only entries are fine for listing),
+  // with this user's private versions in place of the originals.
   const orderedFolderSongs = (folderId: string): Song[] =>
     folderSongs
       .filter((fs) => fs.folderId === folderId)
       .sort((a, b) => a.position - b.position)
-      .map((fs) => songs.find((s) => s.id === fs.songId))
+      .map((fs) => songs.find((s) => s.id === resolveSetlistSongId(folderId, fs.songId)))
       .filter((s): s is Song => Boolean(s));
 
   // Hydrate every song in a setlist (library songs are metadata-only until
@@ -2023,6 +2097,9 @@ export default function Home() {
       id: uid(),
       userId: user.id,
       title: title?.trim() || (song.title.trim() || "Untitled Song") + " (copy)",
+      // A copy always lands in the library — even when made from a private
+      // setlist version (which carries setlistScope).
+      setlistScope: null,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       sections: song.sections.map((s) => cloneSection(s)),
@@ -2045,6 +2122,106 @@ export default function Home() {
       return;
     }
     showToast("Saved as copy");
+  };
+
+  // ── Private setlist versions: actions ──
+  const persistOverrides = (list: SetlistOverride[]) => {
+    setOverrides(list);
+    if (user) { try { localStorage.setItem("wp-overrides-" + user.id, JSON.stringify(list)); } catch { /* quota */ } }
+  };
+
+  // "Make my own version" of a setlist song. Reuses the Save-as-copy clone
+  // (fresh ids for every section/line/chord, owned by me) but tags it with
+  // setlistScope instead of adding it to the library, then records the
+  // override so only I see it in this setlist's slot. Built from the editor's
+  // live song, so any unsaved edits go INTO my version and the shared original
+  // is reverted to its last saved state (never modified by this).
+  const makePrivateVersion = async (folderId: string, live: Song) => {
+    if (!user || !privateVersionsReady) return;
+    if (!guardOnline()) return;
+    const originalId = originalSlotId(folderId, live.id);
+    if (overrideFor(folderId, originalId)) { showToast("You already have your own version of this song here"); return; }
+    const now = Date.now();
+    const version: Song = {
+      ...live,
+      id: uid(),
+      userId: user.id,
+      favorite: false,
+      isDraft: false,
+      setlistScope: folderId,
+      createdAt: now,
+      updatedAt: now,
+      sections: live.sections.map((sec) => cloneSection(sec)),
+    };
+    const saved = await saveSongToDb(supabase, version, user.id);
+    if (!saved.ok) { showToast("Couldn't create your version — " + saved.message); return; }
+    const { error } = await supabase.from("setlist_song_overrides").insert({
+      folder_id: folderId, original_song_id: originalId, user_id: user.id, override_song_id: version.id,
+    });
+    if (error) {
+      // Don't leave an orphaned hidden song behind.
+      await supabase.from("songs").delete().eq("id", version.id);
+      logErr("create private version: override insert", error);
+      showToast("Couldn't create your version — " + error.message);
+      return;
+    }
+    // Revert any unsaved in-memory edits on the shared original.
+    const last = lastSavedRef.current.get(originalId);
+    setSongs((prev) => [version, ...prev.map((x) => (x.id === originalId && last ? last : x))]);
+    setDirtyIds((prev) => { const n = new Set(prev); n.delete(originalId); return n; });
+    lastSavedRef.current.set(version.id, version);
+    hydratedIdsRef.current.add(version.id);
+    persistOverrides([...overrides, { folderId, originalSongId: originalId, overrideSongId: version.id }]);
+    setView({ kind: "editor", songId: version.id, setlistId: folderId });
+    showToast("Your own version — only you see it in this setlist");
+  };
+
+  // "Share with team": promote my version to the shared slot (server does it
+  // atomically — see share_setlist_version). Original song untouched; other
+  // members' private versions of this slot are re-pointed by the server.
+  const sharePrivateVersion = async (folderId: string, versionId: string) => {
+    if (!user) return;
+    if (!guardOnline()) return;
+    if (dirtyIds.has(versionId)) { showToast("Save your changes first, then share"); return; }
+    const originalId = originalSlotId(folderId, versionId);
+    const { error } = await supabase.rpc("share_setlist_version", { p_folder_id: folderId, p_original_song_id: originalId });
+    if (error) { logErr("share private version", error); showToast("Couldn't share — " + error.message); return; }
+    setFolderSongs((prev) => prev.map((fs) => (fs.folderId === folderId && fs.songId === originalId ? { ...fs, songId: versionId } : fs)));
+    setSongs((prev) => prev.map((x) => (x.id === versionId ? { ...x, setlistScope: null, isDraft: false } : x)));
+    persistOverrides(overrides.filter((o) => !(o.folderId === folderId && o.originalSongId === originalId)));
+    const f = folders.find((x) => x.id === folderId);
+    showToast(`Shared — everyone in "${f?.name ?? "this setlist"}" now sees your version`);
+  };
+
+  // Keep my version AND put it in my library (it stays my version here).
+  const savePrivateVersionToLibrary = async (versionId: string) => {
+    if (!user) return;
+    if (!guardOnline()) return;
+    const { error } = await supabase.from("songs").update({ setlist_scope: null }).eq("id", versionId).eq("user_id", user.id);
+    if (error) { logErr("save private version to library", error); showToast("Couldn't save to library — " + error.message); return; }
+    setSongs((prev) => prev.map((x) => (x.id === versionId ? { ...x, setlistScope: null } : x)));
+    showToast("Saved to your library — still your version in this setlist");
+  };
+
+  // Back to the shared song: drop my override; delete the version too unless
+  // it has been saved to my library.
+  const discardPrivateVersion = async (folderId: string, versionId: string) => {
+    if (!user) return;
+    if (!guardOnline()) return;
+    const originalId = originalSlotId(folderId, versionId);
+    const version = songs.find((x) => x.id === versionId);
+    const { error } = await supabase.from("setlist_song_overrides").delete()
+      .eq("folder_id", folderId).eq("original_song_id", originalId).eq("user_id", user.id);
+    if (error) { logErr("discard private version", error); showToast("Couldn't discard — " + error.message); return; }
+    if (version?.setlistScope) {
+      await supabase.from("songs").delete().eq("id", versionId).eq("user_id", user.id);
+      setSongs((prev) => prev.filter((x) => x.id !== versionId));
+      setDirtyIds((prev) => { const n = new Set(prev); n.delete(versionId); return n; });
+      try { localStorage.removeItem("wp-backup-" + versionId); } catch { /* ignore */ }
+    }
+    persistOverrides(overrides.filter((o) => !(o.folderId === folderId && o.overrideSongId === versionId)));
+    setView({ kind: "editor", songId: originalId, setlistId: folderId });
+    showToast(version?.setlistScope ? "Back to the shared song — your version was discarded" : "Back to the shared song — your version is still in your library");
   };
 
   const navigateTo = (newView: View) => {
@@ -2091,7 +2268,7 @@ export default function Home() {
     const norm = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
     const t = norm(title);
     if (!t) return null;
-    const hit = songs.find((s) => norm(s.title) === t);
+    const hit = librarySongs.find((s) => norm(s.title) === t);
     return hit ? hit.id : null;
   };
 
@@ -2262,7 +2439,7 @@ export default function Home() {
       // keys on title + each line's lyric + chord names.
       const sig = songSignature;
       const existingBySig = new Map<string, string>();
-      for (const s of songs) existingBySig.set(sig(s), s.id);
+      for (const s of librarySongs) existingBySig.set(sig(s), s.id);
 
       // Map SongBook Pro Id → the resolved W+ song id (reused or newly created).
       const idMap = new Map<string, string>();
@@ -2467,7 +2644,7 @@ export default function Home() {
   ) => {
     setPendingSplits((prev) => prev.slice(1));
     const existingBySig = new Map<string, string>();
-    for (const s of songs) existingBySig.set(songSignature(s), s.id);
+    for (const s of librarySongs) existingBySig.set(songSignature(s), s.id);
     const toCreate: Song[] = [];
     const resolvedIds: string[] = [];
     for (const song of chosen) {
@@ -2810,8 +2987,41 @@ export default function Home() {
     if (error) logErr("rename folder", error);
   };
 
+  // Deleting a setlist that holds MY private versions asks first (Save to
+  // library / Delete anyway / Cancel). Only versions still tied to this
+  // setlist count — incl. ones whose song was since removed from it; versions
+  // already saved to my library are never lost, so they don't prompt.
+  // Other members' versions are moved into THEIR libraries by the database
+  // (songs.setlist_scope ON DELETE SET NULL) — never destroyed.
   const deleteFolder = async (id: string): Promise<void> => {
     if (!guardOnline()) return;
+    const mine = songs.filter((s) => s.setlistScope === id && s.userId === user?.id);
+    if (mine.length) {
+      const f = folders.find((x) => x.id === id);
+      setDeleteVersionsPrompt({ folderId: id, name: f?.name ?? "this setlist", versions: mine });
+      return;
+    }
+    await deleteFolderNow(id);
+  };
+  const resolveDeleteVersionsPrompt = async (choice: "save" | "delete" | "cancel") => {
+    const p = deleteVersionsPrompt;
+    setDeleteVersionsPrompt(null);
+    if (!p || choice === "cancel") return;
+    const ids = p.versions.map((v) => v.id);
+    if (choice === "delete") {
+      const { error } = await supabase.from("songs").delete().in("id", ids).eq("user_id", user?.id ?? "");
+      if (error) { logErr("delete private versions", error); showToast("Couldn't delete your versions — setlist kept"); return; }
+      setSongs((prev) => prev.filter((s) => !ids.includes(s.id)));
+    }
+    const ok = await deleteFolderNow(p.folderId);
+    // "Save": the database already moved them to the library (ON DELETE SET
+    // NULL); mirror that locally so they show up there immediately.
+    if (ok && choice === "save") {
+      setSongs((prev) => prev.map((s) => (ids.includes(s.id) ? { ...s, setlistScope: null } : s)));
+      showToast(`Setlist deleted — ${ids.length} of your version${ids.length === 1 ? "" : "s"} saved to your library`);
+    }
+  };
+  const deleteFolderNow = async (id: string): Promise<boolean> => {
     // Snapshot for rollback if the DB delete fails.
     const prevFolders = folders;
     const prevFolderSongs = folderSongs;
@@ -2829,7 +3039,11 @@ export default function Home() {
       // Restore so the UI reflects what's actually in the DB.
       setFolders(prevFolders);
       setFolderSongs(prevFolderSongs);
+      return false;
     }
+    // Overrides for this setlist were removed by ON DELETE CASCADE.
+    persistOverrides(overrides.filter((o) => o.folderId !== id));
+    return true;
   };
 
   const addSongToFolder=async(folderId:string,songId:string):Promise<void>=>{
@@ -2896,10 +3110,13 @@ export default function Home() {
     if (view.kind !== "editor" || !view.setlistId) return null;
     const folder = folders.find((f) => f.id === view.setlistId);
     if (!folder) return null;
+    const setlistId = view.setlistId;
+    // Slots resolved to this user's private versions, so Prev/Next and
+    // presenter crossing land on their own version of each song.
     const orderedIds = folderSongs
-      .filter((fs) => fs.folderId === view.setlistId)
+      .filter((fs) => fs.folderId === setlistId)
       .sort((a, b) => a.position - b.position)
-      .map((fs) => fs.songId);
+      .map((fs) => resolveSetlistSongId(setlistId, fs.songId));
     const currentIndex = orderedIds.indexOf(view.songId);
     if (currentIndex === -1) return null;
     return { folder, orderedIds, currentIndex };
@@ -2954,6 +3171,19 @@ export default function Home() {
   // edit (leader/editor). Passed to FoldersView to gate mutating controls.
   const canEditFolder = (folder: Folder): boolean =>
     folder.ownerId === authedUser.id || (folder.type === "setlist" && canEditGroupContent(folder.groupId));
+
+  // Private-version controls for the open setlist slot (hidden until the
+  // migration exists). Sharing = changing the setlist → owner/leader/editor.
+  const pvFolderId = setlistNav?.folder.id ?? "";
+  const pvSongId = activeSong?.id ?? "";
+  const privateVersionCtx = setlistNav && privateVersionsReady && activeSong
+    ? {
+        isMine: overrides.some((o) => o.folderId === pvFolderId && o.overrideSongId === pvSongId),
+        inLibrary: !activeSong.setlistScope,
+        canShare: canEditFolder(setlistNav.folder),
+      }
+    : undefined;
+  const editorSetlistContext = setlistContext ? { ...setlistContext, privateVersion: privateVersionCtx } : null;
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
@@ -3014,6 +3244,15 @@ export default function Home() {
       {/* Photo import — staging sheet (add one or several pages), then vision. */}
       {photoModalOpen && (
         <PhotoImportModal onClose={() => setPhotoModalOpen(false)} onImport={importFromPhotos} busy={importingPhoto} />
+      )}
+
+      {/* Deleting a setlist that holds my private versions. */}
+      {deleteVersionsPrompt && (
+        <DeleteVersionsPrompt
+          name={deleteVersionsPrompt.name}
+          titles={deleteVersionsPrompt.versions.map((v) => v.title)}
+          onChoose={(c) => void resolveDeleteVersionsPrompt(c)}
+        />
       )}
 
       {/* .sbp with a setlist — choose where it goes before anything is saved. */}
@@ -3079,7 +3318,7 @@ export default function Home() {
           onNavigate={navigateTo}
           folders={folders}
           groups={groups}
-          songsCount={songs.filter((s) => s.userId === user.id).length}
+          songsCount={librarySongs.filter((s) => s.userId === user.id).length}
           sidebarOpen={sidebarOpen}
           desktopCollapsed={navCollapsed}
           onClose={() => setSidebarOpen(false)}
@@ -3096,7 +3335,7 @@ export default function Home() {
           )}
           {view.kind === "library" && songsLoaded && (
             <Library
-              songs={songs.filter(s => s.userId === user.id)}
+              songs={librarySongs.filter(s => s.userId === user.id)}
               onOpen={openSong}
               onToggleFavorite={toggleFavorite}
               onDelete={deleteSong}
@@ -3151,7 +3390,13 @@ export default function Home() {
               canUseAiChords={gate.canUse("ai_chords")}
               onRequireUpgrade={() => setUpgradeModal({ reason: "AI chord generation" })}
               currentUserId={user.id}
-              setlistContext={setlistContext}
+              setlistContext={editorSetlistContext}
+              onPrivateVersion={(action, live) => {
+                if (action === "make") void makePrivateVersion(pvFolderId, live);
+                else if (action === "share") void sharePrivateVersion(pvFolderId, pvSongId);
+                else if (action === "library") void savePrivateVersionToLibrary(pvSongId);
+                else void discardPrivateVersion(pvFolderId, pvSongId);
+              }}
               onBack={() => navigateTo(view.kind === "editor" && view.setlistId
                 ? { kind: "folders", subview: view.setlistId }
                 : { kind: "library", filter: "all" })}
@@ -3223,6 +3468,7 @@ export default function Home() {
               onReorderLinks={reorderSongLinks}
               canEditSong={canEditSong}
               sharedSongsReady={sharedSongsReady}
+              privateVersionFor={privateVersionsReady ? overrideFor : undefined}
               online={online}
               setlistEvents={setlistEvents}
               onAddEvent={addSetlistEvent}
@@ -3240,7 +3486,7 @@ export default function Home() {
             </div>
           )}
           {view.kind === "groups" && groupsLoaded && (
-            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={songs} folders={folders} onCreateGroup={gatedCreateTeam} onUpdateGroup={updateGroupName} onAddMember={gatedAddMember} onSetMemberRole={setMemberRole} onRemoveMember={removeGroupMember} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onDeleteGroup={deleteGroup} onOpenSong={openSong} onOpenSetlist={(id) => navigateTo({ kind: "folders", subview: id })} showToast={showToast} selectedTeamId={view.kind === "groups" ? (view.teamId ?? null) : null} onSelectTeam={(id) => navigateTo({ kind: "groups", teamId: id ?? undefined })}/>
+            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={librarySongs} folders={folders} onCreateGroup={gatedCreateTeam} onUpdateGroup={updateGroupName} onAddMember={gatedAddMember} onSetMemberRole={setMemberRole} onRemoveMember={removeGroupMember} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onDeleteGroup={deleteGroup} onOpenSong={openSong} onOpenSetlist={(id) => navigateTo({ kind: "folders", subview: id })} showToast={showToast} selectedTeamId={view.kind === "groups" ? (view.teamId ?? null) : null} onSelectTeam={(id) => navigateTo({ kind: "groups", teamId: id ?? undefined })}/>
           )}
         </main>
       </div>
@@ -3292,7 +3538,7 @@ export default function Home() {
 
       {libraryPickerFolderId && (
         <AddSongsModal
-          allSongs={songs}
+          allSongs={librarySongs}
           alreadyIn={new Set(folderSongs.filter((fs) => fs.folderId === libraryPickerFolderId).map((fs) => fs.songId))}
           folderId={libraryPickerFolderId}
           onAdd={async (fid, ids) => {
@@ -3873,6 +4119,39 @@ function EmptyState({ message, cta, onAction }: { message: string; cta: string; 
         className="h-10 px-4 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors">
         {cta}
       </button>
+    </div>
+  );
+}
+
+// Asked before deleting a setlist that holds the user's private versions.
+function DeleteVersionsPrompt({ name, titles, onChoose }: {
+  name: string;
+  titles: string[];
+  onChoose: (choice: "save" | "delete" | "cancel") => void;
+}) {
+  const n = titles.length;
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4"
+      {...backdropDismiss(() => onChoose("cancel"))}>
+      <div role="dialog" aria-modal="true" aria-labelledby="del-versions-title"
+        className="w-full sm:max-w-sm bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-5 space-y-4">
+        <div>
+          <h2 id="del-versions-title" className="font-semibold text-sm">Save your edited versions first?</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
+            &ldquo;{name}&rdquo; has {n} private version{n === 1 ? "" : "s"} you made
+            ({titles.slice(0, 3).join(", ")}{n > 3 ? ", …" : ""}).
+            Save {n === 1 ? "it" : "them"} to your library before deleting the setlist?
+          </p>
+        </div>
+        <div className="flex flex-col gap-2">
+          <button type="button" onClick={() => onChoose("save")}
+            className="h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold">Save to library &amp; delete setlist</button>
+          <button type="button" onClick={() => onChoose("delete")}
+            className="h-10 rounded-xl text-sm font-medium text-rose-600 dark:text-rose-400 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-950/60">Delete anyway</button>
+          <button type="button" onClick={() => onChoose("cancel")}
+            className="h-10 rounded-xl text-sm font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700">Cancel</button>
+        </div>
+      </div>
     </div>
   );
 }

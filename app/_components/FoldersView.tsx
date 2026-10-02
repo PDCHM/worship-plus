@@ -87,6 +87,10 @@ export type FoldersViewProps = {
   canEditSong: (song: Song) => boolean;
   // Team-shared songs have finished loading (see the draft hint in SetlistDetail).
   sharedSongsReady?: boolean;
+  // This user's private version of a setlist slot, if any. Rows stay keyed on
+  // the ORIGINAL song (drag/remove/reorder/links untouched); only the title
+  // shown and the song opened are swapped.
+  privateVersionFor?: (folderId: string, originalSongId: string) => Song | null;
   // Live online status — YouTube inline playback needs a connection.
   online: boolean;
   setlistEvents: SetlistEvent[];
@@ -565,7 +569,7 @@ function SetlistDetail({
   folder, currentSongs, folderSongs, cachedSongIds, onNavigate, onRename, onDelete,
   onAddSongs, onRemoveSong, onCommitOrder, onOpenSong, onUpdateDate, onExportSetlist,
   setlistEvents, onAddEvent, onUpdateEvent, onDeleteEvent, canUseCalendar, onRequireUpgrade, showToast, teams, currentUserId, onMoveToTeam, canEditFolder,
-  songLinks, onAddLink, onUpdateLink, onDeleteLink, onReorderLinks, canEditSong, online, sharedSongsReady,
+  songLinks, onAddLink, onUpdateLink, onDeleteLink, onReorderLinks, canEditSong, online, sharedSongsReady, privateVersionFor,
 }: { folder: Folder; currentSongs: Song[] } & FoldersViewProps) {
   const isOwner = folder.ownerId === currentUserId;
   // Leader/editor/owner may mutate; plain team members are view-only (RLS enforced).
@@ -588,8 +592,10 @@ function SetlistDetail({
   const hiddenDraftCount = isTeamSetlist && canEdit && sharedSongsReady
     ? Math.max(0, folderSongs.filter((fs) => fs.folderId === folder.id).length - currentSongs.length)
     : 0;
+  // What THIS user sees in a slot: their private version, else the original.
+  const shownFor = (song: Song): Song => privateVersionFor?.(folder.id, song.id) ?? song;
   // Every song in this set has its content cached → safe to use with no network.
-  const offlineReady = currentSongs.length > 0 && currentSongs.every((s) => cachedSongIds.has(s.id));
+  const offlineReady = currentSongs.length > 0 && currentSongs.every((s) => cachedSongIds.has(shownFor(s).id));
 
   const events = setlistEvents
     .filter((e) => e.folderId === folder.id)
@@ -887,10 +893,16 @@ function SetlistDetail({
                 </span>
                 <div
                   className="flex-1 min-w-0 cursor-pointer px-1"
-                  onClick={() => { if (!suppressClickRef.current) onOpenSong(song.id, { setlistId: folder.id }); }}
+                  onClick={() => { if (!suppressClickRef.current) onOpenSong(shownFor(song).id, { setlistId: folder.id }); }}
                 >
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="text-sm font-medium truncate">{song.title}</span>
+                    <span className="text-sm font-medium truncate">{shownFor(song).title}</span>
+                    {shownFor(song) !== song && (
+                      <span className="shrink-0 px-1.5 py-px rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-[10px] font-semibold"
+                        title="Your private version — only you see it in this setlist. Others see the shared song.">
+                        Your version
+                      </span>
+                    )}
                     {isTeamSetlist && song.isDraft && (
                       <span className="shrink-0 px-1.5 py-px rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 text-[10px] font-semibold"
                         title="Drafts are visible only to you. Turn off Draft in the song editor so your team can see it.">
@@ -898,8 +910,8 @@ function SetlistDetail({
                       </span>
                     )}
                   </div>
-                  {song.artist && (
-                    <div className="text-xs text-slate-400 truncate">{song.artist}</div>
+                  {shownFor(song).artist && (
+                    <div className="text-xs text-slate-400 truncate">{shownFor(song).artist}</div>
                   )}
                 </div>
                 {/* Quick access to the song's reference links. With links: the 🔗

@@ -141,7 +141,17 @@ export type SetlistContext = {
   currentIndex: number;
   onPrev: (() => void) | null;
   onNext: (() => void) | null;
+  // Private per-musician version of THIS setlist slot (absent until the
+  // feature's migration exists). `isMine` = the open song is my private
+  // version; otherwise `onMake` creates one from the editor's live song.
+  privateVersion?: {
+    isMine: boolean;
+    inLibrary: boolean;
+    canShare: boolean;
+  };
 };
+
+export type PrivateVersionAction = "make" | "share" | "library" | "discard";
 
 type Props = {
   song: Song;
@@ -175,6 +185,9 @@ type Props = {
   isDirty: boolean;
   currentUserId: string;
   setlistContext: SetlistContext | null;
+  // Private setlist version actions (see SetlistContext.privateVersion).
+  // "make" builds from the editor's live song.
+  onPrivateVersion?: (action: PrivateVersionAction, live: Song) => void;
   sectionStyles: SectionStyles;
   onSectionStylesChange: (s: SectionStyles) => void;
   onSectionStylesSave: (s: SectionStyles) => void | Promise<void>;
@@ -972,6 +985,7 @@ export default function SongEditor({
   isDirty,
   currentUserId,
   setlistContext,
+  onPrivateVersion,
   sectionStyles,
   onSectionStylesChange,
   onSectionStylesSave,
@@ -3193,6 +3207,15 @@ export default function SongEditor({
               <span className="text-indigo-400 dark:text-indigo-500"> · {setlistContext.currentIndex + 1} of {setlistContext.total}</span>
             </div>
             <div className="flex items-center gap-1 shrink-0">
+              {setlistContext.privateVersion && !setlistContext.privateVersion.isMine && (
+                <button type="button"
+                  onClick={() => onPrivateVersion?.("make", song)}
+                  title="Make your own private version of this song for this setlist — only you will see it"
+                  className="h-7 px-2 mr-1 rounded-md flex items-center gap-1 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  <span className="hidden sm:inline">My own version</span>
+                </button>
+              )}
               <button type="button"
                 onClick={() => setlistContext.onPrev?.()}
                 disabled={!setlistContext.onPrev}
@@ -3211,6 +3234,9 @@ export default function SongEditor({
               </button>
             </div>
           </div>
+          {setlistContext.privateVersion?.isMine && (
+            <PrivateVersionBar pv={setlistContext.privateVersion} onAction={(a) => onPrivateVersion?.(a, song)} />
+          )}
         </div>
       )}
       <datalist id="section-presets">
@@ -5553,6 +5579,44 @@ function MetronomePill({ bpm, playing, onToggle, raised, metronome, silent, onSi
     </button>
         <SoundToggle silent={silent} onChange={onSilentChange} variant="pill" />
       </div>
+    </div>
+  );
+}
+
+// Second row of the setlist bar when the open song is MY private version of
+// this setlist slot: who sees it, and what I can do with it. Discard asks once
+// inline (it can delete my edits).
+function PrivateVersionBar({ pv, onAction }: {
+  pv: NonNullable<SetlistContext["privateVersion"]>;
+  onAction: (a: PrivateVersionAction) => void;
+}) {
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const btn = "h-7 px-2 rounded-md text-[11px] font-semibold transition-colors";
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/70 dark:border-amber-900/50 px-3 py-1">
+      <span className="text-[11px] text-amber-800 dark:text-amber-300 min-w-0 flex-1">
+        <span className="font-semibold">Your version</span> — only you see it in this setlist{pv.inLibrary ? " · also in your library" : ""}
+      </span>
+      {confirmDiscard ? (
+        <span className="flex items-center gap-1">
+          <span className="text-[11px] text-amber-800 dark:text-amber-300">{pv.inLibrary ? "Go back to the shared song?" : "Discard your version?"}</span>
+          <button type="button" onClick={() => { setConfirmDiscard(false); onAction("discard"); }} className={btn + " text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"}>Yes</button>
+          <button type="button" onClick={() => setConfirmDiscard(false)} className={btn + " text-slate-600 dark:text-slate-300 hover:bg-amber-100 dark:hover:bg-amber-900/40"}>No</button>
+        </span>
+      ) : (
+        <span className="flex items-center gap-1">
+          {pv.canShare && (
+            <button type="button" onClick={() => onAction("share")} title="Replace the shared song in this setlist with your version, for everyone"
+              className={btn + " text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"}>Share with team</button>
+          )}
+          {!pv.inLibrary && (
+            <button type="button" onClick={() => onAction("library")} title="Also keep this version in your library"
+              className={btn + " text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40"}>Save to library</button>
+          )}
+          <button type="button" onClick={() => setConfirmDiscard(true)} title="Go back to the shared song"
+            className={btn + " text-slate-500 dark:text-slate-400 hover:bg-amber-100 dark:hover:bg-amber-900/40"}>{pv.inLibrary ? "Use shared" : "Discard"}</button>
+        </span>
+      )}
     </div>
   );
 }
