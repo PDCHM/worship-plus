@@ -3210,7 +3210,7 @@ export default function SongEditor({
               {setlistContext.privateVersion && !setlistContext.privateVersion.isMine && (
                 <button type="button"
                   onClick={() => onPrivateVersion?.("make", song)}
-                  title="Make your own private version of this song for this setlist — only you will see it"
+                  title="Make your own private copy of this song for this setlist — it goes in My Versions; only you will see it. The shared song stays as is."
                   className="h-7 px-2 mr-1 rounded-md flex items-center gap-1 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                   <span className="hidden sm:inline">My own version</span>
@@ -5595,7 +5595,7 @@ function PrivateVersionBar({ pv, onAction }: {
   return (
     <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200/70 dark:border-amber-900/50 px-3 py-1">
       <span className="text-[11px] text-amber-800 dark:text-amber-300 min-w-0 flex-1">
-        <span className="font-semibold">Your version</span> — only you see it in this setlist{pv.inLibrary ? " · also in your library" : ""}
+        <span className="font-semibold">Your version</span> — only you can see it (in this setlist&apos;s My Versions){pv.inLibrary ? " · also in your library" : ""}
       </span>
       {confirmDiscard ? (
         <span className="flex items-center gap-1">

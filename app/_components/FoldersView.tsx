@@ -6,6 +6,7 @@ import type { Song } from "@/lib/song";
 import ConfirmDialog from "@/app/_components/ConfirmDialog";
 import { SongRow } from "@/app/_components/Library";
 import SongReferences, { type SongLink } from "@/app/_components/SongReferences";
+import type { MyVersionItem } from "@/lib/privateVersions";
 
 type DeleteConfirm = { title: string; message: string; onConfirm: () => void } | null;
 
@@ -37,6 +38,10 @@ export type SetlistEvent = {
 };
 
 export type TeamOption = { id: string; name: string };
+
+// "My Versions" box items — shape defined with the display logic.
+export type { MyVersionItem } from "@/lib/privateVersions";
+export type MyVersionAction = "toggle" | "share" | "library" | "discard";
 
 export type FoldersViewProps = {
   subview: "all" | string;
@@ -87,10 +92,14 @@ export type FoldersViewProps = {
   canEditSong: (song: Song) => boolean;
   // Team-shared songs have finished loading (see the draft hint in SetlistDetail).
   sharedSongsReady?: boolean;
-  // This user's private version of a setlist slot, if any. Rows stay keyed on
-  // the ORIGINAL song (drag/remove/reorder/links untouched); only the title
-  // shown and the song opened are swapped.
+  // This user's private version of a setlist slot, if any — rows always show
+  // the ORIGINAL; this only drives the "My version ↓" marker.
   privateVersionFor?: (folderId: string, originalSongId: string) => Song | null;
+  // This user's private versions in a setlist, for the "My Versions" box.
+  myVersionsFor?: (folderId: string) => MyVersionItem[];
+  // The presenter toggle's column exists (else the toggle is hidden).
+  presenterToggleReady?: boolean;
+  onMyVersion?: (folderId: string, action: MyVersionAction, item: MyVersionItem, value?: boolean) => void;
   // Live online status — YouTube inline playback needs a connection.
   online: boolean;
   setlistEvents: SetlistEvent[];
@@ -570,6 +579,7 @@ function SetlistDetail({
   onAddSongs, onRemoveSong, onCommitOrder, onOpenSong, onUpdateDate, onExportSetlist,
   setlistEvents, onAddEvent, onUpdateEvent, onDeleteEvent, canUseCalendar, onRequireUpgrade, showToast, teams, currentUserId, onMoveToTeam, canEditFolder,
   songLinks, onAddLink, onUpdateLink, onDeleteLink, onReorderLinks, canEditSong, online, sharedSongsReady, privateVersionFor,
+  myVersionsFor, presenterToggleReady, onMyVersion,
 }: { folder: Folder; currentSongs: Song[] } & FoldersViewProps) {
   const isOwner = folder.ownerId === currentUserId;
   // Leader/editor/owner may mutate; plain team members are view-only (RLS enforced).
@@ -592,10 +602,13 @@ function SetlistDetail({
   const hiddenDraftCount = isTeamSetlist && canEdit && sharedSongsReady
     ? Math.max(0, folderSongs.filter((fs) => fs.folderId === folder.id).length - currentSongs.length)
     : 0;
-  // What THIS user sees in a slot: their private version, else the original.
-  const shownFor = (song: Song): Song => privateVersionFor?.(folder.id, song.id) ?? song;
-  // Every song in this set has its content cached → safe to use with no network.
-  const offlineReady = currentSongs.length > 0 && currentSongs.every((s) => cachedSongIds.has(shownFor(s).id));
+  // My private versions here (only ever mine — RLS + owner-only songs).
+  const myVersions = myVersionsFor?.(folder.id) ?? [];
+  // Every song in this set has its content cached → safe to use with no
+  // network — incl. my versions ticked to play in presenter mode.
+  const offlineReady = currentSongs.length > 0
+    && currentSongs.every((s) => cachedSongIds.has(s.id))
+    && myVersions.every((v) => !v.usePresenter || !v.inSetlist || cachedSongIds.has(v.version.id));
 
   const events = setlistEvents
     .filter((e) => e.folderId === folder.id)
@@ -893,14 +906,14 @@ function SetlistDetail({
                 </span>
                 <div
                   className="flex-1 min-w-0 cursor-pointer px-1"
-                  onClick={() => { if (!suppressClickRef.current) onOpenSong(shownFor(song).id, { setlistId: folder.id }); }}
+                  onClick={() => { if (!suppressClickRef.current) onOpenSong(song.id, { setlistId: folder.id }); }}
                 >
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <span className="text-sm font-medium truncate">{shownFor(song).title}</span>
-                    {shownFor(song) !== song && (
+                    <span className="text-sm font-medium truncate">{song.title}</span>
+                    {privateVersionFor?.(folder.id, song.id) && (
                       <span className="shrink-0 px-1.5 py-px rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 text-[10px] font-semibold"
-                        title="Your private version — only you see it in this setlist. Others see the shared song.">
-                        Your version
+                        title="You have your own version of this song — see My Versions below. This row is the shared song everyone sees.">
+                        My version ↓
                       </span>
                     )}
                     {isTeamSetlist && song.isDraft && (
@@ -910,8 +923,8 @@ function SetlistDetail({
                       </span>
                     )}
                   </div>
-                  {shownFor(song).artist && (
-                    <div className="text-xs text-slate-400 truncate">{shownFor(song).artist}</div>
+                  {song.artist && (
+                    <div className="text-xs text-slate-400 truncate">{song.artist}</div>
                   )}
                 </div>
                 {/* Quick access to the song's reference links. With links: the 🔗
@@ -956,6 +969,15 @@ function SetlistDetail({
             );
           })}
         </div>
+      )}
+      {myVersions.length > 0 && (
+        <MyVersionsBox
+          items={myVersions}
+          canShare={canEdit}
+          showToggle={!!presenterToggleReady}
+          onOpen={(it) => onOpenSong(it.version.id, { setlistId: folder.id })}
+          onAction={(action, it, value) => onMyVersion?.(folder.id, action, it, value)}
+        />
       )}
       {eventModal && (
         <AddEventModal
@@ -1854,5 +1876,79 @@ function ListIconSm() {
       <line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/>
       <line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
     </svg>
+  );
+}
+
+/* ─── MyVersionsBox ───────────────────────────────────────────────────────── */
+// My private versions in this setlist, listed SEPARATELY from the shared songs
+// (which stay team-synced above). Visible only to me — the data is owner-only.
+// Off-stage: open / cross-check / share / save to library / discard.
+// On-stage: "Play in presenter" picks my version for that slot in presenter
+// mode. Discard confirms inline (it can delete my edits).
+function MyVersionsBox({ items, canShare, showToggle, onOpen, onAction }: {
+  items: MyVersionItem[];
+  canShare: boolean;
+  showToggle: boolean;
+  onOpen: (it: MyVersionItem) => void;
+  onAction: (action: MyVersionAction, it: MyVersionItem, value?: boolean) => void;
+}) {
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const btn = "h-7 px-2 rounded-md text-[11px] font-semibold transition-colors";
+  return (
+    <section className="mt-4 rounded-xl border border-amber-200/80 dark:border-amber-900/50 bg-amber-50/50 dark:bg-amber-950/20 overflow-hidden" aria-label="My versions">
+      <div className="px-3 py-2 border-b border-amber-200/70 dark:border-amber-900/40">
+        <div className="text-xs font-semibold text-amber-900 dark:text-amber-200">My Versions</div>
+        <div className="text-[11px] text-amber-800/80 dark:text-amber-300/80">Only you can see these. The setlist above stays the shared, team-synced songs.</div>
+      </div>
+      <ul className="divide-y divide-amber-200/60 dark:divide-amber-900/40">
+        {items.map((it) => {
+          const scoped = !!it.version.setlistScope;
+          const confirming = confirmId === it.version.id;
+          return (
+            <li key={it.version.id} className="px-3 py-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+              <button type="button" onClick={() => onOpen(it)} className="min-w-0 flex-1 text-left">
+                <div className="text-sm font-medium truncate text-slate-900 dark:text-slate-100">{it.version.title || "Untitled Song"}</div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                  {it.originalId == null
+                    ? "Original song was deleted"
+                    : !it.inSetlist
+                      ? `Your version of "${it.originalTitle ?? "a song"}" — no longer in this setlist`
+                      : `Your version of "${it.originalTitle ?? "this song"}"`}
+                  {!scoped && " · in your library"}
+                </div>
+              </button>
+              {showToggle && it.inSetlist && (
+                <label className="flex items-center gap-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none"
+                  title="In presenter mode, play your version instead of the shared song for this slot (only affects you)">
+                  <input type="checkbox" checked={it.usePresenter} onChange={(e) => onAction("toggle", it, e.target.checked)}
+                    className="w-4 h-4 accent-indigo-600" />
+                  Play in presenter
+                </label>
+              )}
+              {confirming ? (
+                <span className="flex items-center gap-1">
+                  <span className="text-[11px] text-amber-900 dark:text-amber-200">{scoped ? "Discard your version?" : "Remove from this setlist? (stays in your library)"}</span>
+                  <button type="button" onClick={() => { setConfirmId(null); onAction("discard", it); }} className={btn + " text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"}>Yes</button>
+                  <button type="button" onClick={() => setConfirmId(null)} className={btn + " text-slate-600 dark:text-slate-300 hover:bg-amber-100 dark:hover:bg-amber-900/40"}>No</button>
+                </span>
+              ) : (
+                <span className="flex items-center gap-1">
+                  {canShare && it.inSetlist && (
+                    <button type="button" onClick={() => onAction("share", it)} title="Replace the shared song in this setlist with your version, for everyone"
+                      className={btn + " text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"}>Share with team</button>
+                  )}
+                  {scoped && (
+                    <button type="button" onClick={() => onAction("library", it)} title="Keep a copy in your library — survives if this setlist is deleted"
+                      className={btn + " text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40"}>Save to library</button>
+                  )}
+                  <button type="button" onClick={() => setConfirmId(it.version.id)}
+                    className={btn + " text-slate-500 dark:text-slate-400 hover:bg-amber-100 dark:hover:bg-amber-900/40"}>{scoped ? "Discard" : "Remove"}</button>
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
   );
 }

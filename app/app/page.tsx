@@ -35,6 +35,8 @@ import GroupsView, { type Group, type GroupMember, type GroupSong, type MemberRo
 import PrintLayout from "@/app/_components/PrintLayout";
 import SetlistPrintLayout from "@/app/_components/SetlistPrintLayout";
 import SetlistExportModal from "@/app/_components/SetlistExportModal";
+import * as PV from "@/lib/privateVersions";
+import type { SetlistOverride } from "@/lib/privateVersions";
 import {
   DEFAULT_SETTINGS,
   DEFAULT_SECTION_COLORS_DARK,
@@ -66,7 +68,6 @@ import {
 } from "@/lib/song";
 
 // "In setlist folderId, show MY overrideSongId in place of originalSongId."
-type SetlistOverride = { folderId: string; originalSongId: string; overrideSongId: string };
 
 // A parsed .sbp import paused on the "where does its setlist go?" question.
 // Songs are resolved (deduped against the library) but NOT yet added/saved.
@@ -544,6 +545,8 @@ export default function Home() {
   // guarantees songs.setlist_scope — the feature's UI is hidden until then.
   const [overrides, setOverrides] = useState<SetlistOverride[]>([]);
   const [privateVersionsReady, setPrivateVersionsReady] = useState(false);
+  // The presenter toggle's column exists (migration 20261004…); toggle hidden until then.
+  const [presenterToggleReady, setPresenterToggleReady] = useState(false);
   const [deleteVersionsPrompt, setDeleteVersionsPrompt] = useState<{ folderId: string; name: string; versions: Song[] } | null>(null);
   const [setlistEvents, setSetlistEvents] = useState<SetlistEvent[]>([]);
   const [songLinks, setSongLinks] = useState<SongLink[]>([]);
@@ -637,6 +640,13 @@ export default function Home() {
   const handlePresentChange = (p: boolean) => {
     if (p) {
       if (presentKeyRef.current == null && view.kind === "editor") presentKeyRef.current = view.songId;
+      // Entering presenter on a setlist slot I've ticked "Play my version":
+      // swap to my version in place (the pinned key keeps the session alive,
+      // exactly like presenter crossing to the next setlist song).
+      if (view.kind === "editor" && view.setlistId) {
+        const target = presenterSongId(view.setlistId, view.songId);
+        if (target !== view.songId) setView({ ...view, songId: target });
+      }
     } else {
       presentKeyRef.current = null;
     }
@@ -1172,27 +1182,40 @@ export default function Home() {
         // folders. The last good list is mirrored to localStorage so a musician
         // offline on stage still sees their own versions.
         const ovKey = "wp-overrides-" + u.id;
-        void supabase
+        // use_in_presenter comes from a later migration: if it's missing, retry
+        // without it (toggle hidden, every slot plays the original).
+        const loadOverrides = (withToggle: boolean) => void supabase
           .from("setlist_song_overrides")
-          .select("folder_id, original_song_id, override_song_id")
+          .select(withToggle ? "folder_id, original_song_id, override_song_id, use_in_presenter" : "folder_id, original_song_id, override_song_id")
           .then(({ data: ovRows, error: ovErr }) => {
             if (cancelled) return;
+            if (ovErr && withToggle && /use_in_presenter|column|42703/i.test(ovErr.message || "") && !/setlist_song_overrides.*(does not exist|schema cache)|42P01/i.test(ovErr.message || "")) {
+              loadOverrides(false);
+              return;
+            }
             if (ovErr) {
               // Missing table = migration pending → feature stays hidden.
               if (/setlist_song_overrides|42P01|does not exist|schema cache/i.test(ovErr.message || "")) return;
               try {
                 const cached = JSON.parse(localStorage.getItem(ovKey) || "null");
-                if (Array.isArray(cached)) { setOverrides(cached); setPrivateVersionsReady(true); }
+                if (Array.isArray(cached)) {
+                  setOverrides(cached.map((o: SetlistOverride) => ({ ...o, usePresenter: !!o.usePresenter })));
+                  setPrivateVersionsReady(true);
+                  setPresenterToggleReady(cached.some((o: Partial<SetlistOverride>) => "usePresenter" in o));
+                }
               } catch { /* no cache */ }
               return;
             }
-            const list: SetlistOverride[] = (ovRows ?? []).map((r: { folder_id: string; original_song_id: string; override_song_id: string }) => ({
+            const list: SetlistOverride[] = ((ovRows ?? []) as unknown as { folder_id: string; original_song_id: string; override_song_id: string; use_in_presenter?: boolean | null }[]).map((r) => ({
               folderId: r.folder_id, originalSongId: r.original_song_id, overrideSongId: r.override_song_id,
+              usePresenter: !!r.use_in_presenter,
             }));
             setOverrides(list);
             setPrivateVersionsReady(true);
+            setPresenterToggleReady(withToggle);
             try { localStorage.setItem(ovKey, JSON.stringify(list)); } catch { /* quota */ }
           });
+        loadOverrides(true);
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
@@ -1600,26 +1623,22 @@ export default function Home() {
   };
 
   // ── Private setlist versions: slot resolution ──
-  // folder_songs keeps the ORIGINAL song ids (so add/remove/reorder and their
-  // permission checks are untouched); only what this user SEES and OPENS for a
-  // slot is swapped to their private version, when one exists and is loaded.
-  const overrideFor = (folderId: string, originalSongId: string): Song | null => {
-    const o = overrides.find((x) => x.folderId === folderId && x.originalSongId === originalSongId);
-    return o ? songs.find((s) => s.id === o.overrideSongId) ?? null : null;
-  };
-  const resolveSetlistSongId = (folderId: string, songId: string): string =>
-    overrideFor(folderId, songId)?.id ?? songId;
-  // Reverse: an open private version → the original slot it stands in for.
-  const originalSlotId = (folderId: string, songId: string): string =>
-    overrides.find((x) => x.folderId === folderId && x.overrideSongId === songId)?.originalSongId ?? songId;
+  // The setlist slot ALWAYS shows/opens the ORIGINAL shared song (team-synced);
+  // my private versions are listed separately ("My Versions"). The only place a
+  // slot resolves to my version is PRESENTER mode, and only for slots I've
+  // ticked "Play my version in presenter mode".
+  const overrideFor = (folderId: string, originalSongId: string) => PV.overrideFor(overrides, songs, folderId, originalSongId);
+  const myVersionsFor = (folderId: string) => PV.myVersionsFor(overrides, songs, folderSongs, folderId, user?.id);
+  const presenterSongId = (folderId: string, songId: string) => PV.presenterSongId(overrides, songs, folderId, songId);
+  const originalSlotId = (folderId: string, songId: string) => PV.originalSlotId(overrides, folderId, songId);
 
-  // Ordered songs of a setlist (metadata-only entries are fine for listing),
-  // with this user's private versions in place of the originals.
+  // Ordered songs of a setlist (metadata-only entries are fine for listing) —
+  // the ORIGINALS, so print/PDF/export match the team-synced setlist.
   const orderedFolderSongs = (folderId: string): Song[] =>
     folderSongs
       .filter((fs) => fs.folderId === folderId)
       .sort((a, b) => a.position - b.position)
-      .map((fs) => songs.find((s) => s.id === resolveSetlistSongId(folderId, fs.songId)))
+      .map((fs) => songs.find((s) => s.id === fs.songId))
       .filter((s): s is Song => Boolean(s));
 
   // Hydrate every song in a setlist (library songs are metadata-only until
@@ -2171,9 +2190,9 @@ export default function Home() {
     setDirtyIds((prev) => { const n = new Set(prev); n.delete(originalId); return n; });
     lastSavedRef.current.set(version.id, version);
     hydratedIdsRef.current.add(version.id);
-    persistOverrides([...overrides, { folderId, originalSongId: originalId, overrideSongId: version.id }]);
+    persistOverrides([...overrides, { folderId, originalSongId: originalId, overrideSongId: version.id, usePresenter: false }]);
     setView({ kind: "editor", songId: version.id, setlistId: folderId });
-    showToast("Your own version — only you see it in this setlist");
+    showToast("Your version is in My Versions — only you can see it");
   };
 
   // "Share with team": promote my version to the shared slot (server does it
@@ -2193,6 +2212,17 @@ export default function Home() {
     showToast(`Shared — everyone in "${f?.name ?? "this setlist"}" now sees your version`);
   };
 
+  // "Play my version in presenter mode" for one slot (per user, synced).
+  const setPresenterToggle = async (folderId: string, originalSongId: string, value: boolean) => {
+    if (!user) return;
+    if (!guardOnline()) return;
+    const prev = overrides;
+    persistOverrides(overrides.map((o) => (o.folderId === folderId && o.originalSongId === originalSongId ? { ...o, usePresenter: value } : o)));
+    const { error } = await supabase.from("setlist_song_overrides").update({ use_in_presenter: value })
+      .eq("folder_id", folderId).eq("original_song_id", originalSongId).eq("user_id", user.id);
+    if (error) { logErr("presenter toggle", error); persistOverrides(prev); showToast("Couldn't change that — " + error.message); }
+  };
+
   // Keep my version AND put it in my library (it stays my version here).
   const savePrivateVersionToLibrary = async (versionId: string) => {
     if (!user) return;
@@ -2205,7 +2235,7 @@ export default function Home() {
 
   // Back to the shared song: drop my override; delete the version too unless
   // it has been saved to my library.
-  const discardPrivateVersion = async (folderId: string, versionId: string) => {
+  const discardPrivateVersion = async (folderId: string, versionId: string, stayOnSetlist = false) => {
     if (!user) return;
     if (!guardOnline()) return;
     const originalId = originalSlotId(folderId, versionId);
@@ -2220,7 +2250,7 @@ export default function Home() {
       try { localStorage.removeItem("wp-backup-" + versionId); } catch { /* ignore */ }
     }
     persistOverrides(overrides.filter((o) => !(o.folderId === folderId && o.overrideSongId === versionId)));
-    setView({ kind: "editor", songId: originalId, setlistId: folderId });
+    if (!stayOnSetlist) setView({ kind: "editor", songId: originalId, setlistId: folderId });
     showToast(version?.setlistScope ? "Back to the shared song — your version was discarded" : "Back to the shared song — your version is still in your library");
   };
 
@@ -3111,13 +3141,10 @@ export default function Home() {
     const folder = folders.find((f) => f.id === view.setlistId);
     if (!folder) return null;
     const setlistId = view.setlistId;
-    // Slots resolved to this user's private versions, so Prev/Next and
-    // presenter crossing land on their own version of each song.
-    const orderedIds = folderSongs
-      .filter((fs) => fs.folderId === setlistId)
-      .sort((a, b) => a.position - b.position)
-      .map((fs) => resolveSetlistSongId(setlistId, fs.songId));
-    const currentIndex = orderedIds.indexOf(view.songId);
+    // Slots are the ORIGINAL songs. Prev/Next open the original — except in
+    // presenter mode, where a slot I've ticked opens my version. A private
+    // version that's open (from "My Versions") sits at its original's slot.
+    const { orderedIds, currentIndex } = PV.setlistSequence(overrides, songs, folderSongs, setlistId, view.songId, presentActive);
     if (currentIndex === -1) return null;
     return { folder, orderedIds, currentIndex };
   })();
@@ -3469,6 +3496,14 @@ export default function Home() {
               canEditSong={canEditSong}
               sharedSongsReady={sharedSongsReady}
               privateVersionFor={privateVersionsReady ? overrideFor : undefined}
+              myVersionsFor={privateVersionsReady ? myVersionsFor : undefined}
+              presenterToggleReady={presenterToggleReady}
+              onMyVersion={(folderId, action, it, value) => {
+                if (action === "toggle" && it.originalId) void setPresenterToggle(folderId, it.originalId, !!value);
+                else if (action === "share") void sharePrivateVersion(folderId, it.version.id);
+                else if (action === "library") void savePrivateVersionToLibrary(it.version.id);
+                else if (action === "discard") void discardPrivateVersion(folderId, it.version.id, true);
+              }}
               online={online}
               setlistEvents={setlistEvents}
               onAddEvent={addSetlistEvent}

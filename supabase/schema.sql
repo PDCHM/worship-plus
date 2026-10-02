@@ -1591,3 +1591,21 @@ end;
 $$;
 revoke all on function public.share_setlist_version(uuid, uuid) from public;
 grant execute on function public.share_setlist_version(uuid, uuid) to authenticated;
+
+-- ============================================================
+-- Private setlist versions: presenter toggle
+-- (migration 20261004120000_override_presenter_toggle.sql)
+-- ============================================================
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'setlist_song_overrides'
+      and column_name = 'use_in_presenter'
+  ) then
+    alter table public.setlist_song_overrides
+      add column use_in_presenter boolean not null default false;
+    update public.setlist_song_overrides set use_in_presenter = true;
+  end if;
+end $$;
