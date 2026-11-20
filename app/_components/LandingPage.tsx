@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { KOFI_URL } from "@/lib/support";
 import type { ReactNode } from "react";
 
 /* ─── Landing page ───────────────────────────────────────────────────────────
@@ -181,6 +182,11 @@ export default function LandingPage() {
           <span className="mx-2">·</span>
           <Link href="/privacy" className="hover:text-slate-600">Privacy</Link>
         </div>
+        {/* Optional Ko-fi tip jar — subtle, new tab, unlocks nothing. */}
+        <a href={KOFI_URL} target="_blank" rel="noopener noreferrer"
+          className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-[#f3f0ff] px-4 py-2 text-sm font-semibold text-[#6a4cf0] ring-1 ring-violet-200/80 transition-colors hover:bg-[#ebe4ff]">
+          ☕ Support Worship+
+        </a>
       </footer>
     </div>
   );

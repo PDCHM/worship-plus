@@ -22,6 +22,7 @@ import HelpModal from "@/app/_components/HelpModal";
 import { prepareImageFile, fileToBase64 } from "@/lib/image/prepare";
 import SongSearchSheet, { type SongSearchResult } from "@/app/_components/SongSearchSheet";
 import UpgradeModal from "@/app/_components/UpgradeModal";
+import SupportModal from "@/app/_components/SupportModal";
 import { isPaidPlan, PLANS, type Plan } from "@/lib/plans";
 import { FREE_MODEL } from "@/lib/flags";
 import { usePlan } from "@/lib/usePlan";
@@ -3753,6 +3754,7 @@ function TopNav({
   view: View;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -3830,6 +3832,12 @@ function TopNav({
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                 Settings
               </button>
+              {/* Optional Ko-fi tip jar — opens SupportModal; unlocks nothing. */}
+              <button type="button" onClick={() => { setMenuOpen(false); setSupportOpen(true); }}
+                className="w-full min-h-[48px] px-3 rounded-lg flex items-center gap-3 text-sm font-medium text-[#6a4cf0] dark:text-violet-300 hover:bg-[#f3f0ff] dark:hover:bg-violet-500/10 transition-colors">
+                <span className="w-[18px] text-center text-base leading-none" aria-hidden="true">☕</span>
+                Support Worship+
+              </button>
               <div className="min-h-[48px] px-3 rounded-lg flex items-center gap-3 text-sm text-slate-700 dark:text-slate-200">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                 <span className="flex-1">Account</span>
@@ -3852,6 +3860,7 @@ function TopNav({
           </div>
         </div>
       )}
+      {supportOpen && <SupportModal onClose={() => setSupportOpen(false)} />}
     </header>
   );
 }
