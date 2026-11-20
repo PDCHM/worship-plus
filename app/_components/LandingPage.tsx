@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -98,14 +99,6 @@ function ChartMockup() {
   );
 }
 
-function Logo({ className = "" }: { className?: string }) {
-  return (
-    <span className={"font-extrabold tracking-tight " + className}>
-      WORSHIP<sup className="ml-0.5 text-[0.6em]">+</sup>
-    </span>
-  );
-}
-
 export default function LandingPage() {
   return (
     <div className="min-h-screen overflow-x-hidden bg-white text-slate-900">
@@ -118,9 +111,13 @@ export default function LandingPage() {
         <div aria-hidden="true" className="pointer-events-none absolute -top-32 -right-32 h-80 w-80 rounded-full"
           style={{ background: "radial-gradient(circle, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0) 70%)" }} />
 
-        <nav className="relative mx-auto flex max-w-5xl items-center justify-between">
-          <Logo className="text-xl" />
-          <Link href="/login" className="text-sm font-semibold text-white/85 hover:text-white">Sign in</Link>
+        <nav className="relative mx-auto flex max-w-5xl items-center justify-center">
+          {/* The app's own wordmark (same asset as the in-app header and login
+              page), turned pure white via brightness-0 + invert so it reads
+              cleanly on the purple gradient. */}
+          <Image src="/worship-plus-wordmark.png" alt="Worship+" width={1404} height={477} priority
+            className="h-10 w-auto object-contain brightness-0 invert drop-shadow-sm sm:h-12" />
+          <Link href="/login" className="absolute right-0 top-1/2 -translate-y-1/2 text-sm font-semibold text-white/85 hover:text-white">Sign in</Link>
         </nav>
 
         <div className="relative mx-auto mt-14 max-w-xl sm:mt-20">
