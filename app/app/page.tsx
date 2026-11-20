@@ -3858,8 +3858,13 @@ function TopNav({
                 Sign out
               </button>
             </div>
-            {/* Legal — small and quiet at the foot of the menu. */}
+            {/* Support + legal — small and quiet at the foot of the menu. */}
             <div className="px-5 pb-4 pt-1 text-center text-xs text-slate-400 dark:text-slate-500">
+              <button type="button" onClick={() => { setMenuOpen(false); setSupportOpen(true); }}
+                className="font-semibold text-[#6a4cf0] dark:text-violet-300 hover:text-[#5b3be0] dark:hover:text-violet-200 transition-colors">
+                ☕ Support
+              </button>
+              <span className="mx-2" aria-hidden="true">·</span>
               <Link href="/terms" onClick={() => setMenuOpen(false)} className="hover:text-[#6a4cf0] dark:hover:text-violet-300 transition-colors">Terms</Link>
               <span className="mx-2" aria-hidden="true">·</span>
               <Link href="/privacy" onClick={() => setMenuOpen(false)} className="hover:text-[#6a4cf0] dark:hover:text-violet-300 transition-colors">Privacy</Link>

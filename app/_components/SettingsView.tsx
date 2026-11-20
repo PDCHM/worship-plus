@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/client";
 import { clearCache } from "@/lib/offline/cache";
 import SubscriptionSection from "@/app/_components/SubscriptionSection";
 import SupportForm from "@/app/_components/SupportForm";
+import SupportModal from "@/app/_components/SupportModal";
 
 type Props = {
   settings: Settings;
@@ -26,6 +27,7 @@ export default function SettingsView({ settings, onChange, plan, onUpgrade }: Pr
     onChange({ ...settings, ...patch });
 
   const resetAll = () => onChange(DEFAULT_SETTINGS);
+  const [supportOpen, setSupportOpen] = useState(false);
 
   return (
     <div className="max-w-3xl w-full mx-auto px-4 sm:px-6 py-6 md:py-8 space-y-6">
@@ -151,6 +153,18 @@ export default function SettingsView({ settings, onChange, plan, onUpgrade }: Pr
         </p>
         <SupportForm />
       </div>
+
+      {/* ── Support Worship+ (optional Ko-fi tip jar; unlocks nothing) ── */}
+      <button type="button" onClick={() => setSupportOpen(true)}
+        className="w-full rounded-2xl bg-[#f3f0ff] dark:bg-violet-500/10 ring-1 ring-violet-200/80 dark:ring-violet-800/60 p-5 md:p-6 flex items-center gap-4 text-left hover:bg-[#ebe4ff] dark:hover:bg-violet-500/15 transition-colors">
+        <span className="w-11 h-11 shrink-0 rounded-xl bg-white dark:bg-slate-900 flex items-center justify-center text-xl shadow-sm" aria-hidden="true">☕</span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-semibold text-[#6a4cf0] dark:text-violet-300">Support Worship+</span>
+          <span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">Optional — the app stays free either way.</span>
+        </span>
+        <svg className="shrink-0 text-[#a99be0] dark:text-violet-400/70" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+      {supportOpen && <SupportModal onClose={() => setSupportOpen(false)} />}
 
       <AccountSection />
 
