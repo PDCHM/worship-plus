@@ -4102,8 +4102,8 @@ function BottomTabs({ view, onNavigate, onAdd }: { view: View; onNavigate: (v: V
     // Floating bar: inset 12px from the sides and 8px from the bottom, 56px tall,
     // so its top edge sits at 64px — exactly where the old edge-to-edge bar's
     // did. Everything positioned against it (main pb-20, toasts, bulk-action
-    // pill) keeps clearing it unchanged. Light lavender + soft violet shadow.
-    <nav className="md:hidden fixed bottom-2 left-3 right-3 z-30 h-14 px-1 rounded-2xl bg-[#ebe4ff]/95 dark:bg-[#231b40]/95 ring-1 ring-violet-300/60 dark:ring-violet-800/60 shadow-lg shadow-violet-900/15 dark:shadow-black/40 backdrop-blur-md flex items-stretch print:hidden">
+    // pill) keeps clearing it unchanged. Barely-there lavender + soft violet shadow.
+    <nav className="md:hidden fixed bottom-2 left-3 right-3 z-30 h-14 px-1 rounded-2xl bg-[#f3f0ff]/95 dark:bg-[#1d1832]/95 ring-1 ring-violet-200/80 dark:ring-violet-900/60 shadow-lg shadow-violet-900/10 dark:shadow-black/40 backdrop-blur-md flex items-stretch print:hidden">
       <BottomTab active={isSongsTab} onClick={() => onNavigate({ kind: "library", filter: "all" })} label="Songs"
         icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 17V5l12-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="15" r="3"/></svg>} />
       <BottomTab active={view.kind === "folders" && view.tab === "folders"} onClick={() => onNavigate({ kind: "folders", subview: "all", tab: "folders" })} label="Folders"
@@ -4130,13 +4130,13 @@ function BottomTab({ active, onClick, label, icon }: {
     // (text-[10px], leading-none) so they never truncate on a ~320px phone. The tap
     // target is the full 56px-tall cell (above the 44px min); the visible pill
     // hugs icon + label. Inactive = soft purple-grey; active = brand purple on a
-    // white pill that lifts off the lavender bar.
+    // slightly deeper lavender pill.
     <button type="button" onClick={onClick} aria-current={active ? "page" : undefined}
       className={`group flex-1 min-w-0 h-full flex items-center justify-center px-0.5 transition-colors ${
-        active ? "text-[#6a4cf0] dark:text-violet-300" : "text-[#6e5fa0] dark:text-[#b3a8db] hover:text-[#54468a] dark:hover:text-violet-200"
+        active ? "text-[#6a4cf0] dark:text-violet-300" : "text-[#7a6ca8] dark:text-[#ada3d3] hover:text-[#5d4f8f] dark:hover:text-violet-200"
       }`}>
       <span className={`flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-xl transition-colors ${
-        active ? "bg-white/80 dark:bg-violet-500/25 shadow-sm shadow-violet-900/5" : ""
+        active ? "bg-violet-100 dark:bg-violet-500/20" : ""
       }`}>
         {icon}
         <span className={`text-[10px] leading-none ${active ? "font-semibold" : "font-medium"}`}>{label}</span>
