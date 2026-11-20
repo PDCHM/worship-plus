@@ -35,8 +35,13 @@ export default function SupportModal({ onClose }: { onClose: () => void }) {
           of this. 🙏
         </p>
 
+        {/* Solid brand purple first, plain linear-gradient on top via inline
+            style. NOT Tailwind's bg-gradient-* utilities: those compile to an
+            "in oklab" gradient, and where a browser drops that, the button had
+            no background at all — white text on a white sheet, i.e. invisible. */}
         <a href={KOFI_URL} target="_blank" rel="noopener noreferrer"
-          className="mt-6 inline-flex w-full h-11 items-center justify-center rounded-xl text-sm font-semibold text-white bg-gradient-to-br from-[#7a5cff] to-[#9a80ff] hover:from-[#6f4cf0] hover:to-[#8f71ff] shadow-sm shadow-violet-500/30 transition-colors">
+          className="mt-6 flex w-full h-12 items-center justify-center rounded-xl bg-[#7a5cff] text-base font-semibold text-white shadow-md shadow-violet-500/30 hover:brightness-95 active:brightness-90 transition"
+          style={{ backgroundColor: "#7a5cff", backgroundImage: "linear-gradient(135deg, #7a5cff 0%, #9a80ff 100%)", color: "#ffffff" }}>
           ☕ Buy me a coffee
         </a>
         <button type="button" onClick={onClose}
