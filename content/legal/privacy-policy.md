@@ -1,113 +1,73 @@
-# Privacy Policy
+# Worship+ — Privacy Policy
 
-**Last updated: 8 June 2026**
+_Last updated: 20 November 2026_
 
-This Privacy Policy explains how Worship+ ("Worship+ life", "we", "us", "our") collects, uses, discloses, and protects your personal data when you use our website and application (the "Service"). Worship+ is operated by **Peter Davis Chong**, based in Singapore.
+This Privacy Policy explains how Worship+ ("Worship+", "we", "us") collects, uses, and protects your information when you use the Worship+ app and website (the "Service"). We are based in Singapore and handle personal data in line with Singapore's Personal Data Protection Act (PDPA). By using Worship+, you agree to this Policy.
 
-We are committed to handling your personal data in accordance with Singapore's **Personal Data Protection Act 2012 ("PDPA")**. By using the Service, you consent to the practices described in this Policy.
+## 1. What we collect
 
-If you have any questions, you can contact us at **worshipplus.life@gmail.com**.
+**Account information (via Google Sign-In).** When you sign in with Google, we receive and store: your email address, your name (display name), and a link to your Google profile photo (we store only the link — we do not download or store the image itself). We do not collect or store any password.
 
-## 1. Personal data we collect
+**Your content.** Songs, chord charts, setlists, folders, and any notes or edits you create or import into Worship+.
 
-We collect only the data we need to provide and improve the Service.
+**Usage and technical information.** Basic technical data needed to run the Service (app settings and preferences, and standard logs from our hosting provider).
 
-**Account information**
-- Your email address (used for sign-in via magic link, and for service-related communication).
-- If you sign in with Google, basic profile information provided by Google (such as your name and email).
-- Your display name and account preferences, if you provide them.
+**Support communications.** If you contact us or submit feedback, we keep your message so we can respond and improve the Service.
 
-**Content you create**
-- Songs, chord charts, lyrics, setlists, folders, notes, and other material you create, import, or upload.
-- Information about teams or groups you create or join, and your role within them.
+We do not sell your personal data to anyone.
 
-**Support communications**
-- Messages you send us through the in-app support form, including your email address and the contents of your message.
+## 2. How we use your information
 
-**Technical and usage data**
-- Log and device information such as browser type, approximate location derived from your connection, and timestamps.
-- Error and diagnostic reports, used to detect and fix problems.
-- Information stored locally on your device (such as your session and display preferences).
+- To provide and operate the Service (your account, songs, setlists, team sharing).
+- To sync your content across your devices.
+- To respond to your support requests and feedback.
+- To maintain the security and reliability of the Service.
+- If we introduce paid plans in future, to process payments (handled by a third-party payment provider — we do not store your card details).
 
-**Payment information (paid plans only)**
-- When paid plans are available and you subscribe, payment is processed by our payment provider (Stripe). We do **not** collect or store your full card details; we receive only limited information such as subscription status and the last four digits of your card.
+## 3. Who we share it with (service providers)
 
-## 2. How we use your personal data
+- **Google** — sign-in / authentication.
+- **Supabase** — database and authentication infrastructure.
+- **Vercel** — application hosting.
 
-We use your personal data to:
-- provide, operate, and maintain the Service;
-- authenticate you and keep your account secure;
-- store and sync your songs, setlists, and other content;
-- enable team and sharing features you choose to use;
-- respond to your support requests;
-- monitor, diagnose, and fix technical problems;
-- detect and prevent fraud, abuse, or unauthorised access;
-- process subscriptions and payments (for paid plans); and
-- comply with legal obligations.
+These providers may store data on servers outside Singapore. We take reasonable steps to ensure your data is handled with appropriate protection.
 
-We will only use your personal data for the purposes for which it was collected, or for purposes you would reasonably expect, unless we obtain your consent or are otherwise permitted by law.
+## 4. How we protect your data
 
-## 3. AI features
+- We use Google Sign-In, so we never store passwords.
+- Access to your content is restricted by security rules so that only you (and team members you share with) can see it.
+- We rely on reputable infrastructure providers (Supabase, Vercel) with industry-standard security.
 
-Some features (such as AI-assisted chord generation and song search) send the relevant text you submit to a third-party AI service provider to generate a response. We send only what is needed to perform the requested task. We do not use this to sell your data.
+No system is perfectly secure, but we take reasonable measures to protect your information.
 
-## 4. Disclosure of personal data
+## 5. Keeping and deleting your data
 
-We do not sell your personal data. We share it only as described below.
+We keep your information for as long as your account is active.
 
-**Service providers (data processors)**
-We use trusted third parties to operate the Service. They process data on our behalf and are bound to protect it:
-- **Supabase** — database and backend hosting
-- **Vercel** — application hosting
-- **Resend** — sending service-related emails
-- **Sentry** — error monitoring and diagnostics
-- **Google** — sign-in (if you choose Google sign-in)
-- **Stripe** — payment processing (for paid plans)
-- An **AI service provider** — for AI-assisted features
+**Deleting your account:** you can delete your account from within the app. When you do, your personal data is removed. Where we keep limited records (for example, support correspondence), we remove or anonymise the personal identifiers in them. Please avoid including sensitive personal information in free-text messages or feedback.
 
-**Team and sharing**
-If you create or join a team, or share content within a team, the relevant content and your participation may be visible to other members of that team.
+## 6. Your choices and rights (PDPA)
 
-**Legal and protection**
-We may disclose personal data if required by law, or where reasonably necessary to enforce our Terms, protect our rights, or protect the safety of users.
+You may:
 
-## 5. Transfers outside Singapore
-
-Some of our service providers store or process data outside Singapore. Where we transfer personal data overseas, we take reasonable steps to ensure it receives a standard of protection comparable to that under the PDPA.
-
-## 6. Cookies and local storage
-
-We use cookies and similar local storage to keep you signed in and to remember your preferences (such as your editor and display settings). These are necessary for the Service to function. We do not use them for third-party advertising.
-
-## 7. Retention
-
-We retain your personal data for as long as your account is active or as needed to provide the Service. When you delete your account, we delete your personal data and content, except where we are required to retain certain information to comply with legal, accounting, or security obligations.
-
-## 8. Your rights
-
-Under the PDPA, you may:
 - **Access** the personal data we hold about you;
-- **Correct** inaccurate or incomplete personal data;
-- **Withdraw consent** to our collection, use, or disclosure of your personal data; and
-- **Request deletion** of your account and data.
+- **Correct** inaccurate information (much of it you can edit directly in the app);
+- **Withdraw consent** and delete your account.
 
-You can export your data and delete your account directly from within the Service (Settings → Account). For any other request, contact us at **worshipplus.life@gmail.com**. We will respond within a reasonable time. Withdrawing consent may mean we can no longer provide some or all of the Service to you.
+To make a request, contact us at [worshipplus@gmail.com](mailto:worshipplus@gmail.com).
 
-## 9. Security
+## 7. Children
 
-We take reasonable technical and organisational measures to protect your personal data against unauthorised access, loss, or misuse, including encrypted connections and access controls. However, no method of transmission or storage is completely secure, and we cannot guarantee absolute security.
+Worship+ is intended for general use by worship teams and musicians. It is not directed at children under 13, and we do not knowingly collect data from them.
 
-## 10. Children
+## 8. Beta
 
-The Service is not directed to children under 13, and we do not knowingly collect personal data from children under 13. If you are under the age of majority in your jurisdiction, you should use the Service only with the involvement of a parent or guardian. If you believe a child has provided us personal data, please contact us and we will take steps to delete it.
+Worship+ is currently offered as a beta (a version still in testing). Features may change, and occasional issues may occur.
 
-## 11. Changes to this Policy
+## 9. Changes to this Policy
 
-We may update this Policy from time to time. If we make material changes, we will update the "Last updated" date and, where appropriate, notify you. Your continued use of the Service after changes take effect means you accept the updated Policy.
+We may update this Policy from time to time. We will update the "Last updated" date above, and significant changes will be communicated in the app where appropriate.
 
-## 12. Contact
+## 10. Contact
 
-If you have any questions, requests, or complaints about this Policy or your personal data, please contact:
-
-**Peter Davis Chong — Worship+**
-Email: **worshipplus.life@gmail.com**
+Questions about this Policy or your data? Contact us at [worshipplus@gmail.com](mailto:worshipplus@gmail.com).
