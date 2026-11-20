@@ -3804,6 +3804,17 @@ function TopNav({
           </button>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {/* Support Worship+ — optional Ko-fi tip jar. Icon only, same 36px
+              circle as the avatar beside it; opens SupportModal. */}
+          <button type="button" onClick={() => setSupportOpen(true)}
+            aria-label="Support Worship+" title="Support Worship+"
+            className="w-9 h-9 rounded-full shrink-0 flex items-center justify-center text-[#7a5cff] dark:text-violet-300 bg-[#f3f0ff] dark:bg-violet-500/15 ring-1 ring-violet-200/80 dark:ring-violet-800/60 hover:bg-[#ebe4ff] dark:hover:bg-violet-500/25 transition-colors">
+            {/* Lucide "coffee" (ISC) */}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M10 2v2" /><path d="M14 2v2" /><path d="M6 2v2" />
+              <path d="M16 8a1 1 0 0 1 1 1v8a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1h14a4 4 0 1 1 0 8h-1" />
+            </svg>
+          </button>
           <button type="button" ref={triggerRef} onClick={() => setMenuOpen((o) => !o)}
             aria-haspopup="menu" aria-expanded={menuOpen} aria-label="User menu"
             className="w-9 h-9 rounded-full overflow-hidden shadow-sm hover:ring-2 hover:ring-indigo-300 dark:hover:ring-indigo-700 transition-all">
@@ -3833,12 +3844,6 @@ function TopNav({
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                 Settings
               </button>
-              {/* Optional Ko-fi tip jar — opens SupportModal; unlocks nothing. */}
-              <button type="button" onClick={() => { setMenuOpen(false); setSupportOpen(true); }}
-                className="w-full min-h-[48px] px-3 rounded-lg flex items-center gap-3 text-sm font-medium text-[#6a4cf0] dark:text-violet-300 hover:bg-[#f3f0ff] dark:hover:bg-violet-500/10 transition-colors">
-                <span className="w-[18px] text-center text-base leading-none" aria-hidden="true">☕</span>
-                Support Worship+
-              </button>
               <div className="min-h-[48px] px-3 rounded-lg flex items-center gap-3 text-sm text-slate-700 dark:text-slate-200">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                 <span className="flex-1">Account</span>
@@ -3858,13 +3863,9 @@ function TopNav({
                 Sign out
               </button>
             </div>
-            {/* Support + legal — small and quiet at the foot of the menu. */}
+            {/* Legal — small and quiet at the foot of the menu. Support lives in
+                the top bar (coffee icon beside the avatar). */}
             <div className="px-5 pb-4 pt-1 text-center text-xs text-slate-400 dark:text-slate-500">
-              <button type="button" onClick={() => { setMenuOpen(false); setSupportOpen(true); }}
-                className="font-semibold text-[#6a4cf0] dark:text-violet-300 hover:text-[#5b3be0] dark:hover:text-violet-200 transition-colors">
-                ☕ Support
-              </button>
-              <span className="mx-2" aria-hidden="true">·</span>
               <Link href="/terms" onClick={() => setMenuOpen(false)} className="hover:text-[#6a4cf0] dark:hover:text-violet-300 transition-colors">Terms</Link>
               <span className="mx-2" aria-hidden="true">·</span>
               <Link href="/privacy" onClick={() => setMenuOpen(false)} className="hover:text-[#6a4cf0] dark:hover:text-violet-300 transition-colors">Privacy</Link>
