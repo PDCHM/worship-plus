@@ -4099,7 +4099,11 @@ function SidebarItem({ active, onClick, icon, children }: {
 function BottomTabs({ view, onNavigate, onAdd }: { view: View; onNavigate: (v: View) => void; onAdd: () => void }) {
   const isSongsTab = view.kind === "library" || view.kind === "editor";
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 dark:bg-slate-950/95 border-t border-slate-200 dark:border-slate-800 backdrop-blur-md flex items-stretch print:hidden">
+    // Floating bar: inset 12px from the sides and 8px from the bottom, 56px tall,
+    // so its top edge sits at 64px — exactly where the old edge-to-edge bar's
+    // did. Everything positioned against it (main pb-20, toasts, bulk-action
+    // pill) keeps clearing it unchanged. Very light lavender + soft violet shadow.
+    <nav className="md:hidden fixed bottom-2 left-3 right-3 z-30 h-14 px-1 rounded-2xl bg-[#f6f3ff]/95 dark:bg-[#1a1530]/95 ring-1 ring-violet-200/70 dark:ring-violet-900/60 shadow-lg shadow-violet-900/10 dark:shadow-black/40 backdrop-blur-md flex items-stretch print:hidden">
       <BottomTab active={isSongsTab} onClick={() => onNavigate({ kind: "library", filter: "all" })} label="Songs"
         icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 17V5l12-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="15" r="3"/></svg>} />
       <BottomTab active={view.kind === "folders" && view.tab === "folders"} onClick={() => onNavigate({ kind: "folders", subview: "all", tab: "folders" })} label="Folders"
@@ -4110,7 +4114,7 @@ function BottomTabs({ view, onNavigate, onAdd }: { view: View; onNavigate: (v: V
         icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>} />
       <div className="flex-1 flex items-center justify-center">
         <button type="button" onClick={onAdd} aria-label="Add song"
-          className="w-11 h-11 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 flex items-center justify-center transition-colors">
+          className="w-10 h-10 rounded-full bg-gradient-to-br from-[#7a5cff] to-[#9a80ff] text-white shadow-md shadow-violet-500/30 hover:from-[#6f4cf0] hover:to-[#8f71ff] flex items-center justify-center transition-colors">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
       </div>
@@ -4122,15 +4126,21 @@ function BottomTab({ active, onClick, label, icon }: {
   active: boolean; onClick: () => void; label: string; icon: React.ReactNode;
 }) {
   return (
-    // flex-1 so all five tabs + the [+] share the width evenly. gap/label kept tight
-    // (text-[10px], leading-none, px-0.5) so labels never truncate on a ~360px phone;
-    // the whole tap target stays the full 64px-tall cell (well above the 44px min).
-    <button type="button" onClick={onClick}
-      className={`flex-1 min-w-0 h-16 flex flex-col items-center justify-center gap-0.5 px-0.5 transition-colors ${
-        active ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400"
+    // flex-1 so all five tabs + the [+] share the width evenly. Labels kept tight
+    // (text-[10px], leading-none) so they never truncate on a ~320px phone. The tap
+    // target is the full 56px-tall cell (above the 44px min); the visible pill
+    // hugs icon + label. Inactive = muted purple-grey; active = brand purple on a
+    // soft lavender pill.
+    <button type="button" onClick={onClick} aria-current={active ? "page" : undefined}
+      className={`group flex-1 min-w-0 h-full flex items-center justify-center px-0.5 transition-colors ${
+        active ? "text-[#6a4cf0] dark:text-violet-300" : "text-[#7d7499] dark:text-[#a59dc2] hover:text-[#5f5480] dark:hover:text-violet-200"
       }`}>
-      {icon}
-      <span className="text-[10px] font-medium leading-none">{label}</span>
+      <span className={`flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-xl transition-colors ${
+        active ? "bg-violet-100 dark:bg-violet-500/20" : ""
+      }`}>
+        {icon}
+        <span className={`text-[10px] leading-none ${active ? "font-semibold" : "font-medium"}`}>{label}</span>
+      </span>
     </button>
   );
 }
