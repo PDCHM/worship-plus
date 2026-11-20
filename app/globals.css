@@ -5,6 +5,10 @@
 :root {
   --background: #ffffff;
   --foreground: #0f172a;
+  /* CJK faces, linked from Google Fonts in app/layout.tsx (not next/font —
+     see the note there). Same variable names the font stacks already use. */
+  --font-noto-sc: "Noto Sans SC";
+  --font-noto-tc: "Noto Sans TC";
 }
 
 .dark {

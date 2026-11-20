@@ -6,8 +6,6 @@ import {
   Roboto_Mono,
   IBM_Plex_Mono,
   Courier_Prime,
-  Noto_Sans_SC,
-  Noto_Sans_TC,
 } from "next/font/google";
 import "./globals.css";
 import ServiceWorkerRegister from "./_components/ServiceWorkerRegister";
@@ -41,27 +39,15 @@ const ibmPlexMono = IBM_Plex_Mono({
   subsets: ["latin"],
 });
 
-// CJK faces. Chinese worship charts previously fell back to whatever the OS
-// happened to pick, which looked inconsistent next to the Latin chart fonts.
-// Google serves these as ~150 unicode-range chunks each, so the browser fetches
-// ONLY the ranges a song actually uses (~30KB a chunk) — and `preload: false`
-// means an English-only user downloads none of it. SC covers Simplified, TC
-// picks up Traditional-only glyphs for HK/TW charts.
-const notoSansSC = Noto_Sans_SC({
-  variable: "--font-noto-sc",
-  subsets: ["latin"],
-  weight: ["400", "700"],
-  display: "swap",
-  preload: false,
-});
-
-const notoSansTC = Noto_Sans_TC({
-  variable: "--font-noto-tc",
-  subsets: ["latin"],
-  weight: ["400", "700"],
-  display: "swap",
-  preload: false,
-});
+// CJK faces (Noto Sans SC + TC) are NOT loaded through next/font: self-hosting
+// them made every build download ~300 unicode-range chunks from Google, and that
+// download kept failing on Vercel ("module not found … noto_sans_tc"), breaking
+// deploys. They are linked from Google Fonts at runtime instead (see <head>
+// below). The browser still fetches ONLY the unicode-range chunks a song
+// actually uses, and an English-only user downloads none of them. The
+// --font-noto-sc / --font-noto-tc variables are defined in globals.css.
+const NOTO_CJK_CSS =
+  "https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;700&family=Noto+Sans+TC:wght@400;700&display=swap";
 
 const courierPrime = Courier_Prime({
   variable: "--font-courier-prime",
@@ -138,10 +124,14 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${jetbrainsMono.variable} ${robotoMono.variable} ${ibmPlexMono.variable} ${courierPrime.variable} ${notoSansSC.variable} ${notoSansTC.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${jetbrainsMono.variable} ${robotoMono.variable} ${ibmPlexMono.variable} ${courierPrime.variable} h-full antialiased`}
     >
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        {/* CJK faces linked at runtime — see NOTO_CJK_CSS above. */}
+        <link rel="stylesheet" href={NOTO_CJK_CSS} />
       </head>
       <body className="min-h-full flex flex-col">
         <ServiceWorkerRegister />

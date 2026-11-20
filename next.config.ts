@@ -22,6 +22,7 @@ const sentryOrigin = safeOrigin(process.env.NEXT_PUBLIC_SENTRY_DSN); // origin s
 //                                  is a dep but NOT loaded today — redirect-only checkout)
 //   *.googleusercontent.com img  → Google account avatars (profile.avatar_url)
 //   vercel.live                  → Vercel preview comments toolbar (preview deploys only)
+//   fonts.googleapis/gstatic.com → Noto Sans SC/TC (CJK), linked at runtime in layout.tsx
 // script-src/style-src keep 'unsafe-inline' because (a) layout.tsx ships an inline
 // theme-bootstrap <script>, (b) Next injects inline hydration scripts, and (c) the
 // app uses many inline style={} attributes (chord positions, section colours).
@@ -34,9 +35,9 @@ const csp = [
   "frame-ancestors 'none'",
   "form-action 'self'",
   "script-src 'self' 'unsafe-inline' https://js.stripe.com https://vercel.live",
-  "style-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "img-src 'self' data: blob: https://*.googleusercontent.com",
-  "font-src 'self' data:",
+  "font-src 'self' data: https://fonts.gstatic.com",
   ["connect-src 'self'", supabaseOrigin, supabaseWss, sentryOrigin, "https://api.stripe.com", "https://vercel.live"]
     .filter(Boolean).join(" "),
   "frame-src 'self' https://js.stripe.com https://hooks.stripe.com https://vercel.live",
