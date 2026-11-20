@@ -4,6 +4,7 @@ import VideoShowcase from "@/app/_components/VideoShowcase";
 import WordAnchoredDemo from "@/app/_components/WordAnchoredDemo";
 import SupportLink from "@/app/_components/SupportLink";
 import { PLANS } from "@/lib/plans";
+import { FEATURE_AI_CHORDS } from "@/lib/flags";
 
 /* ─── Strengths ──────────────────────────────────────────────────────────────
    The reasons a worship leader picks Worship+ over a buy-once songbook app,
@@ -255,11 +256,20 @@ export default function LandingPage() {
             <p className="mt-4 text-lg text-slate-500">From the first rehearsal to Sunday morning.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {/* AI chord generation hidden for V1 — see FEATURE_AI_CHORDS. */}
+            {FEATURE_AI_CHORDS ? (
             <Feature
               title="AI Chord Generation"
               desc="Paste lyrics and Claude attaches chords to the right words — detecting verses, choruses, and bridges automatically."
               icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z"/></svg>}
             />
+            ) : (
+            <Feature
+              title="Photo Import"
+              desc="Snap or upload a photo or screenshot of a chord chart and Claude turns it into a clean, editable chart."
+              icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>}
+            />
+            )}
             <Feature
               title="Rehearsal Scheduling"
               desc="Add rehearsals and events to any setlist, share the date, and push it straight to everyone's calendar."

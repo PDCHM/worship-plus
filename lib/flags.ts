@@ -12,6 +12,16 @@
 // point is hidden. Flip to true once a dependable source is in hand.
 export const FEATURE_ONLINE_SEARCH = false;
 
+// AI chord generation (lyrics → chords via /api/generate-chords). Hidden for
+// V1: results weren't reliable enough to ship. Every entry point is gated on
+// this flag — the "AI Chords" add-song option, the editor's "Generate Chords"
+// button, the per-section regenerate button, the auto-open after an AI paste,
+// "Create with AI Chords" on search results, and the landing/pricing copy.
+// The Generate Chords sheet, its handlers and the API route all stay in place.
+// NOT affected: photo/screenshot import (/api/import-photo), which is a
+// separate route and handler and stays fully on. Flip to true to revive.
+export const FEATURE_AI_CHORDS = false;
+
 // Free beta: every user is treated as Church-tier for feature gating (AI chords,
 // photo import, AI search, setlists, teams, calendar, unlimited team members).
 // Read ONLY by canUse()/teamMemberCap() in lib/plans.ts, which both the client

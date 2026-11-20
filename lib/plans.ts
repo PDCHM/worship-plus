@@ -1,7 +1,7 @@
 // Subscription plans. Shared between the UpgradeModal (display), the checkout
 // route (maps a plan → its Stripe price env var), and plan gating in the app.
 
-import { BETA_MODE } from "@/lib/flags";
+import { BETA_MODE, FEATURE_AI_CHORDS } from "@/lib/flags";
 
 export type Plan = "free" | "personal" | "team" | "church";
 
@@ -41,7 +41,7 @@ export const PLANS: Record<Plan, PlanInfo> = {
     id: "personal", name: "Personal", price: "S$3.90", period: "month",
     annualPrice: "S$39", annualNote: "2 months free",
     blurb: "For the dedicated worship musician.",
-    features: ["Solo use", "Unlimited songs", "AI chord generation", "AI song search", "Setlist bundles & PDF export"],
+    features: ["Solo use", "Unlimited songs", FEATURE_AI_CHORDS ? "AI chord generation" : "Photo import", "AI song search", "Setlist bundles & PDF export"],
     priceEnvKey: "STRIPE_PRICE_PERSONAL",
   },
   team: {

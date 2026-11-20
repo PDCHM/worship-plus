@@ -2,7 +2,7 @@
 
 import { backdropDismiss } from "@/lib/backdropDismiss";
 import { useState } from "react";
-import { FEATURE_ONLINE_SEARCH } from "@/lib/flags";
+import { FEATURE_AI_CHORDS, FEATURE_ONLINE_SEARCH } from "@/lib/flags";
 
 type Props = {
   onBuildNew: () => void;
@@ -98,21 +98,26 @@ export default function AddSongSheet({ onBuildNew, onPasteChart, onAiChords, onI
                 icon={ICON_LIBRARY}
                 label="Choose from library" desc="Add songs you already have" />
             )}
-            <SheetBtn onClick={() => setImportSubOpen(true)}
-              icon={ICON_FILE}
-              label="Import Song" desc="From a file — best with SongBook Pro .sbp / .sbpbackup" chevron />
-            <SheetBtn onClick={() => { onImportPhoto(); onClose(); }}
-              icon={ICON_CAMERA}
-              label="Import from photo" desc="Snap or upload a chord chart — Claude reads it" />
+            {/* Free entry paths first: paste a chord sheet, or type it in. */}
             <SheetBtn onClick={() => setPasteSubOpen(true)}
               icon={ICON_PASTE}
               label="Paste Song" desc="Paste a full chord chart as text" chevron />
-            <SheetBtn onClick={() => { onAiChords(); onClose(); }}
-              icon={ICON_SPARKLE}
-              label="AI Chords" desc="Paste lyrics — Claude generates the chords" />
             <SheetBtn onClick={() => { onBuildNew(); onClose(); }}
               icon={ICON_EDIT}
-              label="Build New" desc="Start from a blank editor" />
+              label="Build New" desc="Type a song into a blank editor" />
+            <SheetBtn onClick={() => { onImportPhoto(); onClose(); }}
+              icon={ICON_CAMERA}
+              label="Import from photo" desc="Snap or upload a chord chart — Claude reads it" />
+            <SheetBtn onClick={() => setImportSubOpen(true)}
+              icon={ICON_FILE}
+              label="Import Song" desc="From a file — best with SongBook Pro .sbp / .sbpbackup" chevron />
+            {/* Hidden for V1 — see FEATURE_AI_CHORDS. Handler + Generate Chords
+                flow remain wired; flipping the flag brings the entry back. */}
+            {FEATURE_AI_CHORDS && (
+              <SheetBtn onClick={() => { onAiChords(); onClose(); }}
+                icon={ICON_SPARKLE}
+                label="AI Chords" desc="Paste lyrics — Claude generates the chords" />
+            )}
             {/* Hidden for V1 — see FEATURE_ONLINE_SEARCH. The whole path below
                 this button (SongSearchSheet + its API) is still wired; flipping
                 the flag brings the entry point back. */}

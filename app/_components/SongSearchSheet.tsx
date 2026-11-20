@@ -2,6 +2,7 @@
 
 import { backdropDismiss } from "@/lib/backdropDismiss";
 import { useState } from "react";
+import { FEATURE_AI_CHORDS } from "@/lib/flags";
 
 export type SongSearchResult = {
   found: boolean;
@@ -192,6 +193,7 @@ export default function SongSearchSheet({ findInLibrary, onOpenExisting, onCreat
                 ) : (
                   <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center px-1">Not in your library yet.</p>
                 )}
+                {FEATURE_AI_CHORDS && (
                 <button
                   type="button"
                   onClick={() => onCreateWithAi(result)}
@@ -200,6 +202,7 @@ export default function SongSearchSheet({ findInLibrary, onOpenExisting, onCreat
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z"/></svg>
                   Create with AI Chords
                 </button>
+                )}
               </div>
             </div>
           )}

@@ -1,6 +1,7 @@
 "use client";
 
 import { backdropDismiss } from "@/lib/backdropDismiss";
+import { FEATURE_AI_CHORDS } from "@/lib/flags";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { createPortal } from "react-dom";
 import { useOnlineStatus } from "@/lib/offline/useOnlineStatus";
@@ -1923,7 +1924,8 @@ export default function SongEditor({
     (n, s) => n + s.lines.reduce((m, l) => m + l.chords.length, 0),
     0,
   );
-  const canGenerateChords = !readOnly && lyricLines.length > 0 && totalChords < lyricLines.length;
+  // Hidden for V1 behind FEATURE_AI_CHORDS (lib/flags.ts).
+  const canGenerateChords = FEATURE_AI_CHORDS && !readOnly && lyricLines.length > 0 && totalChords < lyricLines.length;
 
   const openGenerate = () => {
     setGenKey(song.key);
@@ -1937,6 +1939,8 @@ export default function SongEditor({
   // Generate Chords sheet once automatically, then clear the flag.
   useEffect(() => {
     if (!autoGenerateChords) return;
+    // Feature hidden: never auto-open the generator; just clear the flag.
+    if (!FEATURE_AI_CHORDS) { onAutoGenerateConsumed?.(); return; }
     // Free plan: the AI Chords add-flow lands here — prompt to upgrade instead
     // of opening the generator. Consume the flag either way so it fires once.
     if (!canUseAiChords) {
@@ -3792,7 +3796,7 @@ export default function SongEditor({
                           <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
                         </svg>
                       </ToolBtn>
-                      {section.lines.some((l) => l.lyric.trim() !== "") && (
+                      {FEATURE_AI_CHORDS && section.lines.some((l) => l.lyric.trim() !== "") && (
                         <>
                           <span className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1" />
                           <ToolBtn
@@ -4624,7 +4628,7 @@ export default function SongEditor({
         />
       )}
 
-      {generateOpen && (
+      {FEATURE_AI_CHORDS && generateOpen && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center print:hidden"
           onClick={() => { if (!generating) setGenerateOpen(false); }}>
           <div
