@@ -22,6 +22,16 @@ export const FEATURE_ONLINE_SEARCH = false;
 // separate route and handler and stays fully on. Flip to true to revive.
 export const FEATURE_AI_CHORDS = false;
 
+// Free model: Worship+ is free for every worship team. Hides ALL paid-tier UI
+// — the landing pricing table (replaced by a "free for every team" message),
+// "subscribe"/"See plans" copy, the Settings Subscription panel, the account
+// menu's plan badge, every Upgrade modal/CTA, and the post-login Stripe
+// checkout resume. Also forces every plan gate open (canUse/teamMemberCap)
+// independently of BETA_MODE. The tier definitions (lib/plans.ts), Stripe
+// routes and UpgradeModal stay in the code; flip to false to bring paid
+// plans back.
+export const FREE_MODEL = true;
+
 // Free beta: every user is treated as Church-tier for feature gating (AI chords,
 // photo import, AI search, setlists, teams, calendar, unlimited team members).
 // Read ONLY by canUse()/teamMemberCap() in lib/plans.ts, which both the client

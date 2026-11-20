@@ -1,5 +1,6 @@
 "use client";
 
+import { FREE_MODEL } from "@/lib/flags";
 import { backdropDismiss } from "@/lib/backdropDismiss";
 import { useEffect, useRef, useState } from "react";
 import type { Song } from "@/lib/song";
@@ -414,7 +415,7 @@ function Overview({
           )
         )}
         {setlistList.length === 0 && !showNewSetlist && (
-          canUseSetlists ? (
+          canUseSetlists || FREE_MODEL ? (
             <EmptyHint
               label="No setlists yet"
               sub="Plan a service or rehearsal set, then export it as a PDF."

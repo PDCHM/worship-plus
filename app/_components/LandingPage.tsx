@@ -4,7 +4,7 @@ import VideoShowcase from "@/app/_components/VideoShowcase";
 import WordAnchoredDemo from "@/app/_components/WordAnchoredDemo";
 import SupportLink from "@/app/_components/SupportLink";
 import { PLANS } from "@/lib/plans";
-import { FEATURE_AI_CHORDS } from "@/lib/flags";
+import { FEATURE_AI_CHORDS, FREE_MODEL } from "@/lib/flags";
 
 /* ─── Strengths ──────────────────────────────────────────────────────────────
    The reasons a worship leader picks Worship+ over a buy-once songbook app,
@@ -17,7 +17,8 @@ const ICON = (d: string) => (
 );
 
 const STRENGTHS: { title: string; desc: string; icon: string }[] = [
-  { title: "Musicians always free", desc: "The leader subscribes; every musician plays free.",
+  { title: FREE_MODEL ? "Free for every team" : "Musicians always free",
+    desc: FREE_MODEL ? "Leaders and musicians alike — no plans, no paywalls." : "The leader subscribes; every musician plays free.",
     icon: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>' },
   { title: "Works on any device", desc: "Web-based — phone, tablet or laptop. No Apple lock-in.",
     icon: '<rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>' },
@@ -188,7 +189,7 @@ export default function LandingPage() {
             <span className="bg-gradient-to-r from-indigo-600 via-violet-600 to-fuchsia-600 bg-clip-text text-transparent">whole worship team</span>
           </h1>
           <p className="mt-6 text-lg sm:text-xl text-slate-500 max-w-2xl mx-auto leading-relaxed">
-            The leader subscribes — every musician plays free. On any device, in any language, online or off.
+            {FREE_MODEL ? "Free for your whole team" : "The leader subscribes — every musician plays free"}. On any device, in any language, online or off.
           </p>
           <div className="mt-9 flex flex-col sm:flex-row items-center justify-center gap-3">
             <Link href="/login" className="w-full sm:w-auto h-12 px-7 rounded-xl text-sm font-semibold bg-gradient-to-br from-indigo-500 to-violet-600 text-white hover:from-indigo-600 hover:to-violet-700 shadow-lg shadow-indigo-600/25 flex items-center justify-center transition-colors">
@@ -207,7 +208,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-5 sm:px-8">
           <div className="text-center max-w-2xl mx-auto mb-10">
             <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">Why worship teams choose Worship+</h2>
-            <p className="mt-4 text-lg text-slate-500">One subscription for the leader. Everything else just works.</p>
+            <p className="mt-4 text-lg text-slate-500">{FREE_MODEL ? "Free for everyone on your team. Everything just works." : "One subscription for the leader. Everything else just works."}</p>
           </div>
           <StrengthGrid />
         </div>
@@ -299,7 +300,26 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── 5. PRICING ── */}
+      {/* ── 5. PRICING ──
+          Free model (FREE_MODEL): the paid tier table below is replaced by a
+          single "free for every team" message. The table code is kept intact. */}
+      {FREE_MODEL ? (
+      <section id="pricing" className="py-20 sm:py-24 bg-slate-50 border-y border-slate-100">
+        <div className="max-w-6xl mx-auto px-5 sm:px-8">
+          <div className="text-center max-w-2xl mx-auto mb-12">
+            <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">Worship+ is free for every worship team.</h2>
+            <p className="mt-4 text-lg text-slate-500 leading-relaxed">
+              Every feature, every musician, every device — no plans, no paywalls, no credit card.
+              Sign up and bring your whole team.
+            </p>
+            <Link href="/login" className="mt-8 inline-flex h-12 px-8 rounded-xl text-sm font-semibold bg-gradient-to-br from-indigo-500 to-violet-600 text-white hover:from-indigo-600 hover:to-violet-700 shadow-lg shadow-indigo-600/25 items-center justify-center transition-colors">
+              Get started — it&apos;s free
+            </Link>
+          </div>
+          <StrengthGrid compact />
+        </div>
+      </section>
+      ) : (
       <section id="pricing" className="py-20 sm:py-24 bg-slate-50 border-y border-slate-100">
         <div className="max-w-6xl mx-auto px-5 sm:px-8">
           <div className="text-center max-w-2xl mx-auto mb-14">
@@ -340,6 +360,7 @@ export default function LandingPage() {
           </p>
         </div>
       </section>
+      )}
 
       {/* ── 6. INSTALL / Add to Home Screen ──
           It's a PWA — no store download — so tell people how to pin it. Three

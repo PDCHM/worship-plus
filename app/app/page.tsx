@@ -23,6 +23,7 @@ import { prepareImageFile, fileToBase64 } from "@/lib/image/prepare";
 import SongSearchSheet, { type SongSearchResult } from "@/app/_components/SongSearchSheet";
 import UpgradeModal from "@/app/_components/UpgradeModal";
 import { isPaidPlan, PLANS, type Plan } from "@/lib/plans";
+import { FREE_MODEL } from "@/lib/flags";
 import { usePlan } from "@/lib/usePlan";
 import ExportModal from "@/app/_components/ExportModal";
 import Library from "@/app/_components/Library";
@@ -836,6 +837,8 @@ export default function Home() {
     // The Stripe return (?subscription=...) is handled by the effect above.
     if (params.get("subscription")) return;
     const planParam = params.get("plan");
+    // Free model: never auto-start a paid checkout (e.g. an old /login?plan= link).
+    if (FREE_MODEL) return;
     if (!planParam || !isPaidPlan(planParam)) return;
     const plan = planParam as Plan;
     resumedCheckoutRef.current = true;
@@ -3598,7 +3601,9 @@ export default function Home() {
         />
       )}
 
-      {upgradeModal && (
+      {/* Free model: no upgrade prompt is ever shown (gates are all open, so
+          this is only a safety net for stale server responses). */}
+      {!FREE_MODEL && upgradeModal && (
         <UpgradeModal
           currentPlan={(profile?.plan as Plan) ?? "free"}
           userId={user.id}
@@ -3830,12 +3835,14 @@ function TopNav({
                 <span className="flex-1">Account</span>
                 <span className="text-xs text-slate-400 dark:text-slate-500 truncate max-w-[9rem]">{profile?.email ?? "—"}</span>
               </div>
+              {!FREE_MODEL && (
               <button type="button" onClick={() => { setMenuOpen(false); onOpenSettings(); }}
                 className="w-full min-h-[48px] px-3 rounded-lg flex items-center gap-3 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
                 <span className="flex-1 text-left">Subscription</span>
                 <span className="text-xs font-medium text-indigo-500 dark:text-indigo-400">{PLANS[(profile?.plan as Plan) ?? "free"].name}</span>
               </button>
+              )}
               <button type="button" onClick={() => { setMenuOpen(false); onSignOut(); }}
                 className="w-full min-h-[48px] px-3 rounded-lg flex items-center gap-3 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>

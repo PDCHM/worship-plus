@@ -1,5 +1,6 @@
 "use client";
 
+import { FREE_MODEL } from "@/lib/flags";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -35,7 +36,8 @@ export default function SettingsView({ settings, onChange, plan, onUpgrade }: Pr
         </p>
       </div>
 
-      <SubscriptionSection plan={plan} onUpgrade={onUpgrade} />
+      {/* Hidden under the free model — see FREE_MODEL in lib/flags.ts. */}
+      {!FREE_MODEL && <SubscriptionSection plan={plan} onUpgrade={onUpgrade} />}
 
       {/* ── Appearance ── */}
       {/* Lyric font size, chart font, and show-chords live in the Quick Actions

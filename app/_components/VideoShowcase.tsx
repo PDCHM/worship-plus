@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FREE_MODEL } from "@/lib/flags";
 import VideoPlayer from "@/app/_components/VideoPlayer";
 
 // "See it in action" — two alternating feature rows with real product footage.
@@ -38,7 +39,9 @@ const ROWS: Row[] = [
     poster: "/videos/W-Video2-FlowofSong-poster.jpg",
     label: "Leaping between verse, chorus and bridge live in Worship+",
     videoSide: "right",
-    cta: { text: "See plans", href: "#pricing", variant: "secondary" },
+    cta: FREE_MODEL
+      ? { text: "Free for every team", href: "#pricing", variant: "secondary" }
+      : { text: "See plans", href: "#pricing", variant: "secondary" },
   },
 ];
 
