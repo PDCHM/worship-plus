@@ -1,12 +1,22 @@
 "use client";
 
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { backdropDismiss } from "@/lib/backdropDismiss";
 import { KOFI_URL } from "@/lib/support";
 
-/* "Support Worship+" — an optional Ko-fi tip jar, opened from the user menu.
-   Purely informational: no gating, no tracking, nothing changes in the app
-   whether or not someone gives. The button opens Ko-fi in a new tab. */
+/* "Support Worship+" — an optional Ko-fi tip jar, opened from the top-bar coffee
+   icon (and the Settings card). Purely informational: no gating, no tracking,
+   nothing changes in the app whether or not someone gives. The button opens
+   Ko-fi in a new tab.
+
+   Rendered through a PORTAL into document.body. The top bar uses
+   backdrop-blur, and any ancestor with backdrop-filter/filter/transform becomes
+   the containing block for position:fixed descendants — so when this modal was
+   rendered inside the header, its "fixed inset-0" overlay was only the 56px
+   header strip, and the sheet grew upward off the top of the screen (only
+   "Maybe later" peeked in at the top edge). The portal makes it truly
+   full-screen wherever it is opened from. */
 export default function SupportModal({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -14,11 +24,17 @@ export default function SupportModal({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
-  return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4 print:hidden"
+  if (typeof document === "undefined") return null;
+
+  // Centered card; the overlay itself scrolls, so on a short screen the whole
+  // card is reachable and nothing is ever clipped above the top edge.
+  return createPortal(
+    <div className="fixed inset-0 z-[60] overflow-y-auto overscroll-contain bg-black/50 backdrop-blur-sm print:hidden"
       {...backdropDismiss(onClose)}>
+      <div className="flex min-h-full items-center justify-center p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]"
+        {...backdropDismiss(onClose)}>
       <div role="dialog" aria-modal="true" aria-labelledby="support-title"
-        className="relative w-full sm:max-w-sm bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl px-6 pt-7 pb-[calc(env(safe-area-inset-bottom)+1.5rem)] sm:pb-6 text-center"
+        className="relative w-full max-w-sm bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl px-6 pt-7 pb-6 text-center"
         onClick={(e) => e.stopPropagation()}>
         <button type="button" onClick={onClose} aria-label="Close"
           className="absolute top-3 right-3 w-8 h-8 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
@@ -49,6 +65,8 @@ export default function SupportModal({ onClose }: { onClose: () => void }) {
           Maybe later
         </button>
       </div>
-    </div>
+      </div>
+    </div>,
+    document.body,
   );
 }

@@ -23,6 +23,7 @@ import { prepareImageFile, fileToBase64 } from "@/lib/image/prepare";
 import SongSearchSheet, { type SongSearchResult } from "@/app/_components/SongSearchSheet";
 import UpgradeModal from "@/app/_components/UpgradeModal";
 import SupportModal from "@/app/_components/SupportModal";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { isPaidPlan, PLANS, type Plan } from "@/lib/plans";
 import { FREE_MODEL } from "@/lib/flags";
@@ -3823,7 +3824,10 @@ function TopNav({
         </div>
       </div>
 
-      {menuOpen && (
+      {/* Portal to <body>: the header's backdrop-blur makes it the containing
+          block for position:fixed children, which squeezed this full-screen
+          sheet into the 56px header strip (only its bottom edge was visible). */}
+      {menuOpen && typeof document !== "undefined" && createPortal(
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-start sm:justify-end print:hidden">
           <div ref={panelRef} className="w-full sm:max-w-xs sm:mr-4 sm:mt-16 bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden pb-[env(safe-area-inset-bottom)]">
             <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 dark:border-slate-800">
@@ -3872,7 +3876,7 @@ function TopNav({
             </div>
           </div>
         </div>
-      )}
+      , document.body)}
       {supportOpen && <SupportModal onClose={() => setSupportOpen(false)} />}
     </header>
   );
