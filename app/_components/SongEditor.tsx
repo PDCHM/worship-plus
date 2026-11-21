@@ -115,14 +115,13 @@ function writeSongView(songId: string, prefs: SongViewPrefs) {
 // Edit / Markup toggle icons — exact path data lifted from Lucide's `square-pen`
 // and `highlighter` glyphs (ISC-licensed), inlined to match this codebase's
 // inline-SVG convention rather than pull in the lucide-react dependency.
-// Edit / Present toolbar buttons. At REST they match the neighbouring toolbar
-// buttons exactly (light-grey rounded square, slate icon — same as highlighter /
-// link / more), so the row looks uniform. The round lavender circle (#efe9fe /
-// #e0d6fb border / #6d5bf0 icon; dark #2a2440 / #3a3358 / #b3a3ff) is an
-// ACTIVE-STATE indicator only:
-//   • Edit: circled while edit mode is ON.
-//   • Present: the toolbar is hidden while presenting, so its circle shows
-//     while the button is being pressed (the "engaged" moment).
+// Toolbar buttons. At REST they all match (light-grey rounded square, slate
+// icon — same as highlighter / link / more), so the row looks uniform.
+//   • Edit: a toggle — the round lavender circle (#efe9fe / #e0d6fb border /
+//     #6d5bf0 icon; dark #2a2440 / #3a3358 / #b3a3ff) shows while edit mode
+//     is ON.
+//   • Play (perform): a plain momentary button that LAUNCHES fullscreen
+//     perform mode — no active/selected state, no circle.
 // Same size in every state (32px / 36px on sm+), so toggling never shifts the
 // layout or wraps the toolbar.
 // Save (primary action): brand purple #7a5cff — lighter than the old indigo-600
@@ -136,9 +135,6 @@ const TOOLBAR_BTN_REST =
   "rounded-lg border-transparent bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300";
 const TOOLBAR_BTN_ACTIVE =
   "rounded-full bg-[#efe9fe] border-[#e0d6fb] text-[#6d5bf0] dark:bg-[#2a2440] dark:border-[#3a3358] dark:text-[#b3a3ff]";
-// Present has no persistent "on" state on the toolbar → circle while pressed.
-const TOOLBAR_BTN_PRESSED =
-  "active:rounded-full active:bg-[#efe9fe] active:border-[#e0d6fb] active:text-[#6d5bf0] dark:active:bg-[#2a2440] dark:active:border-[#3a3358] dark:active:text-[#b3a3ff]";
 
 // Edit — "pencil + line".
 function PencilLineIcon() {
@@ -151,13 +147,13 @@ function PencilLineIcon() {
   );
 }
 
-// Present — "presentation screen".
-function PresentationIcon() {
+// Play — launches fullscreen perform mode. Filled, rounded triangle in the
+// toolbar slate (#3f4a5c light / #c4cad6 dark), no stroke.
+function PlayIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M2 3h20" />
-      <path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3" />
-      <path d="m7 21 5-5 5 5" />
+    <svg width="16" height="16" viewBox="0 0 24 24" stroke="none" aria-hidden="true"
+      className="fill-[#3f4a5c] dark:fill-[#c4cad6]">
+      <path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5Z" />
     </svg>
   );
 }
@@ -3481,8 +3477,8 @@ export default function SongEditor({
           </button>
           <ViewToggle viewMode={viewMode} onChange={switchView} />
           <button type="button" onClick={enterPresent} title="Fullscreen performance mode" aria-label="Fullscreen performance mode"
-            className={TOOLBAR_BTN + " " + TOOLBAR_BTN_REST + " " + TOOLBAR_BTN_PRESSED}>
-            <PresentationIcon />
+            className={TOOLBAR_BTN + " " + TOOLBAR_BTN_REST}>
+            <PlayIcon />
           </button>
         </div>
         <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-end">
