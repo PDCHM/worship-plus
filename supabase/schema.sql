@@ -1387,7 +1387,7 @@ create table if not exists public.support_messages (
   id         uuid primary key default gen_random_uuid(),
   user_id    uuid references auth.users(id) on delete set null,
   email      text,
-  type       text not null default 'help' check (type in ('bug', 'feedback', 'help')),
+  type       text not null default 'help',
   message    text not null,
   created_at timestamptz not null default now()
 );
@@ -1400,6 +1400,27 @@ create policy support_messages_insert on public.support_messages
   with check (true);
 
 create index if not exists support_messages_created_at_idx on public.support_messages(created_at desc);
+
+-- Help & Support v2 (idempotent — safe to re-run on an existing database):
+--   • categories: bug / feature / feedback / help / other
+--   • user-chosen device type + model, and auto-collected technical context
+--     (lib/deviceInfo.ts) stored as structured, filterable columns.
+-- Until this runs, /api/support falls back to the original columns and appends
+-- the same details to the message text, so no submission is lost.
+alter table public.support_messages drop constraint if exists support_messages_type_check;
+alter table public.support_messages add constraint support_messages_type_check
+  check (type in ('bug', 'feature', 'feedback', 'help', 'other'));
+alter table public.support_messages
+  add column if not exists device_type      text,
+  add column if not exists device_model     text,
+  add column if not exists user_agent       text,
+  add column if not exists os               text,
+  add column if not exists browser          text,
+  add column if not exists viewport         text,
+  add column if not exists screen_size      text,
+  add column if not exists app_version      text,
+  add column if not exists client_timestamp timestamptz,
+  add column if not exists standalone       boolean;
 
 -- ============================================================
 -- Keep-alive (free-tier anti-pause)
