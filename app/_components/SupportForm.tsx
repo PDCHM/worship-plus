@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { collectTechContext, DEVICE_TYPES, suggestDevice, type DeviceType } from "@/lib/deviceInfo";
 
@@ -24,11 +24,23 @@ const TYPES = [
 
 type SupportType = (typeof TYPES)[number]["value"];
 
+// The user-agent never changes during a session — nothing to subscribe to.
+const noopSubscribe = () => () => {};
+
 export default function SupportForm({ onSubmitted }: { onSubmitted?: () => void }) {
   const [supabase] = useState(() => createClient());
   const [type, setType] = useState<SupportType>("bug");
   const [email, setEmail] = useState("");
-  const [device, setDevice] = useState<DeviceType>("Other");
+  // Device: the user's explicit pick, else the one detected from the browser
+  // (read via useSyncExternalStore — "Other" during SSR, the real value on the
+  // client — so there's no hydration mismatch and no setState-in-effect).
+  const [pickedDevice, setDevice] = useState<DeviceType | null>(null);
+  const detectedDevice = useSyncExternalStore(
+    noopSubscribe,
+    () => suggestDevice(navigator.userAgent),
+    () => "Other" as DeviceType,
+  );
+  const device = pickedDevice ?? detectedDevice;
   const [deviceModel, setDeviceModel] = useState("");
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -36,11 +48,6 @@ export default function SupportForm({ onSubmitted }: { onSubmitted?: () => void 
   const [done, setDone] = useState(false);
 
   const modelRequired = type === "bug";
-
-  // Pre-select the device we can detect (still editable).
-  useEffect(() => {
-    setDevice(suggestDevice(navigator.userAgent));
-  }, []);
 
   useEffect(() => {
     let active = true;
