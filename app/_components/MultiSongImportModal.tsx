@@ -30,7 +30,7 @@ export default function MultiSongImportModal({
         <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <span className="font-semibold text-sm">{songs.length} songs found</span>
           <button type="button" onClick={onClose} aria-label="Close"
-            className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
+            className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
@@ -47,16 +47,16 @@ export default function MultiSongImportModal({
                   (r.keep ? "border-slate-200 dark:border-slate-700" : "border-slate-100 dark:border-slate-800 opacity-50")}>
                 <input type="checkbox" checked={r.keep} aria-label={`Import song ${i + 1}`}
                   onChange={(e) => setRows((prev) => prev.map((x, j) => (j === i ? { ...x, keep: e.target.checked } : x)))}
-                  className="mt-2 w-4 h-4 accent-indigo-600 shrink-0" />
+                  className="mt-2 w-4 h-4 accent-[#6350ef] shrink-0" />
                 <div className="min-w-0 flex-1">
                   <input type="text" value={r.title} aria-label={`Title of song ${i + 1}`}
                     onChange={(e) => setRows((prev) => prev.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))}
-                    className="w-full h-9 px-2 -mx-2 rounded-md bg-transparent text-sm font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 focus:bg-slate-50 dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                    className="w-full h-9 px-2 -mx-2 rounded-md bg-transparent text-sm font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 focus:bg-slate-50 dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-[#735fee]" />
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     Key {r.song.key} · {r.song.sections.length} section{r.song.sections.length === 1 ? "" : "s"}
                   </p>
                   {firstLyric(r.song) && (
-                    <p className="text-xs text-slate-400 dark:text-slate-500 truncate mt-0.5">{firstLyric(r.song)}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-500 truncate mt-0.5">{firstLyric(r.song)}</p>
                   )}
                 </div>
               </li>

@@ -39,16 +39,16 @@ export default function SbpSetlistModal({
 
   const opt = (kind: SbpSetlistChoice["kind"], label: string, children?: React.ReactNode) => (
     <label className={"block rounded-xl border p-3 cursor-pointer transition-colors " +
-      (mode === kind ? "border-indigo-400 dark:border-indigo-600 bg-indigo-50/60 dark:bg-indigo-950/30" : "border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600")}>
+      (mode === kind ? "border-[#9d8bff] dark:border-[#6350ef] bg-[#f3f0ff]/60 dark:bg-[#2a2440]/30" : "border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600")}>
       <span className="flex items-center gap-2.5">
-        <input type="radio" name="sbp-dest" checked={mode === kind} onChange={() => setMode(kind)} className="accent-indigo-600" />
+        <input type="radio" name="sbp-dest" checked={mode === kind} onChange={() => setMode(kind)} className="accent-[#6350ef]" />
         <span className="text-sm font-medium text-slate-800 dark:text-slate-100">{label}</span>
       </span>
       {mode === kind && children && <div className="mt-2.5 pl-6">{children}</div>}
     </label>
   );
 
-  const field = "w-full h-9 px-2.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20";
+  const field = "w-full h-9 px-2.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm outline-none focus:border-[#9d8bff] focus:ring-2 focus:ring-[#735fee]/20";
 
   return (
     <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4" {...backdropDismiss(onCancel)}>

@@ -682,16 +682,20 @@ export const SECTION_STYLE_LABELS: Record<SectionStyleKey, string> = {
   end: "End",
 };
 
+// Same hues as before, one or two shades deeper so chords meet WCAG AA (≥4.5:1)
+// on a white chart (the old amber Bridge chords were 2.15:1). On dark surfaces
+// and for user-customised colours, SongEditor/PrintLayout additionally run
+// readableColor() at render time.
 export const DEFAULT_CANONICAL_STYLES: Record<SectionStyleKey, SectionStyle> = {
-  intro:        { chordColor: "#22c55e", bold: false },
-  verse:        { chordColor: "#3b82f6", bold: false },
-  chorus:       { chordColor: "#a855f7", bold: false },
-  prechorus:    { chordColor: "#14b8a6", bold: false },
-  bridge:       { chordColor: "#f59e0b", bold: false },
-  outro:        { chordColor: "#6b7280", bold: false },
-  tag:          { chordColor: "#f43f5e", bold: false },
-  instrumental: { chordColor: "#6366f1", bold: false },
-  end:          { chordColor: "#64748b", bold: false },
+  intro:        { chordColor: "#15803d", bold: false },
+  verse:        { chordColor: "#2563eb", bold: false },
+  chorus:       { chordColor: "#9333ea", bold: false },
+  prechorus:    { chordColor: "#0f766e", bold: false },
+  bridge:       { chordColor: "#b45309", bold: false },
+  outro:        { chordColor: "#4b5563", bold: false },
+  tag:          { chordColor: "#e11d48", bold: false },
+  instrumental: { chordColor: "#6350ef", bold: false },
+  end:          { chordColor: "#475569", bold: false },
 };
 
 export const DEFAULT_EDITOR_PREFS: EditorPrefs = {

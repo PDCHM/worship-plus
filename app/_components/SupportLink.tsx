@@ -23,7 +23,7 @@ export default function SupportLink({ className = "" }: { className?: string }) 
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className={className || "text-sm text-slate-400 hover:text-slate-600 transition-colors"}
+        className={className || "text-sm text-slate-500 hover:text-slate-600 transition-colors"}
       >
         Contact / Support
       </button>
@@ -43,7 +43,7 @@ export default function SupportLink({ className = "" }: { className?: string }) 
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label="Close"
-                className="text-slate-400 hover:text-slate-700 transition-colors -mt-1 -mr-1 p-1"
+                className="text-slate-500 hover:text-slate-700 transition-colors -mt-1 -mr-1 p-1"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="M18 6 6 18M6 6l12 12" />

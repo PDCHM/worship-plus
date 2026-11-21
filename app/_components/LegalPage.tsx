@@ -75,7 +75,7 @@ export default function LegalPage({ slug }: Props) {
   const markdown = fs.readFileSync(file, "utf8");
 
   return (
-    <div className="min-h-screen overflow-x-hidden bg-white dark:bg-slate-950">
+    <div className="min-h-screen overflow-x-hidden bg-white dark:bg-slate-950 pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]">
       {/* Soft brand header strip. "/" sends signed-in users on to /app and
           everyone else to the landing page, so one Back link serves both. */}
       <div className="h-1.5 w-full" style={{ background: "linear-gradient(90deg, #6f4cf0, #b196ff)" }} />

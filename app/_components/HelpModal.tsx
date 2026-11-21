@@ -208,7 +208,7 @@ export default function HelpModal({ onClose }: { onClose: () => void }) {
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0"
+            className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
               <line x1="18" y1="6" x2="6" y2="18" />

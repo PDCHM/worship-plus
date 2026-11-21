@@ -321,6 +321,57 @@ function isAuthNetworkError(err: { name?: string; status?: number; message?: str
   return /fetch|network|timeout|failed to fetch|load failed/i.test(err.message ?? "");
 }
 
+// ── Folders / setlists / events / links ─────────────────────────────────────
+// One fetch for the folder-related tables, returning parsed rows plus a
+// per-table error. Pure (no React state): the caller decides what to apply, so
+// a failed request never replaces cached data with an empty list.
+type FolderBundle = {
+  folders: Folder[]; folderSongs: FolderSong[]; events: SetlistEvent[]; links: SongLink[];
+  errors: { folders: string | null; folderSongs: string | null; events: string | null; links: string | null };
+};
+async function fetchFolderBundle(supabase: SupabaseClient): Promise<FolderBundle> {
+  const msg = (e: { message?: string } | null) => (e ? e.message || "request failed" : null);
+  try {
+    const [
+      { data: folderRows, error: foldersError },
+      { data: folderSongRows, error: folderSongsError },
+      { data: eventRows, error: eventsError },
+      { data: linkRows, error: linksError },
+    ] = await Promise.all([
+      supabase.from("folders").select("id, name, type, created_at, date, group_id, user_id").order("created_at"),
+      supabase.from("folder_songs").select("id, folder_id, song_id, position").order("position", { ascending: true }),
+      supabase.from("setlist_events").select("id, folder_id, label, event_date, event_type").order("event_date", { ascending: true }),
+      supabase.from("song_links").select("id, song_id, user_id, url, title, position").order("position", { ascending: true }),
+    ]);
+    return {
+      folders: (folderRows ?? []).map((r: { id: string; name: string; type: string | null; created_at: string; date?: string | null; group_id?: string | null; user_id?: string | null }) => ({
+        id: r.id,
+        name: r.name,
+        type: (r.type === "setlist" ? "setlist" : "folder") as "folder" | "setlist",
+        createdAt: new Date(r.created_at).getTime(),
+        date: r.date ?? undefined,
+        groupId: r.group_id ?? null,
+        ownerId: r.user_id ?? undefined,
+      })),
+      folderSongs: (folderSongRows ?? []).map((r: { id: string; folder_id: string; song_id: string; position: number | null }) => ({
+        id: r.id, folderId: r.folder_id, songId: r.song_id, position: r.position ?? 0,
+      })),
+      events: (eventRows ?? []).map((r: { id: string; folder_id: string; label: string; event_date: string; event_type: string }) => ({
+        id: r.id, folderId: r.folder_id, label: r.label, eventDate: r.event_date,
+        eventType: (r.event_type === "rehearsal" ? "rehearsal" : "event") as "rehearsal" | "event",
+      })),
+      links: (linkRows ?? []).map((r: { id: string; song_id: string; user_id: string | null; url: string; title: string | null; position: number | null }) => ({
+        id: r.id, songId: r.song_id, userId: r.user_id ?? null, url: r.url, title: r.title ?? null, position: r.position ?? 0,
+      })),
+      errors: { folders: msg(foldersError), folderSongs: msg(folderSongsError), events: msg(eventsError), links: msg(linksError) },
+    };
+  } catch (e) {
+    const m = e instanceof Error ? e.message : String(e);
+    return { folders: [], folderSongs: [], events: [], links: [],
+      errors: { folders: m, folderSongs: m, events: m, links: m } };
+  }
+}
+
 async function resolveUser(supabase: SupabaseClient): Promise<ResolvedAuth> {
   const online = typeof navigator === "undefined" ? true : navigator.onLine;
 
@@ -541,6 +592,11 @@ export default function Home() {
   // NETWORK — gates the offline-cache mirror so a transient pre-load empty state
   // can never overwrite a populated cache.
   const [foldersLoaded, setFoldersLoaded] = useState(false);
+  // Set when the folders/setlists request fails. The cached folders stay on
+  // screen (never replaced with an empty list); Folders/Setlists show a
+  // "Couldn't refresh — Retry" notice instead of "No folders yet".
+  const [foldersLoadError, setFoldersLoadError] = useState<string | null>(null);
+  const [foldersRetrying, setFoldersRetrying] = useState(false);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [folderSongs, setFolderSongs] = useState<FolderSong[]>([]);
   // Private setlist versions: this user's "in setlist F, show my version V in
@@ -877,6 +933,41 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
+  // Apply a fetched folders bundle. Each part only replaces state when ITS
+  // request succeeded, so a failed/flaky request keeps the cached data instead
+  // of wiping it to an empty list.
+  const applyFolderBundle = (r: FolderBundle) => {
+    if (r.errors.folders) {
+      console.error("load folders failed", r.errors.folders);
+      setFoldersLoadError(r.errors.folders);
+    } else {
+      setFolders(r.folders);
+      setFoldersLoadError(null);
+    }
+    if (r.errors.folderSongs) {
+      console.error("load folder_songs failed", r.errors.folderSongs);
+      setFoldersLoadError((e) => e ?? r.errors.folderSongs);
+    } else {
+      setFolderSongs(r.folderSongs);
+    }
+    if (r.errors.events) console.error("load setlist_events failed", r.errors.events);
+    else setSetlistEvents(r.events);
+    if (r.errors.links) console.error("load song_links failed", r.errors.links);
+    else setSongLinks(r.links);
+    setSongLinksLoaded(true);
+    // Mirror to the offline cache only after a clean load of folders + songs.
+    if (!r.errors.folders && !r.errors.folderSongs) setFoldersLoaded(true);
+  };
+  const retryLoadFolders = async () => {
+    if (foldersRetrying) return;
+    setFoldersRetrying(true);
+    try {
+      applyFolderBundle(await fetchFolderBundle(supabase));
+    } finally {
+      setFoldersRetrying(false);
+    }
+  };
+
   // Load user, profile, songs, folders from Supabase.
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -1101,66 +1192,9 @@ export default function Home() {
 
         aborts.push(ownAbort, sharedAbort);
 
-        void Promise.all([
-          supabase.from("folders").select("id, name, type, created_at, date, group_id, user_id").order("created_at"),
-          supabase.from("folder_songs").select("id, folder_id, song_id, position").order("position", { ascending: true }),
-          supabase.from("setlist_events").select("id, folder_id, label, event_date, event_type").order("event_date", { ascending: true }),
-          supabase.from("song_links").select("id, song_id, user_id, url, title, position").order("position", { ascending: true }),
-        ]).then(([
-          { data: folderRows, error: foldersError },
-          { data: folderSongRows, error: folderSongsError },
-          { data: eventRows, error: eventsError },
-          { data: linkRows, error: linksError },
-        ]) => {
+        void fetchFolderBundle(supabase).then((r) => {
           if (cancelled) return;
-          if (foldersError) {
-            console.error("load folders failed", foldersError.message, foldersError.details, foldersError.hint);
-            showToast("Folders error: " + foldersError.message);
-          }
-          if (folderSongsError) {
-            console.error("load folder_songs failed", folderSongsError.message, folderSongsError.details, folderSongsError.hint);
-            showToast("Setlist songs error: " + folderSongsError.message);
-          }
-          const loadedFolders = (folderRows ?? []).map((r: { id: string; name: string; type: string | null; created_at: string; date?: string | null; group_id?: string | null; user_id?: string | null }) => ({
-            id: r.id,
-            name: r.name,
-            type: (r.type === "setlist" ? "setlist" : "folder") as "folder" | "setlist",
-            createdAt: new Date(r.created_at).getTime(),
-            date: r.date ?? undefined,
-            groupId: r.group_id ?? null,
-            ownerId: r.user_id ?? undefined,
-          }));
-          setFolders(loadedFolders);
-
-          const loadedFolderSongs = (folderSongRows ?? []).map((r: { id: string; folder_id: string; song_id: string; position: number | null }) => ({
-            id: r.id,
-            folderId: r.folder_id,
-            songId: r.song_id,
-            position: r.position ?? 0,
-          }));
-          setFolderSongs(loadedFolderSongs);
-
-          if (eventsError) {
-            console.error("load setlist_events failed", eventsError.message);
-          }
-          setSetlistEvents((eventRows ?? []).map((r: { id: string; folder_id: string; label: string; event_date: string; event_type: string }) => ({
-            id: r.id,
-            folderId: r.folder_id,
-            label: r.label,
-            eventDate: r.event_date,
-            eventType: (r.event_type === "rehearsal" ? "rehearsal" : "event") as "rehearsal" | "event",
-          })));
-          if (linksError) console.error("load song_links failed", linksError.message);
-          setSongLinks((linkRows ?? []).map((r: { id: string; song_id: string; user_id: string | null; url: string; title: string | null; position: number | null }) => ({
-            id: r.id,
-            songId: r.song_id,
-            userId: r.user_id ?? null,
-            url: r.url,
-            title: r.title ?? null,
-            position: r.position ?? 0,
-          })));
-          setSongLinksLoaded(true);
-          setFoldersLoaded(true); // network folders in → offline mirror may run
+          applyFolderBundle(r);
         });
 
         /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -1168,9 +1202,12 @@ export default function Home() {
           supabase.from("groups").select("id,name,invite_token,created_at"),
           supabase.from("group_members").select("id,group_id,user_id,role,display_name,status,instrument,instrument_detail,email"),
           supabase.from("group_songs").select("id,group_id,song_id"),
-        ]).then(([{ data: gRows }, { data: mRows, error: mErr }, { data: gsRows }]) => {
+        ]).then(([{ data: gRows, error: gErr }, { data: mRows, error: mErr }, { data: gsRows, error: gsErr }]) => {
           if (cancelled) return;
           if (mErr) showToast("Members error: " + mErr.message);
+          // A failed request must never wipe the cached teams (that showed an
+          // empty Teams screen on a flaky connection) — only replace on success.
+          if (gErr || mErr || gsErr) { setGroupsLoaded(true); return; }
           setGroups((gRows??[]).map((r:any)=>({id:r.id,name:r.name,inviteToken:r.invite_token??"",createdAt:new Date(r.created_at).getTime()})));
           setGroupMembers((mRows??[]).map((r:any)=>({
             id:r.id, groupId:r.group_id, userId:r.user_id??null, role:r.role,
@@ -3233,7 +3270,7 @@ export default function Home() {
             Saving for offline… {offlineCache.cached}/{offlineCache.total}
           </div>
         ) : offlineReadyFlash ? (
-          <div className="fixed left-3 z-[60] flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-600 text-white text-xs font-semibold shadow-lg print:hidden"
+          <div className="fixed left-3 z-[60] flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-700 text-white text-xs font-semibold shadow-lg print:hidden"
             style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 4.75rem)" }} role="status">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polyline points="20 6 9 17 4 12" /></svg>
             Offline ready
@@ -3360,9 +3397,9 @@ export default function Home() {
           onCreateSetlist={(name) => createFolder(name, "setlist", null)}
           onCreateTeam={gatedCreateTeam}
         />
-        <main className={"w-full overflow-x-hidden pb-20 md:pb-0 transition-[padding] duration-200 " + (navCollapsed ? "md:pl-0" : "md:pl-[240px]")}>
+        <main className={"w-full overflow-x-hidden pb-[calc(5rem+env(safe-area-inset-bottom,0px))] md:pb-0 transition-[padding] duration-200 " + (navCollapsed ? "md:pl-0" : "md:pl-[240px]")}>
           {view.kind === "library" && !songsLoaded && (
-            <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 py-12 text-sm text-slate-400 dark:text-slate-500">
+            <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 py-12 text-sm text-slate-500 dark:text-slate-500">
               Loading library…
             </div>
           )}
@@ -3393,7 +3430,7 @@ export default function Home() {
           )}
           {view.kind === "editor" && activeSong && hydratingId === view.songId && activeSong.sections.length === 0 && !presentActive && (
             <div className="flex items-center justify-center py-24">
-              <div className="w-6 h-6 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+              <div className="w-6 h-6 rounded-full border-2 border-[#735fee] border-t-transparent animate-spin" />
             </div>
           )}
           {view.kind === "editor" && activeSong && (presentActive || !(hydratingId === view.songId && activeSong.sections.length === 0)) && (
@@ -3470,6 +3507,9 @@ export default function Home() {
           )}
           {view.kind === "folders" && (
             <FoldersView
+              loadError={foldersLoadError}
+              onRetryLoad={() => void retryLoadFolders()}
+              retryingLoad={foldersRetrying}
               subview={view.subview}
               tab={view.kind === "folders" ? view.tab : undefined}
               folders={folders}
@@ -3523,7 +3563,7 @@ export default function Home() {
           )}
           {view.kind === "groups" && !groupsLoaded && (
             <div className="flex items-center justify-center py-24">
-              <div className="w-6 h-6 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+              <div className="w-6 h-6 rounded-full border-2 border-[#735fee] border-t-transparent animate-spin" />
             </div>
           )}
           {view.kind === "groups" && groupsLoaded && (
@@ -3666,7 +3706,7 @@ export default function Home() {
             onMouseDown={(e) => e.stopPropagation()}>
             <div className="p-5">
               <h3 className="text-lg font-bold tracking-tight mb-3">Save as</h3>
-              <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5">New song title</label>
+              <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500 mb-1.5">New song title</label>
               <input
                 autoFocus
                 value={saveAsPrompt.title}
@@ -3676,7 +3716,7 @@ export default function Home() {
                   if (e.key === "Enter" && saveAsPrompt.title.trim()) { void saveAsCopy(saveAsPrompt.song, saveAsPrompt.title.trim(), saveAsPrompt.after); setSaveAsPrompt(null); }
                   else if (e.key === "Escape") setSaveAsPrompt(null);
                 }}
-                className="w-full h-10 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-indigo-400 dark:focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 transition-colors text-sm"
+                className="w-full h-10 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-sm"
               />
             </div>
             <div className="px-5 pb-5 pt-1 flex items-center justify-end gap-2">
@@ -3695,13 +3735,13 @@ export default function Home() {
       )}
 
       {toast && (
-        <div className="fixed bottom-24 md:bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2.5 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-medium shadow-2xl shadow-slate-900/30 z-50 print:hidden max-w-[90vw]">
+        <div className="fixed bottom-[calc(6rem+env(safe-area-inset-bottom,0px))] md:bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2.5 rounded-xl bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-sm font-medium shadow-2xl shadow-slate-900/30 z-50 print:hidden max-w-[90vw]">
           <span className="truncate">{toast.message}</span>
           {toast.action && (
             <button
               type="button"
               onClick={toast.action.onClick}
-              className="shrink-0 -mr-1 px-2 py-1 rounded-lg text-indigo-300 dark:text-indigo-600 font-semibold hover:text-indigo-200 dark:hover:text-indigo-700 hover:bg-white/10 dark:hover:bg-slate-900/10 transition-colors"
+              className="shrink-0 -mr-1 px-2 py-1 rounded-lg text-[#c9bdfb] dark:text-[#6350ef] font-semibold hover:text-[#e0d6fb] dark:hover:text-[#5a46dc] hover:bg-white/10 dark:hover:bg-slate-900/10 transition-colors"
             >
               {toast.action.label}
             </button>
@@ -3725,7 +3765,7 @@ function UnsavedModal({ onSave, onSaveAs, onDiscard, onCancel }: { onSave: () =>
           <button type="button" onClick={onSave} className="w-full h-10 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] transition-colors">Save changes</button>
           <button type="button" onClick={onSaveAs} className="w-full h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">Save as…</button>
           <button type="button" onClick={onDiscard} className="w-full h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">Discard changes</button>
-          <button type="button" onClick={onCancel} className="w-full h-10 text-slate-400 dark:text-slate-500 text-sm hover:text-slate-600 dark:hover:text-slate-300 transition-colors">Cancel — keep editing</button>
+          <button type="button" onClick={onCancel} className="w-full h-10 text-slate-500 dark:text-slate-500 text-sm hover:text-slate-600 dark:hover:text-slate-300 transition-colors">Cancel — keep editing</button>
         </div>
       </div>
     </div>
@@ -3737,7 +3777,7 @@ function LoadingScreen() {
     <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
       <div className="flex flex-col items-center gap-3">
         <Image src="/worship-plus-icon.png" alt="Worship+" width={72} height={72} priority className="w-18 h-18 object-contain" />
-        <svg className="animate-spin h-4 w-4 text-slate-400" viewBox="0 0 24 24" fill="none" aria-label="Loading">
+        <svg className="animate-spin h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" aria-label="Loading">
           <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.25" />
           <path d="M4 12a8 8 0 0 1 8-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
         </svg>
@@ -3785,7 +3825,7 @@ function TopNav({
   const displayName = profile?.full_name || profile?.email?.split("@")[0] || "Account";
 
   return (
-    <header className="border-b border-slate-200 dark:border-slate-800 backdrop-blur-md bg-white/80 dark:bg-slate-950/80 sticky top-0 z-30 print:hidden">
+    <header className="border-b border-slate-200 dark:border-slate-800 backdrop-blur-md bg-white/80 dark:bg-slate-950/80 sticky top-0 z-30 print:hidden pt-[env(safe-area-inset-top,0px)]">
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
           <button type="button" onClick={onToggleSidebar} className="md:hidden w-9 h-9 rounded-lg flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" aria-label="Toggle sidebar" aria-expanded={sidebarOpen}>
@@ -3819,7 +3859,7 @@ function TopNav({
           </button>
           <button type="button" ref={triggerRef} onClick={() => setMenuOpen((o) => !o)}
             aria-haspopup="menu" aria-expanded={menuOpen} aria-label="User menu"
-            className="w-9 h-9 rounded-full overflow-hidden shadow-sm hover:ring-2 hover:ring-indigo-300 dark:hover:ring-indigo-700 transition-all">
+            className="w-9 h-9 rounded-full shadow-sm hover:ring-2 hover:ring-[#c9bdfb] dark:hover:ring-[#5a46dc] transition-all">
             <Avatar url={profile?.avatar_url} name={profile?.full_name} email={profile?.email} className="w-full h-full text-sm" />
           </button>
         </div>
@@ -3852,25 +3892,25 @@ function TopNav({
               <div className="min-h-[48px] px-3 rounded-lg flex items-center gap-3 text-sm text-slate-700 dark:text-slate-200">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                 <span className="flex-1">Account</span>
-                <span className="text-xs text-slate-400 dark:text-slate-500 truncate max-w-[9rem]">{profile?.email ?? "—"}</span>
+                <span className="text-xs text-slate-500 dark:text-slate-500 truncate max-w-[9rem]">{profile?.email ?? "—"}</span>
               </div>
               {!FREE_MODEL && (
               <button type="button" onClick={() => { setMenuOpen(false); onOpenSettings(); }}
                 className="w-full min-h-[48px] px-3 rounded-lg flex items-center gap-3 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
                 <span className="flex-1 text-left">Subscription</span>
-                <span className="text-xs font-medium text-indigo-500 dark:text-indigo-400">{PLANS[(profile?.plan as Plan) ?? "free"].name}</span>
+                <span className="text-xs font-medium text-[#735fee] dark:text-[#b3a3ff]">{PLANS[(profile?.plan as Plan) ?? "free"].name}</span>
               </button>
               )}
               <button type="button" onClick={() => { setMenuOpen(false); onSignOut(); }}
-                className="w-full min-h-[48px] px-3 rounded-lg flex items-center gap-3 text-sm text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors">
+                className="w-full min-h-[48px] px-3 rounded-lg flex items-center gap-3 text-sm text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 Sign out
               </button>
             </div>
             {/* Legal — small and quiet at the foot of the menu. Support lives in
                 the top bar (coffee icon beside the avatar). */}
-            <div className="px-5 pb-4 pt-1 text-center text-xs text-slate-400 dark:text-slate-500">
+            <div className="px-5 pb-4 pt-1 text-center text-xs text-slate-500 dark:text-slate-500">
               <Link href="/terms" onClick={() => setMenuOpen(false)} className="hover:text-[#6a4cf0] dark:hover:text-violet-300 transition-colors">Terms</Link>
               <span className="mx-2" aria-hidden="true">·</span>
               <Link href="/privacy" onClick={() => setMenuOpen(false)} className="hover:text-[#6a4cf0] dark:hover:text-violet-300 transition-colors">Privacy</Link>
@@ -3959,7 +3999,7 @@ function Sidebar({
 
   return (
     <aside className={
-      "fixed top-14 bottom-0 left-0 z-40 w-[240px] flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2 py-3 gap-0.5 overflow-y-auto transition-transform duration-200 ease-in-out print:hidden shadow-xl md:shadow-none " +
+      "fixed top-[calc(3.5rem+env(safe-area-inset-top,0px))] bottom-0 left-0 z-40 w-[240px] flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2 py-3 gap-0.5 overflow-y-auto transition-transform duration-200 ease-in-out print:hidden shadow-xl md:shadow-none " +
       // Mobile uses the sidebarOpen overlay; desktop is persistent unless the
       // shell collapses it (performance mode) — then it slides off-screen too.
       (sidebarOpen ? "translate-x-0 " : "-translate-x-full ") +
@@ -4072,12 +4112,12 @@ function NavSection({ label, count, collapsed, onToggle, onAdd, addLabel }: {
   return (
     <div className="group flex items-center gap-0.5 mt-3 first:mt-0">
       <button type="button" onClick={onToggle} aria-expanded={!collapsed}
-        className="flex-1 min-w-0 flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
+        className="flex-1 min-w-0 flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
         <svg className={"shrink-0 transition-transform duration-200 " + (collapsed ? "-rotate-90" : "")} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         <span className="truncate">{label} ({count})</span>
       </button>
       <button type="button" onClick={onAdd} aria-label={addLabel} title={addLabel}
-        className="w-8 h-8 shrink-0 rounded-md flex items-center justify-center text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100">
+        className="w-8 h-8 shrink-0 rounded-md flex items-center justify-center text-slate-500 hover:text-[#6350ef] dark:hover:text-[#b3a3ff] hover:bg-slate-100 dark:hover:bg-slate-800 transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       </button>
     </div>
@@ -4096,13 +4136,13 @@ function NavCreateInput({ placeholder, value, onChange, onSubmit, onCancel }: {
       onChange={(e) => onChange(e.target.value)}
       onKeyDown={(e) => { if (e.key === "Enter") onSubmit(); else if (e.key === "Escape") onCancel(); }}
       onBlur={onCancel}
-      className="w-full h-9 px-2.5 mb-0.5 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 border border-indigo-400 dark:border-indigo-600 outline-none focus:ring-2 focus:ring-indigo-500/20"
+      className="w-full h-9 px-2.5 mb-0.5 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 border border-[#9d8bff] dark:border-[#6350ef] outline-none focus:ring-2 focus:ring-[#735fee]/20"
     />
   );
 }
 
 function NavEmpty({ children }: { children: React.ReactNode }) {
-  return <div className="px-2.5 py-1.5 text-xs text-slate-400 dark:text-slate-600">{children}</div>;
+  return <div className="px-2.5 py-1.5 text-xs text-slate-500 dark:text-slate-600">{children}</div>;
 }
 
 function SidebarItem({ active, onClick, icon, children }: {
@@ -4112,10 +4152,10 @@ function SidebarItem({ active, onClick, icon, children }: {
     <button type="button" onClick={onClick}
       className={`w-full text-left h-9 px-2.5 rounded-lg text-sm flex items-center gap-2.5 transition-colors ${
         active
-          ? "bg-indigo-100 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-200 font-semibold ring-1 ring-inset ring-indigo-200/70 dark:ring-indigo-900"
+          ? "bg-[#efe9fe] dark:bg-[#2a2440]/70 text-[#6350ef] dark:text-[#d9d0ff] font-semibold ring-1 ring-inset ring-[#e0d6fb]/70 dark:ring-[#2f2852]"
           : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/70"
       }`}>
-      <span className={`shrink-0 ${active ? "text-indigo-500 dark:text-indigo-400" : "text-slate-400 dark:text-slate-500"}`}>
+      <span className={`shrink-0 ${active ? "text-[#735fee] dark:text-[#b3a3ff]" : "text-slate-500 dark:text-slate-500"}`}>
         {icon}
       </span>
       <span className="truncate">{children}</span>
@@ -4130,7 +4170,7 @@ function BottomTabs({ view, onNavigate, onAdd }: { view: View; onNavigate: (v: V
     // so its top edge sits at 64px — exactly where the old edge-to-edge bar's
     // did. Everything positioned against it (main pb-20, toasts, bulk-action
     // pill) keeps clearing it unchanged. Barely-there lavender + soft violet shadow.
-    <nav className="md:hidden fixed bottom-2 left-3 right-3 z-30 h-14 px-1 rounded-2xl bg-[#f3f0ff]/95 dark:bg-[#1d1832]/95 ring-1 ring-violet-200/80 dark:ring-violet-900/60 shadow-lg shadow-violet-900/10 dark:shadow-black/40 backdrop-blur-md flex items-stretch print:hidden">
+    <nav className="md:hidden fixed bottom-[calc(0.5rem+env(safe-area-inset-bottom,0px))] left-3 right-3 z-30 h-14 px-1 rounded-2xl bg-[#f3f0ff]/95 dark:bg-[#1d1832]/95 ring-1 ring-violet-200/80 dark:ring-violet-900/60 shadow-lg shadow-violet-900/10 dark:shadow-black/40 backdrop-blur-md flex items-stretch print:hidden">
       <BottomTab active={isSongsTab} onClick={() => onNavigate({ kind: "library", filter: "all" })} label="Songs"
         icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 17V5l12-2v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="15" r="3"/></svg>} />
       <BottomTab active={view.kind === "folders" && view.tab === "folders"} onClick={() => onNavigate({ kind: "folders", subview: "all", tab: "folders" })} label="Folders"
@@ -4160,7 +4200,7 @@ function BottomTab({ active, onClick, label, icon }: {
     // slightly deeper lavender pill.
     <button type="button" onClick={onClick} aria-current={active ? "page" : undefined}
       className={`group flex-1 min-w-0 h-full flex items-center justify-center px-0.5 transition-colors ${
-        active ? "text-[#6a4cf0] dark:text-violet-300" : "text-[#7a6ca8] dark:text-[#ada3d3] hover:text-[#5d4f8f] dark:hover:text-violet-200"
+        active ? "text-[#6a4cf0] dark:text-violet-300" : "text-[#7364a3] dark:text-[#ada3d3] hover:text-[#5d4f8f] dark:hover:text-violet-200"
       }`}>
       <span className={`flex flex-col items-center gap-0.5 px-2.5 py-1 rounded-xl transition-colors ${
         active ? "bg-violet-100 dark:bg-violet-500/20" : ""
@@ -4176,7 +4216,7 @@ function Placeholder({ icon, title, body }: { icon: "folder" | "users"; title: s
   return (
     <div className="max-w-3xl w-full mx-auto px-4 sm:px-6 py-12 md:py-16">
       <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-10 md:p-14 text-center">
-        <div className="inline-flex w-14 h-14 rounded-2xl bg-[#efe9fe] dark:bg-[#2a2440] items-center justify-center text-indigo-500 dark:text-indigo-400 mb-4">
+        <div className="inline-flex w-14 h-14 rounded-2xl bg-[#efe9fe] dark:bg-[#2a2440] items-center justify-center text-[#735fee] dark:text-[#b3a3ff] mb-4">
           {icon === "folder" ? (
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
           ) : (
@@ -4226,7 +4266,7 @@ function DeleteVersionsPrompt({ name, titles, onChoose }: {
           <button type="button" onClick={() => onChoose("save")}
             className="h-10 rounded-xl bg-[#735fee] hover:bg-[#6650e6] text-white text-sm font-semibold">Save to library &amp; delete setlist</button>
           <button type="button" onClick={() => onChoose("delete")}
-            className="h-10 rounded-xl text-sm font-medium text-rose-600 dark:text-rose-400 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-950/60">Delete anyway</button>
+            className="h-10 rounded-xl text-sm font-medium text-rose-700 dark:text-rose-400 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-950/60">Delete anyway</button>
           <button type="button" onClick={() => onChoose("cancel")}
             className="h-10 rounded-xl text-sm font-medium bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700">Cancel</button>
         </div>

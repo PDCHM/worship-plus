@@ -42,6 +42,45 @@ html, body {
   text-size-adjust: 100%;
 }
 
+/* Touch targets (WCAG 2.5.5 / Apple HIG): on touch screens every control gets an
+   invisible hit area of at least 44×44px centred on it, without changing how
+   anything looks or lays out. In @layer base so Tailwind utilities (absolute,
+   fixed, sticky…) still win for positioning. Chart chords and lyric words are
+   excluded — they sit directly above/below each other and both are tappable,
+   so expanded areas would steal each other's taps. [data-tap-expand] opts a
+   control inside the chart back in. */
+@layer base {
+  @media (pointer: coarse) {
+    :is(button, [role="button"], select, summary, a[href]:is(.flex, .inline-flex, .block, .grid)):not([data-chord-id], [data-line-id] *, [data-chord-id] *),
+    [data-tap-expand],
+    [data-chip-id] {
+      position: relative;
+    }
+    :is(button, [role="button"], select, summary, a[href]:is(.flex, .inline-flex, .block, .grid)):not([data-chord-id], [data-line-id] *, [data-chord-id] *)::after,
+    [data-tap-expand]::after,
+    [data-chip-id]::after {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: max(100%, 44px);
+      height: max(100%, 44px);
+      transform: translate(-50%, -50%);
+    }
+  }
+}
+
+/* Segmented control group: rounds the first/last segment instead of clipping
+   with overflow:hidden, so each segment's enlarged touch area isn't cut off. */
+.seg-group > :first-child { border-top-left-radius: 7px; border-bottom-left-radius: 7px; }
+.seg-group > :last-child { border-top-right-radius: 7px; border-bottom-right-radius: 7px; }
+
+/* Spacer for bottom sheets: clears the iPhone home indicator. Real values only
+   exist because the viewport is viewport-fit=cover (app/layout.tsx). */
+.h-safe-area-bottom {
+  height: env(safe-area-inset-bottom, 0px);
+}
+
 ::selection {
   background: rgb(99 102 241 / 0.25);
 }

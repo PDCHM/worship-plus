@@ -106,7 +106,7 @@ export default function VideoPlayer({ src, poster, label }: Props) {
             className="group absolute inset-0 z-10 flex items-center justify-center"
           >
             <span className="absolute inset-0 bg-slate-900/15 transition-colors group-hover:bg-slate-900/25 motion-reduce:transition-none" />
-            <span className="relative flex h-16 w-16 items-center justify-center rounded-full bg-white/95 text-indigo-600 shadow-xl shadow-slate-900/20 transition-transform group-hover:scale-105 motion-reduce:transition-none motion-reduce:group-hover:scale-100">
+            <span className="relative flex h-16 w-16 items-center justify-center rounded-full bg-white/95 text-[#6350ef] shadow-xl shadow-slate-900/20 transition-transform group-hover:scale-105 motion-reduce:transition-none motion-reduce:group-hover:scale-100">
               <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden className="ml-0.5">
                 <path d="M8 5v14l11-7z" />
               </svg>

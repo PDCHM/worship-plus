@@ -145,7 +145,7 @@ export default function SupportForm({ onSubmitted }: { onSubmitted?: () => void 
             Device model{" "}
             {modelRequired
               ? <span className="text-[#6350ef] dark:text-[#b3a3ff]">(required for bugs)</span>
-              : <span className="text-slate-400">(optional)</span>}
+              : <span className="text-slate-500">(optional)</span>}
           </span>
           <input type="text" value={deviceModel} onChange={(e) => setDeviceModel(e.target.value)}
             placeholder="e.g. iPhone 13, Galaxy Tab S9" required={modelRequired}
@@ -162,7 +162,7 @@ export default function SupportForm({ onSubmitted }: { onSubmitted?: () => void 
         <svg className="mt-px shrink-0 text-[#6350ef] dark:text-[#b3a3ff]" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></svg>
         We&rsquo;ll automatically include your device &amp; app info so we can fix issues faster.
       </p>
-      {error && <p className="text-xs text-rose-600 dark:text-rose-400">{error}</p>}
+      {error && <p className="text-xs text-rose-700 dark:text-rose-400">{error}</p>}
       <div className="flex justify-end">
         <button type="button" onClick={submit} disabled={submitting}
           className="h-10 px-4 rounded-xl text-sm font-semibold bg-[#735fee] text-white hover:bg-[#6650e6] transition-colors disabled:opacity-60">

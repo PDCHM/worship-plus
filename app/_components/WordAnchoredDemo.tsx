@@ -17,7 +17,7 @@ const REDUCED_WIDTH = 300; // static fallback width
 function ChordWord({ chord, word }: { chord?: string; word: string }) {
   return (
     <span className="inline-flex flex-col items-start leading-tight">
-      <span className="h-5 text-sm font-bold text-indigo-600 font-mono">{chord ?? " "}</span>
+      <span className="h-5 text-sm font-bold text-[#6350ef] font-mono">{chord ?? " "}</span>
       <span className="text-lg text-slate-800">{word}</span>
     </span>
   );
@@ -40,7 +40,7 @@ export default function WordAnchoredDemo() {
   return (
     <div className="mt-10 inline-block rounded-2xl border border-slate-200 bg-white px-7 py-6 shadow-sm text-left align-top">
       <div className="flex items-center justify-between gap-4 mb-3">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Verse 1</div>
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Verse 1</div>
         {animate && (
           <div className="text-[10px] font-medium tabular-nums text-slate-300" aria-hidden>{width}px</div>
         )}

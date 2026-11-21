@@ -83,7 +83,7 @@ export default function EmailSignIn({
           required
           placeholder="you@example.com"
           autoComplete="email"
-          className="w-full h-11 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-indigo-400 dark:focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 transition-colors text-sm"
+          className="w-full h-11 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-sm"
         />
       </div>
       <button
@@ -93,7 +93,7 @@ export default function EmailSignIn({
       >
         {sending ? "Sending link…" : buttonLabel}
       </button>
-      {error && <p role="alert" className="text-sm text-rose-600 dark:text-rose-400 text-center">{error}</p>}
+      {error && <p role="alert" className="text-sm text-rose-700 dark:text-rose-400 text-center">{error}</p>}
     </form>
   );
 }

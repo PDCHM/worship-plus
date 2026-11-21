@@ -52,13 +52,13 @@ export default function UpgradeModal({ currentPlan, userId, userEmail, reason, o
         <div className="flex items-start justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800">
           <div>
             <h2 className="font-semibold text-base text-slate-900 dark:text-slate-100">Upgrade your plan</h2>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+            <p className="text-xs text-slate-500 dark:text-slate-500 mt-0.5">
               {reason ? `${reason} is a paid feature. ` : ""}You&apos;re on the{" "}
               <span className="font-semibold text-slate-600 dark:text-slate-300">{PLANS[currentPlan]?.name ?? "Free"}</span> plan.
             </p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close"
-            className="w-7 h-7 shrink-0 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
+            className="w-7 h-7 shrink-0 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
@@ -77,7 +77,7 @@ export default function UpgradeModal({ currentPlan, userId, userEmail, reason, o
             return (
               <div key={p.id} className={
                 "relative rounded-2xl border p-5 flex flex-col " +
-                (featured ? "border-indigo-300 dark:border-indigo-700 ring-1 ring-indigo-200 dark:ring-indigo-900" : "border-slate-200 dark:border-slate-800")
+                (featured ? "border-[#c9bdfb] dark:border-[#5a46dc] ring-1 ring-[#e0d6fb] dark:ring-[#2f2852]" : "border-slate-200 dark:border-slate-800")
               }>
                 {featured && (
                   <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide bg-[#735fee] text-white">
@@ -87,7 +87,7 @@ export default function UpgradeModal({ currentPlan, userId, userEmail, reason, o
                 <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{p.name}</div>
                 <div className="mt-1 flex items-baseline gap-1">
                   <span className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-100">{p.price}</span>
-                  {p.period && <span className="text-xs text-slate-400">/{p.period}</span>}
+                  {p.period && <span className="text-xs text-slate-500">/{p.period}</span>}
                 </div>
                 {p.annualPrice && (
                   <div className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
@@ -98,7 +98,7 @@ export default function UpgradeModal({ currentPlan, userId, userEmail, reason, o
                 <ul className="mt-4 space-y-2 flex-1">
                   {p.features.map((f) => (
                     <li key={f} className="flex items-start gap-2 text-[13px] text-slate-600 dark:text-slate-300">
-                      <svg className="mt-0.5 shrink-0 text-indigo-500" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                      <svg className="mt-0.5 shrink-0 text-[#735fee]" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                       <span>{f}</span>
                     </li>
                   ))}
@@ -110,7 +110,7 @@ export default function UpgradeModal({ currentPlan, userId, userEmail, reason, o
                   className={
                     "mt-5 h-10 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors disabled:cursor-not-allowed " +
                     (isCurrent
-                      ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500"
+                      ? "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-500"
                       : featured
                         ? "bg-[#735fee] text-white hover:bg-[#6650e6] disabled:opacity-60"
                         : "bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-white disabled:opacity-60")
@@ -125,7 +125,7 @@ export default function UpgradeModal({ currentPlan, userId, userEmail, reason, o
           })}
         </div>
 
-        <p className="text-xs text-slate-400 dark:text-slate-500 text-center px-5 pb-5">
+        <p className="text-xs text-slate-500 dark:text-slate-500 text-center px-5 pb-5">
           14-day free trial · cancel anytime · secure checkout by Stripe
         </p>
       </div>

@@ -53,7 +53,7 @@ function GuitarDiagram({ shape }: { shape: GuitarShape }) {
         const from = Math.min(...held), to = Math.max(...held);
         return (
           <rect key={`b${bf}`} x={x(from)} y={y(rel - 1) + stepY / 2 - 2.6} width={x(to) - x(from)} height={5.2} rx={2.6}
-            className="fill-indigo-500 dark:fill-indigo-400" />
+            className="fill-[#735fee] dark:fill-[#b3a3ff]" />
         );
       })}
       {shape.frets.map((fr, s) => {
@@ -70,7 +70,7 @@ function GuitarDiagram({ shape }: { shape: GuitarShape }) {
         }
         const rel = fr;              // already relative to baseFret
         if (rel < 1 || rel > FRETS) return null;
-        return <circle key={`d${s}`} cx={x(s)} cy={y(rel - 1) + stepY / 2} r={3.1} className="fill-indigo-500 dark:fill-indigo-400" />;
+        return <circle key={`d${s}`} cx={x(s)} cy={y(rel - 1) + stepY / 2} r={3.1} className="fill-[#735fee] dark:fill-[#b3a3ff]" />;
       })}
     </svg>
   );
@@ -90,7 +90,7 @@ function PianoDiagram({ voicing }: { voicing: PianoVoicing }) {
 
   const fill = (pc: number, black: boolean) =>
     bassPc === pc ? "fill-amber-400"
-      : on.has(pc) ? "fill-indigo-500 dark:fill-indigo-400"
+      : on.has(pc) ? "fill-[#735fee] dark:fill-[#b3a3ff]"
         : black ? "fill-slate-700 dark:fill-slate-500" : "fill-white dark:fill-slate-200";
 
   return (
@@ -125,7 +125,7 @@ function ChordCard({ symbol, instrument, guitar, piano }: {
         ? (guitar ? <GuitarDiagram shape={guitar} /> : null)
         : (piano ? <PianoDiagram voicing={piano} /> : null)}
       {!has && (
-        <span className="text-[9px] text-slate-400 dark:text-slate-500 leading-none py-3">no shape</span>
+        <span className="text-[9px] text-slate-500 dark:text-slate-500 leading-none py-3">no shape</span>
       )}
       {instrument === "piano" && piano?.bass && parsed?.bass && (
         <span className="text-[9px] text-amber-600 dark:text-amber-400 leading-none">bass {parsed.bass}</span>
@@ -241,7 +241,7 @@ export default function ChordDiagramStrip({
           {(["guitar", "piano"] as const).map((i) => (
             <button key={i} type="button" onClick={() => onInstrumentChange(i)} aria-pressed={instrument === i}
               className={"px-2 h-6 rounded-md capitalize transition-colors " + (instrument === i
-                ? "bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm"
+                ? "bg-white dark:bg-slate-700 text-[#6350ef] dark:text-[#c9bdfb] shadow-sm"
                 : "text-slate-500 dark:text-slate-400")}>
               {i}
             </button>
@@ -250,15 +250,15 @@ export default function ChordDiagramStrip({
         <span className="flex-1" />
         {onClose && (
           <button type="button" onClick={onClose} aria-label="Hide chord diagrams"
-            className="w-6 h-6 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 dark:hover:bg-slate-800">
+            className="w-6 h-6 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-600 hover:bg-slate-200/60 dark:hover:bg-slate-800">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         )}
       </div>
       {symbols.length === 0 ? (
-        <p className="px-1 pb-1 text-xs text-slate-400 dark:text-slate-500">No chords in this song yet.</p>
+        <p className="px-1 pb-1 text-xs text-slate-500 dark:text-slate-500">No chords in this song yet.</p>
       ) : loading ? (
-        <p className="px-1 pb-1 text-xs text-slate-400 dark:text-slate-500">Loading shapes…</p>
+        <p className="px-1 pb-1 text-xs text-slate-500 dark:text-slate-500">Loading shapes…</p>
       ) : (
         <div className="flex gap-1 overflow-x-auto pb-1">
           {symbols.map((s) => (

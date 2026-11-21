@@ -54,13 +54,13 @@ export default function AddSongSheet({ onBuildNew, onPasteChart, onAiChords, onI
           <div className="flex items-center gap-1.5">
             {subOpen && (
               <button type="button" onClick={() => { setPasteSubOpen(false); setImportSubOpen(false); }} aria-label="Back"
-                className="w-7 h-7 -ml-1.5 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
+                className="w-7 h-7 -ml-1.5 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
               </button>
             )}
             <span className="font-semibold text-sm">{importSubOpen ? "Import Song" : pasteSubOpen ? "Paste Song" : "Add Song"}</span>
           </div>
-          <button type="button" onClick={onClose} className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
+          <button type="button" onClick={onClose} className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
@@ -77,7 +77,7 @@ export default function AddSongSheet({ onBuildNew, onPasteChart, onAiChords, onI
             <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 px-3 py-2 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
               Supported:{" "}
               <span className="font-medium text-slate-600 dark:text-slate-300">.sbp · .sbpbackup · .pdf · .docx · .txt</span>{" "}
-              <span className="text-slate-400 dark:text-slate-500">(also ChordPro, OnSong, PowerPoint, RTF)</span>
+              <span className="text-slate-500 dark:text-slate-500">(also ChordPro, OnSong, PowerPoint, RTF)</span>
             </div>
             <button type="button" onClick={() => { onImportFile(); onClose(); }}
               className="w-full h-11 rounded-xl bg-[#735fee] hover:bg-[#6650e6] text-white text-sm font-semibold flex items-center justify-center gap-2 transition-colors shadow-sm shadow-violet-500/20">
@@ -142,7 +142,7 @@ function SheetBtn({ icon, label, desc, onClick, disabled, chevron, badge }: {
   return (
     <button type="button" onClick={onClick} disabled={disabled}
       className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed">
-      <div className="w-10 h-10 rounded-xl bg-[#efe9fe] dark:bg-[#2a2440] flex items-center justify-center text-indigo-500 dark:text-indigo-400 shrink-0">
+      <div className="w-10 h-10 rounded-xl bg-[#efe9fe] dark:bg-[#2a2440] flex items-center justify-center text-[#735fee] dark:text-[#b3a3ff] shrink-0">
         {icon}
       </div>
       <div className="min-w-0 flex-1">
@@ -154,7 +154,7 @@ function SheetBtn({ icon, label, desc, onClick, disabled, chevron, badge }: {
             </span>
           )}
         </div>
-        <div className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">{desc}</div>
+        <div className="text-xs text-slate-500 dark:text-slate-500 mt-0.5">{desc}</div>
       </div>
       {chevron && (
         <svg className="shrink-0 text-slate-300 dark:text-slate-600" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>

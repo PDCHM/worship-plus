@@ -1,5 +1,6 @@
 "use client";
 
+import { readableColor } from "@/lib/contrast";
 import { useEffect } from "react";
 import { ChordDiagramSheet, preloadChordData } from "@/app/_components/ChordDiagrams";
 import { uniqueChordSymbols } from "@/lib/chords/diagrams";
@@ -73,7 +74,7 @@ export default function PrintPreviewModal({
       <div className="shrink-0 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 py-2.5 flex items-center justify-between gap-3">
         <span className="font-semibold text-sm">Print Preview</span>
         <button type="button" onClick={onClose} aria-label="Close print preview"
-          className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0">
+          className="w-8 h-8 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
@@ -228,7 +229,8 @@ function PaperContent({ song, settings, sectionStyles, cols, paperW, paperH }: {
         {blocks.map((block) => {
           const section = block.section;
           const color = colorMap[getSectionColorKey(section.label)];
-          const chordColor = getEffectiveStyle(getSectionStyleKey(section.label), sectionStyles.styles).chordColor;
+          const chordColor = readableColor(
+            getEffectiveStyle(getSectionStyleKey(section.label), sectionStyles.styles).chordColor, "#ffffff"); // paper
           return (
             <div key={block.key} style={{
               breakInside: "avoid",
@@ -279,7 +281,7 @@ function PaperContent({ song, settings, sectionStyles, cols, paperW, paperH }: {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-1.5">
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+      <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500">
         {label}
       </span>
       {children}
@@ -298,7 +300,7 @@ function SegBtn<T extends string | number>({
   disabledTitle?: string;
 }) {
   return (
-    <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 divide-x divide-slate-200 dark:divide-slate-700 overflow-hidden text-xs">
+    <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 divide-x divide-slate-200 dark:divide-slate-700 seg-group text-xs">
       {options.map((o) => {
         const isDisabled = disabled?.(o) ?? false;
         return (

@@ -32,7 +32,7 @@ type Props = {
    to the reliable path rather than just apologising. */
 function PhotoFallback({ onTryPhotoImport }: { onTryPhotoImport: () => void }) {
   return (
-    <div className="rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50/70 dark:bg-indigo-950/40 px-4 py-3">
+    <div className="rounded-xl border border-[#e0d6fb] dark:border-[#2f2852] bg-[#f3f0ff]/70 dark:bg-[#2a2440]/40 px-4 py-3">
       <p className="text-sm text-slate-700 dark:text-slate-200">
         Snap a photo of your chord chart instead — it&apos;s the most reliable way to bring a song in.
       </p>
@@ -96,10 +96,10 @@ export default function SongSearchSheet({ findInLibrary, onOpenExisting, onCreat
       <div className="w-full sm:max-w-md bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden flex flex-col max-h-[88vh]" onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-500"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-[#735fee]"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
             <span className="font-semibold text-sm">Search Online</span>
           </div>
-          <button type="button" onClick={onClose} className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
+          <button type="button" onClick={onClose} className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
@@ -116,7 +116,7 @@ export default function SongSearchSheet({ findInLibrary, onOpenExisting, onCreat
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") search(); }}
               placeholder="e.g. how he loves us oh how he loves"
-              className="flex-1 h-10 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-indigo-400"
+              className="flex-1 h-10 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff]"
             />
             <button
               type="button"
@@ -155,7 +155,7 @@ export default function SongSearchSheet({ findInLibrary, onOpenExisting, onCreat
                     <div className="text-base font-bold text-slate-900 dark:text-slate-100 truncate">{result.title}</div>
                     {result.artist && <div className="text-sm text-slate-500 dark:text-slate-400 truncate">{result.artist}</div>}
                   </div>
-                  <span className="shrink-0 inline-flex items-center justify-center min-w-[2.25rem] h-6 px-2 rounded-md bg-[#efe9fe] dark:bg-[#2a2440] text-indigo-700 dark:text-indigo-300 text-[11px] font-bold uppercase tracking-wide">
+                  <span className="shrink-0 inline-flex items-center justify-center min-w-[2.25rem] h-6 px-2 rounded-md bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#c9bdfb] text-[11px] font-bold uppercase tracking-wide">
                     {result.key}
                   </span>
                 </div>
@@ -191,7 +191,7 @@ export default function SongSearchSheet({ findInLibrary, onOpenExisting, onCreat
                     Open in library
                   </button>
                 ) : (
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center px-1">Not in your library yet.</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-500 text-center px-1">Not in your library yet.</p>
                 )}
                 {FEATURE_AI_CHORDS && (
                 <button

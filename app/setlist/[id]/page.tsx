@@ -61,17 +61,17 @@ export default function SetlistPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
-      <header className="border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md sticky top-0 z-10">
+      <header className="border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-md sticky top-0 z-10 pt-[env(safe-area-inset-top,0px)]">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
           <Link href="/" className="font-bold text-lg tracking-tight">Worship<span className="text-blue-500">+</span></Link>
-          <span className="text-xs text-slate-400">Shared setlist</span>
+          <span className="text-xs text-slate-500">Shared setlist</span>
         </div>
       </header>
 
       <main className="max-w-2xl mx-auto px-4 sm:px-6 py-8">
         {status === "loading" && (
           <div className="flex items-center justify-center py-24">
-            <div className="w-6 h-6 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
+            <div className="w-6 h-6 rounded-full border-2 border-[#735fee] border-t-transparent animate-spin" />
           </div>
         )}
 
@@ -88,7 +88,7 @@ export default function SetlistPage() {
           <>
             <h1 className="text-2xl font-bold">{name}</h1>
             {date && (
-              <p className="text-sm text-indigo-500 dark:text-indigo-400 mt-1">
+              <p className="text-sm text-[#735fee] dark:text-[#b3a3ff] mt-1">
                 {new Date(date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
               </p>
             )}
@@ -97,17 +97,17 @@ export default function SetlistPage() {
               {songs.length} {songs.length === 1 ? "song" : "songs"}
             </h2>
             {songs.length === 0 ? (
-              <p className="text-sm text-slate-400 dark:text-slate-500">No songs yet — to be confirmed.</p>
+              <p className="text-sm text-slate-500 dark:text-slate-500">No songs yet — to be confirmed.</p>
             ) : (
               <ol className="rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden bg-white dark:bg-slate-900">
                 {songs.map((s, i) => (
                   <li key={s.id} className="flex items-center gap-3 px-4 py-3">
-                    <span className="w-5 text-center text-xs font-mono text-slate-400 shrink-0">{i + 1}</span>
+                    <span className="w-5 text-center text-xs font-mono text-slate-500 shrink-0">{i + 1}</span>
                     <span className="flex-1 min-w-0">
                       <span className="block text-sm font-medium truncate">{s.title}</span>
-                      {s.artist && <span className="block text-xs text-slate-400 truncate">{s.artist}</span>}
+                      {s.artist && <span className="block text-xs text-slate-500 truncate">{s.artist}</span>}
                     </span>
-                    {s.key && <span className="shrink-0 inline-flex items-center justify-center min-w-[2.25rem] h-6 px-2 rounded-md bg-[#efe9fe] dark:bg-[#2a2440] text-indigo-700 dark:text-indigo-300 text-[11px] font-bold uppercase tracking-wide">{s.key}</span>}
+                    {s.key && <span className="shrink-0 inline-flex items-center justify-center min-w-[2.25rem] h-6 px-2 rounded-md bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#c9bdfb] text-[11px] font-bold uppercase tracking-wide">{s.key}</span>}
                   </li>
                 ))}
               </ol>
@@ -125,7 +125,7 @@ export default function SetlistPage() {
                         <span className={"w-2.5 h-2.5 rounded-full shrink-0 " + (isRehearsal ? "bg-violet-500" : "bg-emerald-500")} />
                         <span className="flex-1 min-w-0">
                           <span className="block text-sm font-medium truncate">{ev.label}</span>
-                          <span className="block text-xs text-slate-400">
+                          <span className="block text-xs text-slate-500">
                             {when.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })} · {when.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                           </span>
                         </span>

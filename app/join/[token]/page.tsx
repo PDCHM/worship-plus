@@ -8,7 +8,7 @@ import EmailSignIn from "@/app/_components/EmailSignIn";
 // Module scope, not re-created per render (a fresh component identity each
 // render remounts its subtree).
 const Logo = () => (
-  <div className="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center mx-auto mb-5">
+  <div className="w-14 h-14 rounded-2xl bg-[#f3f0ff] flex items-center justify-center mx-auto mb-5">
     <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
       <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
@@ -71,9 +71,9 @@ export default function JoinPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 pt-[calc(1rem+env(safe-area-inset-top,0px))] pb-[calc(1rem+env(safe-area-inset-bottom,0px))]">
       <div className="w-full max-w-sm bg-white rounded-2xl border border-slate-200 shadow-xl overflow-hidden">
-        {status==="loading" && <div className="p-8 text-center"><Logo /><h1 className="text-xl font-bold mb-2">Loading…</h1><div className="w-6 h-6 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin mx-auto mt-4" /></div>}
+        {status==="loading" && <div className="p-8 text-center"><Logo /><h1 className="text-xl font-bold mb-2">Loading…</h1><div className="w-6 h-6 rounded-full border-2 border-[#735fee] border-t-transparent animate-spin mx-auto mt-4" /></div>}
         {status==="signin" && (
           <div className="p-8 text-center">
             <Logo />
@@ -90,7 +90,7 @@ export default function JoinPage() {
               <div className="relative py-1">
                 <div className="absolute inset-0 flex items-center"><div className="w-full h-px bg-slate-200" /></div>
                 <div className="relative flex justify-center">
-                  <span className="px-2 bg-white text-[11px] text-slate-400 uppercase tracking-wider">or</span>
+                  <span className="px-2 bg-white text-[11px] text-slate-500 uppercase tracking-wider">or</span>
                 </div>
               </div>
               <EmailSignIn redirectTo={joinCallbackUrl} />
@@ -105,7 +105,7 @@ export default function JoinPage() {
             {slotName && <p className="text-sm text-slate-500 mb-1">You&apos;ve been invited as <strong>{slotName}</strong></p>}
             <p className="text-sm text-slate-500 mb-6">Worship+ Team</p>
             <button onClick={handleJoin} disabled={joining} className="w-full h-10 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] disabled:opacity-60 mb-3">{joining?"Joining…":"Join Team"}</button>
-            <button onClick={() => router.replace("/app")} className="w-full text-sm text-slate-400 hover:text-slate-600">Cancel</button>
+            <button onClick={() => router.replace("/app")} className="w-full text-sm text-slate-500 hover:text-slate-600">Cancel</button>
           </div>
         )}
         {status==="already" && <div className="p-8 text-center"><Logo /><h1 className="text-xl font-bold mb-2">Already joined</h1><p className="text-sm text-slate-500 mb-6">You&apos;re already in {groupName}.</p><button onClick={() => router.replace("/app")} className="w-full h-10 rounded-xl bg-[#735fee] text-white text-sm font-semibold">Open Worship+</button></div>}

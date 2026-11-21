@@ -87,7 +87,7 @@ export default function SubscriptionSection({ plan, onUpgrade }: Props) {
         )}
       </div>
 
-      {error && <p className="mt-3 text-sm text-rose-600 dark:text-rose-400">{error}</p>}
+      {error && <p className="mt-3 text-sm text-rose-700 dark:text-rose-400">{error}</p>}
     </div>
   );
 }

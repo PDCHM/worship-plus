@@ -45,6 +45,10 @@ export type { MyVersionItem } from "@/lib/privateVersions";
 export type MyVersionAction = "toggle" | "share" | "library" | "discard";
 
 export type FoldersViewProps = {
+  // Set when the folders/setlists request failed (cached data stays shown).
+  loadError?: string | null;
+  onRetryLoad?: () => void;
+  retryingLoad?: boolean;
   subview: "all" | string;
   // Overview split: "folders" shows only type='folder', "setlists" only
   // type='setlist', undefined shows both (legacy / cross-navigation).
@@ -194,7 +198,7 @@ export default function FoldersView(props: FoldersViewProps) {
 
 function Overview({
   folders, folderSongs, teams, onNavigate, onCreate, onRename, onDelete, showToast, currentUserId, onMoveToTeam,
-  canUseSetlists, onRequireUpgrade, tab,
+  canUseSetlists, onRequireUpgrade, tab, loadError, onRetryLoad, retryingLoad,
 }: FoldersViewProps) {
   // Which overview sections to show — driven by the bottom-nav tab. undefined
   // (legacy / cross-nav) shows both.
@@ -252,8 +256,11 @@ function Overview({
 
   return (
     <div className="max-w-5xl w-full mx-auto px-4 sm:px-6 py-8 space-y-10">
+      {loadError && (folderList.length > 0 || setlistList.length > 0) && (
+        <LoadErrorHint compact what={tab === "setlists" ? "setlists" : "folders"} onRetry={onRetryLoad} retrying={retryingLoad} />
+      )}
       <div className="flex justify-end -mb-6">
-        <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden" role="group" aria-label="Folders view mode">
+        <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 seg-group" role="group" aria-label="Folders view mode">
           <button type="button" onClick={() => setViewMode("grid")} aria-pressed={viewMode === "grid"} aria-label="Grid view" title="Grid view"
             className={"w-9 h-9 flex items-center justify-center transition-colors " + (viewMode === "grid" ? "bg-[#efe9fe] text-[#6350ef] ring-1 ring-inset ring-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:ring-[#3a3358]" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -275,7 +282,7 @@ function Overview({
       <section>
         <div className="flex items-center gap-2 mb-4 cursor-pointer group" onClick={() => setShowNewFolder(true)}>
           <h2 className="font-semibold text-base">Folders</h2>
-          <span className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-[#6350ef] dark:text-[#b3a3ff] flex items-center justify-center text-sm font-bold group-hover:bg-[#735fee] group-hover:text-white transition-colors">+</span>
+          <span className="w-5 h-5 rounded-full bg-[#efe9fe] dark:bg-[#2a2440]/60 text-[#6350ef] dark:text-[#b3a3ff] flex items-center justify-center text-sm font-bold group-hover:bg-[#735fee] group-hover:text-white transition-colors">+</span>
         </div>
         {showNewFolder && (
           <NewNameInput
@@ -317,12 +324,16 @@ function Overview({
           )
         )}
         {folderList.length === 0 && !showNewFolder && (
+          loadError ? (
+            <LoadErrorHint what="folders" onRetry={onRetryLoad} retrying={retryingLoad} />
+          ) : (
           <EmptyHint
             label="No folders yet"
             sub="Group your songs however you like."
             cta="Create a folder"
             onClick={() => setShowNewFolder(true)}
           />
+          )
         )}
       </section>
       )}
@@ -335,7 +346,7 @@ function Overview({
           onClick={() => (canUseSetlists ? setShowNewSetlist(true) : onRequireUpgrade())}
         >
           <h2 className="font-semibold text-base">Setlists</h2>
-          <span className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-[#6350ef] dark:text-[#b3a3ff] flex items-center justify-center text-sm font-bold group-hover:bg-[#735fee] group-hover:text-white transition-colors">+</span>
+          <span className="w-5 h-5 rounded-full bg-[#efe9fe] dark:bg-[#2a2440]/60 text-[#6350ef] dark:text-[#b3a3ff] flex items-center justify-center text-sm font-bold group-hover:bg-[#735fee] group-hover:text-white transition-colors">+</span>
         </div>
         {showNewSetlist && (
           <div className="mb-4 flex flex-col sm:flex-row gap-2">
@@ -349,12 +360,12 @@ function Overview({
                 if (e.key === "Enter") submit(newSetlistName, "setlist", newSetlistTeam || null);
                 if (e.key === "Escape") { setShowNewSetlist(false); setNewSetlistName(""); setNewSetlistTeam(""); }
               }}
-              className="flex-1 h-10 px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-indigo-400"
+              className="flex-1 h-10 px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff]"
             />
             <select
               value={newSetlistTeam}
               onChange={(e) => setNewSetlistTeam(e.target.value)}
-              className="h-10 px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-indigo-400"
+              className="h-10 px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff]"
             >
               <option value="">Personal</option>
               {teams.map((t) => (
@@ -415,7 +426,9 @@ function Overview({
           )
         )}
         {setlistList.length === 0 && !showNewSetlist && (
-          canUseSetlists || FREE_MODEL ? (
+          loadError ? (
+            <LoadErrorHint what="setlists" onRetry={onRetryLoad} retrying={retryingLoad} />
+          ) : canUseSetlists || FREE_MODEL ? (
             <EmptyHint
               label="No setlists yet"
               sub="Plan a service or rehearsal set, then export it as a PDF."
@@ -452,7 +465,7 @@ function Overview({
 // All Songs library, so an opened folder can switch its song layout.
 function ViewToggle({ value, onChange }: { value: "grid" | "list"; onChange: (v: "grid" | "list") => void }) {
   return (
-    <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden" role="group" aria-label="View mode">
+    <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 seg-group" role="group" aria-label="View mode">
       <button type="button" onClick={() => onChange("grid")} aria-pressed={value === "grid"} aria-label="Grid view" title="Grid view"
         className={"w-9 h-9 flex items-center justify-center transition-colors " + (value === "grid" ? "bg-[#efe9fe] text-[#6350ef] ring-1 ring-inset ring-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:ring-[#3a3358]" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -506,7 +519,7 @@ function FolderDetail({
         </div>
       </div>
       {currentSongs.length === 0 ? (
-        <div className="py-14 text-center text-sm text-slate-400 dark:text-slate-500">
+        <div className="py-14 text-center text-sm text-slate-500 dark:text-slate-500">
           No songs yet.{" "}
           <button
             type="button"
@@ -786,13 +799,13 @@ function SetlistDetail({
         )}
       </div>
       <div className="flex items-center gap-2 mt-3 mb-1">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400 shrink-0"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500 shrink-0"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
         <input
           type="date"
           value={folder.date ?? ""}
           onChange={(e) => onUpdateDate(folder.id, e.target.value || null)}
           disabled={!canEdit}
-          className="text-sm text-slate-600 dark:text-slate-300 bg-transparent border-none outline-none cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors disabled:cursor-default disabled:hover:text-slate-600"
+          className="text-sm text-slate-600 dark:text-slate-300 bg-transparent border-none outline-none cursor-pointer hover:text-[#6350ef] dark:hover:text-[#b3a3ff] transition-colors disabled:cursor-default disabled:hover:text-slate-600"
         />
       </div>
 
@@ -800,7 +813,7 @@ function SetlistDetail({
       <div className="mt-6">
         <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3">Schedule</h3>
         {events.length === 0 ? (
-          <p className="text-xs text-slate-400 dark:text-slate-500 mb-3">No rehearsals or events scheduled yet.</p>
+          <p className="text-xs text-slate-500 dark:text-slate-500 mb-3">No rehearsals or events scheduled yet.</p>
         ) : (
           <div className="rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 mb-3">
             {events.map((ev) => (
@@ -864,7 +877,7 @@ function SetlistDetail({
         </p>
       )}
       {orderedSongs.length === 0 ? (
-        <div className="py-14 text-center text-sm text-slate-400 dark:text-slate-500">
+        <div className="py-14 text-center text-sm text-slate-500 dark:text-slate-500">
           No songs yet.{canEdit && (<>{" "}
           <button
             type="button"
@@ -887,7 +900,7 @@ function SetlistDetail({
                 className={
                   "flex items-center gap-2 px-2 py-3 bg-white dark:bg-slate-900 group select-none transition-[transform,box-shadow,background-color] duration-150 " +
                   (isDragging
-                    ? "scale-[1.03] shadow-lg ring-2 ring-indigo-400 dark:ring-indigo-500 bg-indigo-50 dark:bg-indigo-950/40 z-10 relative"
+                    ? "scale-[1.03] shadow-lg ring-2 ring-[#9d8bff] dark:ring-[#735fee] bg-[#f3f0ff] dark:bg-[#2a2440]/40 z-10 relative"
                     : "hover:bg-slate-50 dark:hover:bg-slate-800/50")
                 }
               >
@@ -902,7 +915,7 @@ function SetlistDetail({
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>
                   </button>
                 )}
-                <span className="hidden sm:block w-5 text-center text-xs font-mono text-slate-400 shrink-0">
+                <span className="hidden sm:block w-5 text-center text-xs font-mono text-slate-500 shrink-0">
                   {idx + 1}
                 </span>
                 <div
@@ -925,7 +938,7 @@ function SetlistDetail({
                     )}
                   </div>
                   {song.artist && (
-                    <div className="text-xs text-slate-400 truncate">{song.artist}</div>
+                    <div className="text-xs text-slate-500 truncate">{song.artist}</div>
                   )}
                 </div>
                 {/* Quick access to the song's reference links. With links: the 🔗
@@ -938,7 +951,7 @@ function SetlistDetail({
                     onClick={() => setLinksSong({ id: song.id, add: false })}
                     title="Reference links"
                     aria-label="Reference links"
-                    className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors shrink-0"
+                    className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-[#6350ef] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/40 transition-colors shrink-0"
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                   </button>
@@ -949,7 +962,7 @@ function SetlistDetail({
                     onClick={() => setLinksSong({ id: song.id, add: true })}
                     title="Add a reference link"
                     aria-label="Add a reference link"
-                    className="shrink-0 flex items-center gap-1 px-1.5 h-7 rounded-md text-[11px] font-medium text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors"
+                    className="shrink-0 flex items-center gap-1 px-1.5 h-7 rounded-md text-[11px] font-medium text-slate-500 hover:text-[#6350ef] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/40 transition-colors"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     <span className="hidden sm:inline">Link</span>
@@ -961,7 +974,7 @@ function SetlistDetail({
                     onClick={() => onRemoveSong(folder.id, song.id)}
                     title="Remove from setlist"
                     aria-label="Remove from setlist"
-                    className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                    className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                   </button>
@@ -1012,7 +1025,7 @@ function SetlistDetail({
               <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
                 <span className="font-semibold text-sm truncate pr-2">{s?.title?.trim() || "References"}</span>
                 <button type="button" onClick={() => setLinksSong(null)} aria-label="Close"
-                  className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0">
+                  className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
               </div>
@@ -1055,17 +1068,17 @@ function EventRow({ ev, setlistName, songs, folderId, canUseCalendar, onRequireU
       {canEdit ? (
         <button type="button" onClick={onEdit} className="min-w-0 flex-1 text-left cursor-pointer" title="Edit schedule item">
           <div className="text-sm font-medium truncate">{ev.label}</div>
-          <div className="text-xs text-slate-400 dark:text-slate-500">{dateStr} · {timeStr}</div>
+          <div className="text-xs text-slate-500 dark:text-slate-500">{dateStr} · {timeStr}</div>
         </button>
       ) : (
         <div className="min-w-0 flex-1">
           <div className="text-sm font-medium truncate">{ev.label}</div>
-          <div className="text-xs text-slate-400 dark:text-slate-500">{dateStr} · {timeStr}</div>
+          <div className="text-xs text-slate-500 dark:text-slate-500">{dateStr} · {timeStr}</div>
         </div>
       )}
       <span className={"shrink-0 px-1.5 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wide " + (isRehearsal
         ? "bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-300"
-        : "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-300")}>
+        : "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300")}>
         {isRehearsal ? "Rehearsal" : "Event"}
       </span>
       <button type="button"
@@ -1073,17 +1086,17 @@ function EventRow({ ev, setlistName, songs, folderId, canUseCalendar, onRequireU
           ? window.open(googleCalendarUrl(ev, setlistName, songs, folderId), "_blank", "noopener,noreferrer")
           : onRequireUpgrade()}
         title={canUseCalendar ? "Add to Google Calendar" : "Google Calendar sync is a Team feature"} aria-label="Add to Google Calendar"
-        className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors">
+        className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-[#6350ef] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/40 transition-colors">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
       </button>
       {canEdit && (
         <>
           <button type="button" onClick={onEdit} title="Edit schedule item" aria-label="Edit schedule item"
-            className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-colors">
+            className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-[#6350ef] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/40 transition-colors">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
           </button>
           <button type="button" onClick={onDelete} title="Remove event" aria-label="Remove event"
-            className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 opacity-0 group-hover:opacity-100 transition-opacity">
+            className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 opacity-0 group-hover:opacity-100 transition-opacity">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </>
@@ -1128,7 +1141,7 @@ function AddEventModal({ type, defaultLabel, defaultDate, edit, onSave, onClose 
       <div className="w-full sm:max-w-sm bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl max-h-[90vh] overflow-y-auto pb-[env(safe-area-inset-bottom)]" onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <span className="font-semibold text-sm">{edit ? "Edit schedule item" : "Add to schedule"}</span>
-          <button type="button" onClick={onClose} className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
+          <button type="button" onClick={onClose} className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
@@ -1146,18 +1159,18 @@ function AddEventModal({ type, defaultLabel, defaultDate, edit, onSave, onClose 
           <label className="block">
             <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Label</span>
             <input type="text" value={label} onChange={(e) => setLabel(e.target.value)}
-              className="mt-1 w-full h-10 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-indigo-400" />
+              className="mt-1 w-full h-10 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff]" />
           </label>
           <div className="grid grid-cols-2 gap-2">
             <label className="block">
               <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Date</span>
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
-                className="mt-1 w-full h-10 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-indigo-400" />
+                className="mt-1 w-full h-10 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff]" />
             </label>
             <label className="block">
               <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Time</span>
               <input type="time" value={time} onChange={(e) => setTime(e.target.value)}
-                className="mt-1 w-full h-10 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-indigo-400" />
+                className="mt-1 w-full h-10 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff]" />
             </label>
           </div>
         </div>
@@ -1235,7 +1248,7 @@ export function AddSongsModal({
           <button
             type="button"
             onClick={onClose}
-            className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
@@ -1247,13 +1260,13 @@ export function AddSongsModal({
             placeholder="Search songs…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 min-w-0 h-8 px-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-indigo-400"
+            className="flex-1 min-w-0 h-8 px-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff]"
           />
           {selectable.length > 0 && (
             <button
               type="button"
               onClick={toggleAllVisible}
-              className="shrink-0 h-8 px-2 rounded-lg text-xs font-medium text-[#6350ef] dark:text-[#b3a3ff] hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+              className="shrink-0 h-8 px-2 rounded-lg text-xs font-medium text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/40"
             >
               {allVisibleSelected ? "Clear" : "Select all"}
             </button>
@@ -1261,7 +1274,7 @@ export function AddSongsModal({
         </div>
         <div className="overflow-y-auto flex-1">
           {visible.length === 0 ? (
-            <p className="text-center py-8 text-sm text-slate-400 dark:text-slate-500">
+            <p className="text-center py-8 text-sm text-slate-500 dark:text-slate-500">
               {allSongs.length === 0 ? "No songs in your library yet." : "No matching songs."}
             </p>
           ) : (
@@ -1291,11 +1304,11 @@ export function AddSongsModal({
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{song.title}</div>
                     {song.artist && (
-                      <div className="text-xs text-slate-400 truncate">{song.artist}</div>
+                      <div className="text-xs text-slate-500 truncate">{song.artist}</div>
                     )}
                   </div>
                   {isAdded && (
-                    <span className="shrink-0 text-[11px] font-medium text-slate-400 dark:text-slate-500">Added</span>
+                    <span className="shrink-0 text-[11px] font-medium text-slate-500 dark:text-slate-500">Added</span>
                   )}
                 </button>
               );
@@ -1355,12 +1368,12 @@ function ItemCard({
   };
 
   return (
-    <div ref={rootRef} className="relative group rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
+    <div ref={rootRef} className="relative group rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 hover:border-[#c9bdfb] dark:hover:border-[#5a46dc] transition-colors">
       <div className="cursor-pointer" onClick={!renaming ? onClick : undefined}>
         <div className={`w-8 h-8 rounded-lg mb-3 flex items-center justify-center ${
           item.type === "setlist"
             ? "bg-violet-50 dark:bg-violet-950/60 text-violet-500 dark:text-violet-400"
-            : "bg-[#efe9fe] dark:bg-[#2a2440] text-indigo-500 dark:text-indigo-400"
+            : "bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff]"
         }`}>
           {item.type === "setlist" ? <ListIconSm /> : <FolderIconSm />}
         </div>
@@ -1376,19 +1389,19 @@ function ItemCard({
               if (e.key === "Escape") { setRenaming(false); setNameVal(item.name); }
             }}
             onClick={(e) => e.stopPropagation()}
-            className="w-full text-sm font-semibold bg-transparent border-b border-indigo-400 outline-none pb-0.5"
+            className="w-full text-sm font-semibold bg-transparent border-b border-[#9d8bff] outline-none pb-0.5"
           />
         ) : (
           <div className="text-sm font-semibold truncate mb-1">{item.name}</div>
         )}
-        <div className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+        <div className="text-xs text-slate-500 dark:text-slate-500 flex items-center gap-1.5">
           <span>{count} {count === 1 ? "song" : "songs"}</span>
           {updated && (
             <span className="px-1.5 py-0.5 rounded-full bg-orange-100 dark:bg-orange-950/60 text-orange-600 dark:text-orange-400 text-[10px] font-semibold uppercase tracking-wide">Updated</span>
           )}
         </div>
         {item.type === "setlist" && item.date && (
-          <div style={{fontSize:"11px"}} className="text-indigo-400 dark:text-indigo-500 mt-0.5">
+          <div style={{fontSize:"11px"}} className="text-[#6350ef] dark:text-[#b3a3ff] mt-0.5">
             {new Date(item.date + "T00:00:00").toLocaleDateString("en-GB", { weekday:"short", day:"numeric", month:"short", year:"numeric" })}
           </div>
         )}
@@ -1396,7 +1409,7 @@ function ItemCard({
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); setMoveOpen(false); setMenuOpen((o) => !o); }}
-        className="absolute top-2 right-2 w-6 h-6 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 opacity-0 group-hover:opacity-100 transition-opacity"
+        className="absolute top-2 right-2 w-6 h-6 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 opacity-0 group-hover:opacity-100 transition-opacity"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
           <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
@@ -1432,7 +1445,7 @@ function ItemCard({
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete(); }}
-                className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-rose-600"
+                className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-rose-700"
               >
                 Delete
               </button>
@@ -1484,7 +1497,7 @@ function ItemRow({
 
   return (
     <div ref={rootRef} className={"relative flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors " + (isLast ? "" : "border-b border-slate-100 dark:border-slate-800")}>
-      <div className={"w-8 h-8 rounded-lg flex items-center justify-center shrink-0 " + (item.type === "setlist" ? "bg-violet-50 dark:bg-violet-950/60 text-violet-500 dark:text-violet-400" : "bg-[#efe9fe] dark:bg-[#2a2440] text-indigo-500 dark:text-indigo-400")}>
+      <div className={"w-8 h-8 rounded-lg flex items-center justify-center shrink-0 " + (item.type === "setlist" ? "bg-violet-50 dark:bg-violet-950/60 text-violet-500 dark:text-violet-400" : "bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff]")}>
         {item.type === "setlist" ? <ListIconSm /> : <FolderIconSm />}
       </div>
       <div className="flex-1 min-w-0 cursor-pointer" onClick={!renaming ? onClick : undefined}>
@@ -1500,12 +1513,12 @@ function ItemRow({
               if (e.key === "Escape") { setRenaming(false); setNameVal(item.name); }
             }}
             onClick={(e) => e.stopPropagation()}
-            className="w-full text-sm font-semibold bg-transparent border-b border-indigo-400 outline-none pb-0.5"
+            className="w-full text-sm font-semibold bg-transparent border-b border-[#9d8bff] outline-none pb-0.5"
           />
         ) : (
           <div className="text-sm font-semibold truncate">{item.name}</div>
         )}
-        <div className="text-xs text-slate-400 dark:text-slate-500 flex items-center gap-2 mt-0.5">
+        <div className="text-xs text-slate-500 dark:text-slate-500 flex items-center gap-2 mt-0.5">
           <span>{count} {count === 1 ? "song" : "songs"}</span>
           {updated && (
             <span className="px-1.5 py-0.5 rounded-full bg-orange-100 dark:bg-orange-950/60 text-orange-600 dark:text-orange-400 text-[10px] font-semibold uppercase tracking-wide">Updated</span>
@@ -1513,7 +1526,7 @@ function ItemRow({
           {item.type === "setlist" && item.date && (
             <>
               <span aria-hidden>·</span>
-              <span className="text-indigo-500 dark:text-indigo-400">
+              <span className="text-[#6350ef] dark:text-[#b3a3ff]">
                 {new Date(item.date + "T00:00:00").toLocaleDateString("en-GB", { weekday:"short", day:"numeric", month:"short", year:"numeric" })}
               </span>
             </>
@@ -1523,7 +1536,7 @@ function ItemRow({
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); setMoveOpen(false); setMenuOpen((o) => !o); }}
-        className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0"
+        className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
           <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
@@ -1559,7 +1572,7 @@ function ItemRow({
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete(); }}
-                className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-rose-600"
+                className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-rose-700"
               >
                 Delete
               </button>
@@ -1706,14 +1719,14 @@ function DetailHeader({
       <button
         type="button"
         onClick={onBack}
-        className="h-8 w-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0"
+        className="h-8 w-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0"
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
       </button>
       <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
         folder.type === "setlist"
           ? "bg-violet-50 dark:bg-violet-950/60 text-violet-500"
-          : "bg-[#efe9fe] dark:bg-[#2a2440] text-indigo-500"
+          : "bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff]"
       }`}>
         {folder.type === "setlist" ? <ListIconSm /> : <FolderIconSm />}
       </div>
@@ -1728,11 +1741,11 @@ function DetailHeader({
             if (e.key === "Enter") commit();
             if (e.key === "Escape") { setRenaming(false); setNameVal(folder.name); }
           }}
-          className="text-lg font-bold bg-transparent border-b-2 border-indigo-400 outline-none flex-1"
+          className="text-lg font-bold bg-transparent border-b-2 border-[#9d8bff] outline-none flex-1"
         />
       ) : canEdit ? (
         <h1
-          className="text-lg font-bold flex-1 truncate cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+          className="text-lg font-bold flex-1 truncate cursor-pointer hover:text-[#6350ef] dark:hover:text-[#b3a3ff] transition-colors"
           onClick={() => setRenaming(true)}
           title="Click to rename"
         >
@@ -1747,7 +1760,7 @@ function DetailHeader({
           onClick={onExport}
           title="Export setlist"
           aria-label="Export setlist"
-          className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0"
+          className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-500 hover:text-[#6350ef] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         </button>
@@ -1758,7 +1771,7 @@ function DetailHeader({
           onClick={onShare}
           title="Copy share link"
           aria-label="Copy share link"
-          className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0"
+          className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-500 hover:text-[#6350ef] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         </button>
@@ -1767,7 +1780,7 @@ function DetailHeader({
         <button
           type="button"
           onClick={onDelete}
-          className="h-7 px-2.5 rounded-lg text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors shrink-0"
+          className="h-7 px-2.5 rounded-lg text-xs text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors shrink-0"
         >
           Delete
         </button>
@@ -1783,14 +1796,14 @@ function SongCard({
 }: { song: Song; onClick: () => void; onRemove: () => void }) {
   return (
     <div
-      className="relative group rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors cursor-pointer"
+      className="relative group rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 hover:border-[#c9bdfb] dark:hover:border-[#5a46dc] transition-colors cursor-pointer"
       onClick={onClick}
     >
-      <div className="w-7 h-7 rounded-md bg-[#efe9fe] dark:bg-[#2a2440] flex items-center justify-center text-indigo-500 text-xs font-bold mb-3">
+      <div className="w-7 h-7 rounded-md bg-[#efe9fe] dark:bg-[#2a2440] flex items-center justify-center text-[#6350ef] dark:text-[#b3a3ff] text-xs font-bold mb-3">
         {(song.title[0] ?? "?").toUpperCase()}
       </div>
       <div className="text-sm font-semibold truncate mb-0.5">{song.title}</div>
-      {song.artist && <div className="text-xs text-slate-400 truncate">{song.artist}</div>}
+      {song.artist && <div className="text-xs text-slate-500 truncate">{song.artist}</div>}
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onRemove(); }}
@@ -1809,6 +1822,36 @@ function SongCard({
 // Compact, warm empty hint shown under a Folders/Setlists section that has no
 // items yet. The CTA reuses the section's existing create flow (or the upgrade
 // prompt for gated setlists).
+// Shown instead of "No folders yet" when loading failed — the data isn't gone,
+// we just couldn't reach the server. `compact` = slim notice above cached data.
+function LoadErrorHint({ what, onRetry, retrying, compact = false }: {
+  what: "folders" | "setlists"; onRetry?: () => void; retrying?: boolean; compact?: boolean;
+}) {
+  const retryBtn = onRetry && (
+    <button type="button" onClick={onRetry} disabled={retrying}
+      className="h-9 px-4 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] transition-colors disabled:opacity-60 shrink-0">
+      {retrying ? "Retrying…" : "Retry"}
+    </button>
+  );
+  if (compact) {
+    return (
+      <div role="status" className="mb-4 flex items-center gap-3 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40 px-4 py-2.5">
+        <p className="flex-1 min-w-0 text-sm text-amber-800 dark:text-amber-300">
+          Couldn&rsquo;t refresh your {what}{" — "}showing your saved copy.
+        </p>
+        {retryBtn}
+      </div>
+    );
+  }
+  return (
+    <div role="status" className="rounded-2xl border border-dashed border-amber-300 dark:border-amber-900 bg-amber-50/60 dark:bg-amber-950/30 px-5 py-6 text-center">
+      <p className="text-sm font-medium text-slate-800 dark:text-slate-100">Couldn&rsquo;t load your {what}</p>
+      <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Check your connection &mdash; your {what} are safe.</p>
+      {retryBtn && <div className="mt-4 flex justify-center">{retryBtn}</div>}
+    </div>
+  );
+}
+
 function EmptyHint({ label, sub, cta, onClick }: {
   label: string; sub: string; cta: string; onClick: () => void;
 }) {
@@ -1840,7 +1883,7 @@ function NewNameInput({ placeholder, value, onChange, onSubmit, onCancel }: {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter") onSubmit(); if (e.key === "Escape") onCancel(); }}
-        className="flex-1 h-9 px-3 rounded-lg bg-white dark:bg-slate-800 border border-indigo-400 outline-none text-sm"
+        className="flex-1 h-9 px-3 rounded-lg bg-white dark:bg-slate-800 border border-[#9d8bff] outline-none text-sm"
       />
       <button type="button" onClick={onSubmit}
         className="h-9 px-3 rounded-lg text-sm font-medium bg-[#735fee] text-white hover:bg-[#6650e6]">
@@ -1922,21 +1965,21 @@ function MyVersionsBox({ items, canShare, showToggle, onOpen, onAction }: {
                 <label className="flex items-center gap-1.5 text-[11px] font-medium text-slate-700 dark:text-slate-300 cursor-pointer select-none"
                   title="In presenter mode, play your version instead of the shared song for this slot (only affects you)">
                   <input type="checkbox" checked={it.usePresenter} onChange={(e) => onAction("toggle", it, e.target.checked)}
-                    className="w-4 h-4 accent-indigo-600" />
+                    className="w-4 h-4 accent-[#6350ef]" />
                   Play in presenter
                 </label>
               )}
               {confirming ? (
                 <span className="flex items-center gap-1">
                   <span className="text-[11px] text-amber-900 dark:text-amber-200">{scoped ? "Discard your version?" : "Remove from this setlist? (stays in your library)"}</span>
-                  <button type="button" onClick={() => { setConfirmId(null); onAction("discard", it); }} className={btn + " text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"}>Yes</button>
+                  <button type="button" onClick={() => { setConfirmId(null); onAction("discard", it); }} className={btn + " text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"}>Yes</button>
                   <button type="button" onClick={() => setConfirmId(null)} className={btn + " text-slate-600 dark:text-slate-300 hover:bg-amber-100 dark:hover:bg-amber-900/40"}>No</button>
                 </span>
               ) : (
                 <span className="flex items-center gap-1">
                   {canShare && it.inSetlist && (
                     <button type="button" onClick={() => onAction("share", it)} title="Replace the shared song in this setlist with your version, for everyone"
-                      className={btn + " text-[#6350ef] dark:text-[#b3a3ff] hover:bg-indigo-50 dark:hover:bg-indigo-950/40"}>Share with team</button>
+                      className={btn + " text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/40"}>Share with team</button>
                   )}
                   {scoped && (
                     <button type="button" onClick={() => onAction("library", it)} title="Keep a copy in your library — survives if this setlist is deleted"

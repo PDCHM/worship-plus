@@ -930,7 +930,7 @@ export default function MarkupOverlay({
 
       {enabled && editingNote && (
         <div
-          className="absolute z-30 -translate-y-1/2 flex items-center gap-1 p-1 rounded-lg bg-white dark:bg-slate-900 border-2 border-indigo-500 shadow-lg max-w-[calc(100vw-16px)]"
+          className="absolute z-30 -translate-y-1/2 flex items-center gap-1 p-1 rounded-lg bg-white dark:bg-slate-900 border-2 border-[#735fee] shadow-lg max-w-[calc(100vw-16px)]"
           style={{ left: editingNote.x, top: editingNote.y }}
         >
           <input
@@ -983,7 +983,7 @@ export default function MarkupOverlay({
             />
           )}
           <div
-            className="fixed left-1/2 -translate-x-1/2 bottom-6 z-50 flex items-center gap-0.5 px-1.5 py-1.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl print:hidden max-w-[calc(100vw-16px)] overflow-x-auto"
+            className="fixed left-1/2 -translate-x-1/2 bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))] z-50 flex items-center gap-0.5 px-1.5 py-1.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl print:hidden max-w-[calc(100vw-16px)] overflow-x-auto"
             style={{ touchAction: "manipulation" }}
           >
             <TBtn active={tool === "pen"} onClick={() => setTool("pen")} label="Pen">
@@ -1048,7 +1048,7 @@ export default function MarkupOverlay({
           </div>
 
           {colorOpen && (
-            <div className="fixed left-1/2 -translate-x-1/2 bottom-[5.25rem] z-50 grid grid-cols-4 gap-1.5 p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl max-w-[calc(100vw-16px)]">
+            <div className="fixed left-1/2 -translate-x-1/2 bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] z-50 grid grid-cols-4 gap-1.5 p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl max-w-[calc(100vw-16px)]">
               {COLORS.map((c) => (
                 <button
                   key={c}
@@ -1056,14 +1056,14 @@ export default function MarkupOverlay({
                   onClick={() => { setColor(c); if (tool === "eraser") setTool("pen"); setColorOpen(false); }}
                   aria-label={`Colour ${c}`}
                   aria-pressed={color === c}
-                  className={"w-10 h-10 rounded-full transition-transform hover:scale-110 " + (color === c ? "ring-2 ring-offset-2 ring-indigo-500 dark:ring-offset-slate-900" : "")}
+                  className={"w-10 h-10 rounded-full transition-transform hover:scale-110 " + (color === c ? "ring-2 ring-offset-2 ring-[#735fee] dark:ring-offset-slate-900" : "")}
                   style={{ background: c, boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.12)" }}
                 />
               ))}
             </div>
           )}
           {widthOpen && (
-            <div className="fixed left-1/2 -translate-x-1/2 bottom-[5.25rem] z-50 flex items-center gap-1 p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl">
+            <div className="fixed left-1/2 -translate-x-1/2 bottom-[calc(5.25rem+env(safe-area-inset-bottom,0px))] z-50 flex items-center gap-1 p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl">
               {WIDTHS.map((w) => (
                 <button
                   key={w}
@@ -1071,7 +1071,7 @@ export default function MarkupOverlay({
                   onClick={() => { setWidth(w); setWidthOpen(false); }}
                   aria-label={`Stroke width ${w}`}
                   aria-pressed={width === w}
-                  className={"w-10 h-10 rounded-lg flex items-center justify-center transition-colors " + (width === w ? SELECTED : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60")}
+                  className={"w-10 h-10 rounded-lg flex items-center justify-center transition-colors " + (width === w ? SELECTED : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/60")}
                 >
                   <span className="block rounded-full bg-current" style={{ width: w + 2, height: w + 2 }} />
                 </button>

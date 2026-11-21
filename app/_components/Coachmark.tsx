@@ -109,7 +109,7 @@ export default function Coachmark({
           <button
             type="button"
             onClick={onDismiss}
-            className="ml-1 shrink-0 text-[11px] font-semibold text-indigo-300 hover:text-indigo-200"
+            className="ml-1 shrink-0 text-[11px] font-semibold text-[#c9bdfb] hover:text-[#e0d6fb]"
           >
             Got it
           </button>
@@ -134,8 +134,8 @@ export default function Coachmark({
               ...(tailUp ? { top: -14 } : { bottom: -14 }),
             }}
           >
-            <span className="absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75 animate-ping motion-reduce:hidden" />
-            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-indigo-400 ring-2 ring-slate-900 dark:ring-slate-800" />
+            <span className="absolute inline-flex h-full w-full rounded-full bg-[#9d8bff] opacity-75 animate-ping motion-reduce:hidden" />
+            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#9d8bff] ring-2 ring-slate-900 dark:ring-slate-800" />
           </span>
         </div>
       </div>

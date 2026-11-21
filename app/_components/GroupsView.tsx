@@ -101,7 +101,7 @@ function NoGroupView({ onCreateGroup, showToast }: GroupsViewProps) {
   return (
     <div className="max-w-md w-full mx-auto px-4 py-16 text-center">
       <div className="w-16 h-16 rounded-2xl bg-[#efe9fe] dark:bg-[#2a2440] flex items-center justify-center mx-auto mb-5">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-500">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-[#735fee]">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
           <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
         </svg>
@@ -113,7 +113,7 @@ function NoGroupView({ onCreateGroup, showToast }: GroupsViewProps) {
           <input autoFocus type="text" placeholder="e.g. PDCHM Worship Team" value={name}
             onChange={e => setName(e.target.value)}
             onKeyDown={e => { if(e.key==="Enter") handleCreate(); if(e.key==="Escape") setCreating(false); }}
-            className="w-full h-10 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-indigo-400" />
+            className="w-full h-10 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff]" />
           <div className="flex gap-2">
             <button type="button" onClick={handleCreate} disabled={loading||!name.trim()}
               className="flex-1 h-10 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] disabled:opacity-50">
@@ -174,7 +174,7 @@ function TeamListView({ memberships, onSelect, onCreateGroup, showToast }: {
           <input autoFocus type="text" placeholder="e.g. PDCHM Worship Team" value={name}
             onChange={e => setName(e.target.value)}
             onKeyDown={e => { if(e.key==="Enter") handleCreate(); if(e.key==="Escape") { setCreating(false); setName(""); } }}
-            className="w-full h-10 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-indigo-400" />
+            className="w-full h-10 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff]" />
           <div className="flex gap-2">
             <button type="button" onClick={handleCreate} disabled={loading||!name.trim()}
               className="flex-1 h-10 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] disabled:opacity-50">
@@ -190,7 +190,7 @@ function TeamListView({ memberships, onSelect, onCreateGroup, showToast }: {
           const isLeader = role === "leader";
           return (
             <button key={group.id} type="button" onClick={() => onSelect(group.id)}
-              className="w-full flex items-center gap-3 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-300 transition-colors text-left">
+              className="w-full flex items-center gap-3 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-[#c9bdfb] transition-colors text-left">
               <div className="w-11 h-11 rounded-xl bg-[#efe9fe] dark:bg-[#2a2440] flex items-center justify-center text-[#6350ef] dark:text-[#b3a3ff] font-semibold shrink-0">
                 {/^[0-9]/.test(group.name.trim()) ? (
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
@@ -269,12 +269,12 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
           {editingName ? (
             <input autoFocus type="text" value={nameVal} onChange={e => setNameVal(e.target.value)} onBlur={saveName}
               onKeyDown={e => { if (e.key==="Enter") saveName(); if (e.key==="Escape") { setNameVal(group.name); setEditingName(false); } }}
-              className="text-2xl font-bold bg-transparent border-b-2 border-indigo-400 outline-none" />
+              className="text-2xl font-bold bg-transparent border-b-2 border-[#9d8bff] outline-none" />
           ) : (
             <div className="flex items-center gap-1.5">
               <h1 className="text-2xl font-bold">{group.name}</h1>
               <button type="button" onClick={() => { setNameVal(group.name); setEditingName(true); }} title="Rename team" aria-label="Rename team"
-                className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0">
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:text-[#6350ef] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
               </button>
             </div>
@@ -286,7 +286,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
       <div className="flex gap-1 mb-4 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl w-fit">
         {(["members","songs"] as const).map(t => (
           <button key={t} type="button" onClick={() => setTab(t)}
-            className={"h-8 px-4 rounded-lg text-sm font-medium capitalize transition-colors "+(tab===t?"bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm":"text-slate-500 dark:text-slate-400")}>
+            className={"h-8 px-4 rounded-lg text-sm font-medium capitalize transition-colors "+(tab===t?"bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm":"text-slate-600 dark:text-slate-400")}>
             {t} {t==="members"?`(${members.length})`:`(${sharedSongs.length})`}
           </button>
         ))}
@@ -300,7 +300,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
             </button>
           </div>
           {members.length === 0 ? (
-            <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-12 text-center text-sm text-slate-400">No members yet — add your musicians.</div>
+            <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-12 text-center text-sm text-slate-500">No members yet — add your musicians.</div>
           ) : (
             <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden">
               {members.map((m, idx) => (
@@ -316,12 +316,12 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{m.displayName ?? "Unknown"}</div>
-                      {m.email && <div className="text-xs text-slate-400 truncate">{m.email}</div>}
+                      {m.email && <div className="text-xs text-slate-500 truncate">{m.email}</div>}
                       {/* Own line: instrument/category + status. Wraps inside
                           the text column instead of spilling under controls. */}
                       <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 min-w-0">
                         {insLabel(m) && <span className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-full">{insLabel(m)}</span>}
-                        <span className={"shrink-0 text-[11px] font-medium leading-none px-2 py-1 rounded-full "+(m.status==="joined"?"bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400":"bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400")}>
+                        <span className={"shrink-0 text-[11px] font-medium leading-none px-2 py-1 rounded-full "+(m.status==="joined"?"bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400":"bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400")}>
                           {m.status==="joined"?"Joined":"Pending"}
                         </span>
                       </div>
@@ -337,7 +337,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
                     ) : m.userId === userId ? (
                       <span className="h-8 inline-flex items-center text-xs font-medium px-3 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500">{ROLE_LABEL[m.role]}</span>
                     ) : (
-                      <div className="flex h-8 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden" role="group" aria-label="Member role">
+                      <div className="flex h-8 rounded-lg border border-slate-200 dark:border-slate-700 seg-group" role="group" aria-label="Member role">
                         {(["editor", "member"] as const).map((r) => (
                           <button key={r} type="button" aria-pressed={m.role===r}
                             onClick={() => { if (m.role !== r) { onSetMemberRole(m.id, r); showToast(`${m.displayName ?? "Member"} is now ${ROLE_LABEL[r]}`); } }}
@@ -349,7 +349,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
                     )}
                     {m.status==="pending" && m.userId !== userId && (
                       <button type="button" onClick={() => copyInvite(m.id, m.displayName??"")}
-                        className="h-8 px-3 rounded-lg text-xs font-semibold bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff] hover:bg-indigo-100 transition-colors">
+                        className="h-8 px-3 rounded-lg text-xs font-semibold bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#efe9fe] transition-colors">
                         Invite
                       </button>
                     )}
@@ -375,14 +375,14 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
             </button>
           </div>
           {sharedSongs.length===0 ? (
-            <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-12 text-center text-sm text-slate-400">No songs shared yet.</div>
+            <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-12 text-center text-sm text-slate-500">No songs shared yet.</div>
           ) : (
             <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden">
               {sharedSongs.map((song, idx) => (
                 <div key={song.id} className={"flex items-center gap-3 px-4 py-3 group "+(idx<sharedSongs.length-1?"border-b border-slate-100 dark:border-slate-800":"")}>
                   <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onOpenSong(song.id)}>
                     <div className="text-sm font-medium truncate">{song.title}</div>
-                    <div className="text-xs text-slate-400 truncate">{song.artist||"Unknown"} · Key {song.key}</div>
+                    <div className="text-xs text-slate-500 truncate">{song.artist||"Unknown"} · Key {song.key}</div>
                   </div>
                   <button type="button" onClick={() => { onUnshareSong(group.id, song.id); showToast("Removed from team"); }}
                     className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all">
@@ -398,7 +398,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
       {isLeader && (
         <div className="mt-10 pt-6 border-t border-slate-200 dark:border-slate-800">
           <button type="button" onClick={() => setConfirmDeleteTeam(true)}
-            className="h-9 px-4 rounded-xl text-sm font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors">
+            className="h-9 px-4 rounded-xl text-sm font-semibold text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors">
             Delete team
           </button>
         </div>
@@ -450,12 +450,12 @@ function MemberView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
       </div>
       <TeamSetlistList setlists={teamSetlists} onOpen={onOpenSetlist} />
       {sharedSongs.length===0 ? (
-        <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-16 text-center text-sm text-slate-400">Your team leader hasn't shared any songs yet.</div>
+        <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-16 text-center text-sm text-slate-500">Your team leader hasn't shared any songs yet.</div>
       ) : (
         <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden">
           {sharedSongs.map((song, idx) => (
             <div key={song.id} className={"flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 "+(idx<sharedSongs.length-1?"border-b border-slate-100 dark:border-slate-800":"")} onClick={() => onOpenSong(song.id)}>
-              <div className="flex-1 min-w-0"><div className="text-sm font-medium truncate">{song.title}</div><div className="text-xs text-slate-400">{song.artist||"Unknown"} · Key {song.key}</div></div>
+              <div className="flex-1 min-w-0"><div className="text-sm font-medium truncate">{song.title}</div><div className="text-xs text-slate-500">{song.artist||"Unknown"} · Key {song.key}</div></div>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="text-slate-300 shrink-0"><polyline points="9 18 15 12 9 6"/></svg>
             </div>
           ))}
@@ -469,14 +469,14 @@ function TeamSetlistList({ setlists, onOpen }: { setlists: Folder[]; onOpen: (id
   if (setlists.length === 0) return null;
   return (
     <div className="mt-8">
-      <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Setlists</h2>
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Setlists</h2>
       <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden">
         {setlists.map((sl, idx) => (
           <button key={sl.id} type="button" onClick={() => onOpen(sl.id)}
             className={"w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 text-left "+(idx<setlists.length-1?"border-b border-slate-100 dark:border-slate-800":"")}>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium truncate">{sl.name}</div>
-              {sl.date && <div className="text-xs text-slate-400">{sl.date}</div>}
+              {sl.date && <div className="text-xs text-slate-500">{sl.date}</div>}
             </div>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="text-slate-300 shrink-0"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
@@ -521,19 +521,19 @@ function AddMemberModal({ groupId, suggestions, onAdd, onClose, showToast }: { g
       <div className="w-full sm:max-w-sm bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800">
           <h3 className="font-semibold text-sm">Add Member</h3>
-          <button type="button" onClick={onClose} className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800">
+          <button type="button" onClick={onClose} className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
         <div className="p-5 space-y-4">
           <div className="relative">
-            <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Name</div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Name</div>
             <input autoFocus type="text" placeholder="e.g. John Tan" value={name}
               onChange={e => { setName(e.target.value); setShowSuggest(true); }}
               onFocus={() => setShowSuggest(true)}
               onBlur={() => setTimeout(() => setShowSuggest(false), 150)}
               onKeyDown={e => e.key==="Enter" && handleAdd()}
-              className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-indigo-400 bg-white dark:bg-slate-800" />
+              className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff] bg-white dark:bg-slate-800" />
             {showSuggest && matches.length > 0 && (
               <div className="absolute left-0 right-0 top-full mt-1 z-20 max-h-52 overflow-y-auto rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl">
                 {matches.map(s => (
@@ -542,7 +542,7 @@ function AddMemberModal({ groupId, suggestions, onAdd, onClose, showToast }: { g
                     <span className="w-7 h-7 rounded-full bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff] text-xs font-semibold flex items-center justify-center shrink-0">{initialsFrom(s.displayName) || <PersonGlyph />}</span>
                     <span className="min-w-0">
                       <span className="block text-sm font-medium truncate">{s.displayName}</span>
-                      {insLabel(s) && <span className="block text-xs text-slate-400 truncate">{insLabel(s)}</span>}
+                      {insLabel(s) && <span className="block text-xs text-slate-500 truncate">{insLabel(s)}</span>}
                     </span>
                   </button>
                 ))}
@@ -550,31 +550,31 @@ function AddMemberModal({ groupId, suggestions, onAdd, onClose, showToast }: { g
             )}
           </div>
           <div>
-            <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Role</div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Role</div>
             <div className="flex gap-2">
               {[["member","Member"],["editor","Editor"],["leader","Leader"]].map(([v,l]) => (
                 <button key={v} type="button" onClick={() => setRole(v)}
-                  className={"flex-1 h-9 rounded-xl text-sm font-medium border transition-colors "+(role===v?"border-indigo-500 bg-[#efe9fe] dark:bg-[#2a2440] text-indigo-600":"border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400")}>
+                  className={"flex-1 h-9 rounded-xl text-sm font-medium border transition-colors "+(role===v?"border-[#735fee] bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef]":"border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400")}>
                   {l}
                 </button>
               ))}
             </div>
-            <p className="text-[11px] text-slate-400 mt-1.5">Members view &amp; play. Editors can edit songs and setlists. Leaders manage the team.</p>
+            <p className="text-[11px] text-slate-500 mt-1.5">Members view &amp; play. Editors can edit songs and setlists. Leaders manage the team.</p>
           </div>
           <div>
-            <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Instrument</div>
+            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Instrument</div>
             <div className="grid grid-cols-4 gap-1.5">
               {INSTRUMENTS.map(ins => (
                 <button key={ins.id} type="button" onClick={() => setInstrument(ins.id)}
-                  className={"rounded-xl p-2 text-center border transition-all "+(instrument===ins.id?"border-indigo-500 bg-[#efe9fe] dark:bg-[#2a2440]":"border-slate-200 dark:border-slate-700 hover:border-indigo-300")}>
+                  className={"rounded-xl p-2 text-center border transition-all "+(instrument===ins.id?"border-[#735fee] bg-[#efe9fe] dark:bg-[#2a2440]":"border-slate-200 dark:border-slate-700 hover:border-[#c9bdfb]")}>
                   <div className="text-base">{ins.emoji}</div>
-                  <div className={"text-[10px] font-medium mt-0.5 "+(instrument===ins.id?"text-indigo-600":"text-slate-500")}>{ins.label}</div>
+                  <div className={"text-[10px] font-medium mt-0.5 "+(instrument===ins.id?"text-[#6350ef]":"text-slate-500")}>{ins.label}</div>
                 </button>
               ))}
             </div>
             {instrument==="sound_team" && (
               <input autoFocus type="text" placeholder="e.g. FOH, Monitor" value={detail} onChange={e => setDetail(e.target.value)}
-                className="mt-2 w-full h-9 px-3 rounded-lg border border-indigo-400 outline-none text-sm bg-white dark:bg-slate-800" />
+                className="mt-2 w-full h-9 px-3 rounded-lg border border-[#9d8bff] outline-none text-sm bg-white dark:bg-slate-800" />
             )}
           </div>
         </div>
@@ -600,18 +600,18 @@ function AddSongsModal({ songs, alreadyShared, groupId, onShare, onClose, showTo
       <div className="w-full sm:max-w-md bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl flex flex-col max-h-[80vh]">
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800">
           <h3 className="font-semibold text-sm">Add Songs to Team</h3>
-          <button type="button" onClick={onClose} className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+          <button type="button" onClick={onClose} className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
         <div className="px-4 py-2 border-b border-slate-100 dark:border-slate-800">
-          <input autoFocus type="text" placeholder="Search songs…" value={search} onChange={e => setSearch(e.target.value)} className="w-full h-8 px-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-indigo-400" />
+          <input autoFocus type="text" placeholder="Search songs…" value={search} onChange={e => setSearch(e.target.value)} className="w-full h-8 px-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff]" />
         </div>
         <div className="overflow-y-auto flex-1">
-          {available.length===0 ? <p className="text-center py-8 text-sm text-slate-400">No matching songs.</p>
+          {available.length===0 ? <p className="text-center py-8 text-sm text-slate-500">No matching songs.</p>
           : available.map(song => (
             <button key={song.id} type="button" onClick={() => !adding.has(song.id) && handleAdd(song.id)} disabled={adding.has(song.id)}
               className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-left border-b border-slate-50 dark:border-slate-800/50 last:border-0">
-              <div className="flex-1 min-w-0"><div className="text-sm font-medium truncate">{song.title}</div>{song.artist && <div className="text-xs text-slate-400 truncate">{song.artist}</div>}</div>
-              {adding.has(song.id) ? <div className="w-5 h-5 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin shrink-0" /> : <svg className="text-indigo-500 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>}
+              <div className="flex-1 min-w-0"><div className="text-sm font-medium truncate">{song.title}</div>{song.artist && <div className="text-xs text-slate-500 truncate">{song.artist}</div>}</div>
+              {adding.has(song.id) ? <div className="w-5 h-5 rounded-full border-2 border-[#9d8bff] border-t-transparent animate-spin shrink-0" /> : <svg className="text-[#735fee] shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>}
             </button>
           ))}
         </div>

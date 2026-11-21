@@ -1,5 +1,6 @@
 "use client";
 
+import { mixHex, readableColor } from "@/lib/contrast";
 import { SELECTED, SELECTED_ON_DARK } from "@/lib/selectedStyle";
 import { backdropDismiss } from "@/lib/backdropDismiss";
 import { FEATURE_AI_CHORDS } from "@/lib/flags";
@@ -288,7 +289,7 @@ function ChordInput({
         done.current = true;
         onCommit(e.target.value);
       }}
-      className="font-bold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-200 outline-none rounded px-1 py-0.5 ring-2 ring-indigo-500"
+      className="font-bold bg-[#f3f0ff] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#d9d0ff] outline-none rounded px-1 py-0.5 ring-2 ring-[#735fee]"
       style={{ fontSize }}
     />
   );
@@ -309,10 +310,10 @@ function ToolBtn({
 }) {
   const toneClasses =
     tone === "accent"
-      ? "text-[#6350ef] dark:text-[#b3a3ff] hover:bg-indigo-50 dark:hover:bg-indigo-950/60"
+      ? "text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/60"
       : tone === "danger"
         ? "text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-        : "text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800";
+        : "text-slate-500 dark:text-slate-400 hover:text-[#6350ef] dark:hover:text-[#b3a3ff] hover:bg-slate-100 dark:hover:bg-slate-800";
   return (
     <button
       type="button"
@@ -338,7 +339,7 @@ function PasteHint({
     <button
       type="button"
       onClick={onClick}
-      className="w-full py-2.5 rounded-lg border-2 border-dashed border-indigo-300 dark:border-indigo-700 text-[#6350ef] dark:text-[#b3a3ff] text-sm font-medium hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors flex items-center justify-center gap-2 print:hidden"
+      className="w-full py-2.5 rounded-lg border-2 border-dashed border-[#c9bdfb] dark:border-[#5a46dc] text-[#6350ef] dark:text-[#b3a3ff] text-sm font-medium hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/40 hover:border-[#9d8bff] dark:hover:border-[#735fee] transition-colors flex items-center justify-center gap-2 print:hidden"
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="9" y="9" width="13" height="13" rx="2" />
@@ -351,12 +352,30 @@ function PasteHint({
   );
 }
 
+// ── Responsive helpers ──────────────────────────────────────────────────────
+// Below this width 3 chart columns are too narrow to read (see storedViewMode).
+const NARROW_SCREEN_QUERY = "(max-width: 699px)";
+function useMediaQuery(query: string): boolean {
+  return useSyncExternalStore(
+    (cb) => {
+      const mq = window.matchMedia(query);
+      mq.addEventListener("change", cb);
+      return () => mq.removeEventListener("change", cb);
+    },
+    () => window.matchMedia(query).matches,
+    () => false,
+  );
+}
+
 function ViewToggle({
   viewMode,
   onChange,
+  allowThree = true,
 }: {
   viewMode: ViewMode;
   onChange: (m: ViewMode) => void;
+  // false on narrow screens: 3 columns don't fit, so the option is hidden.
+  allowThree?: boolean;
 }) {
   const btn = (mode: ViewMode, label: string, icon: React.ReactNode) => {
     const active = viewMode === mode;
@@ -380,7 +399,7 @@ function ViewToggle({
   };
   return (
     <div
-      className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden"
+      className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 seg-group"
       role="group"
       aria-label="View mode"
     >
@@ -399,7 +418,7 @@ function ViewToggle({
           <rect x="13" y="3" width="8" height="18" rx="1.5" />
         </svg>,
       )}
-      {btn(
+      {allowThree && btn(
         "split-3",
         "Split 3 columns",
         <svg width="18" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -451,18 +470,17 @@ function nextDuplicateLabel(sections: Section[], label: string): string {
   return `${stem} ${count + 1}`;
 }
 
-function hexAlpha(hex: string, alpha: number): string {
-  const h = hex.replace("#", "");
-  if (h.length !== 6) return hex;
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
+// Surfaces chord / chip colours are checked against (see readableColor).
+const CARD_BG_LIGHT = "#ffffff";
+const CARD_BG_DARK = "#0f172a";
+const PAGE_BG_LIGHT = "#f8fafc";
+const PAGE_BG_DARK = "#020617";
+
 
 function SongFlowBar({
-  sections, sectionStyles, activeId, readOnly, onScrollTo, onReorder, onRename, onDuplicate, onDelete, compact = false,
+  sections, sectionStyles, activeId, readOnly, onScrollTo, onReorder, onRename, onDuplicate, onDelete, compact = false, isDark = false,
 }: {
+  isDark?: boolean;
   sections: Section[];
   sectionStyles: SectionStyles;
   activeId: string | null;
@@ -621,7 +639,7 @@ function SongFlowBar({
 
   return (
     <div className={(compact ? "" : "mb-2 sm:mb-4") + " print:hidden"}>
-      <div ref={containerRef} className="flex items-center gap-1.5 overflow-x-auto pb-1.5 -mx-1 px-1">
+      <div ref={containerRef} className="flex items-center gap-1.5 overflow-x-auto pt-2 pb-3.5 -mt-2 -mb-2 -mx-1 px-1">
         {sections.map((s, i) => {
           const isActive = s.id === activeId;
           const isEditing = editingId === s.id;
@@ -630,7 +648,12 @@ function SongFlowBar({
           const chipStyle: React.CSSProperties = { touchAction: readOnly || isEditing ? "auto" : "none" };
           // Selected chip = shared lavender SELECTED style (via className); the
           // others keep their per-section colour tint.
-          if (!isActive) { chipStyle.backgroundColor = hexAlpha(chipColor, 0.15); chipStyle.color = chipColor; }
+          if (!isActive) {
+            // Tint = section colour at 15% over the page; text forced to AA on that tint.
+            const tint = mixHex(chipColor, isDark ? PAGE_BG_DARK : PAGE_BG_LIGHT, 0.15);
+            chipStyle.backgroundColor = tint;
+            chipStyle.color = readableColor(chipColor, tint);
+          }
           return (
             <div
               key={s.id}
@@ -710,7 +733,7 @@ function SongFlowBar({
               <button
                 type="button"
                 onClick={() => { setConfirmDeleteId(menu.id); setMenu(null); }}
-                className="w-full text-left px-3 py-1.5 text-sm hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center gap-2"
+                className="w-full text-left px-3 py-1.5 text-sm hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-700 dark:text-rose-400 flex items-center gap-2"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="3 6 5 6 21 6" />
@@ -787,11 +810,11 @@ function SectionStylesPanel({
 
         <div className="flex-1 overflow-y-auto p-5 space-y-6">
           <section>
-            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2.5">Preferences</h3>
+            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500 mb-2.5">Preferences</h3>
             <div className="space-y-3">
               <div>
                 <label className="text-xs text-slate-500 dark:text-slate-400 mb-1.5 block">Lyric font size</label>
-                <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden w-full">
+                <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 seg-group w-full">
                   {(["small","medium","large"] as const).map(v => (
                     <SegBtn key={v} active={settings.prefs.lyricFontSize === v} onClick={() => updatePrefs({ lyricFontSize: v })}>
                       {v === "small" ? "S" : v === "medium" ? "M" : "L"}
@@ -801,7 +824,7 @@ function SectionStylesPanel({
               </div>
               <div>
                 <label className="text-xs text-slate-500 dark:text-slate-400 mb-1.5 block">Chord font size</label>
-                <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden w-full">
+                <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 seg-group w-full">
                   {(["small","medium","large"] as const).map(v => (
                     <SegBtn key={v} active={settings.prefs.chordFontSize === v} onClick={() => updatePrefs({ chordFontSize: v })}>
                       {v === "small" ? "S" : v === "medium" ? "M" : "L"}
@@ -811,7 +834,7 @@ function SectionStylesPanel({
               </div>
               <div>
                 <label className="text-xs text-slate-500 dark:text-slate-400 mb-1.5 block">Line spacing</label>
-                <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden w-full">
+                <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 seg-group w-full">
                   {(["compact","normal","relaxed"] as const).map(v => (
                     <SegBtn key={v} active={settings.prefs.lineSpacing === v} onClick={() => updatePrefs({ lineSpacing: v })}>
                       {v === "compact" ? "Compact" : v === "normal" ? "Normal" : "Relaxed"}
@@ -822,17 +845,17 @@ function SectionStylesPanel({
               <div className="flex items-center justify-between rounded-lg border border-slate-200 dark:border-slate-700 px-3 py-2">
                 <div>
                   <div className="text-sm text-slate-600 dark:text-slate-300">Chord diagrams</div>
-                  <div className="text-[11px] text-slate-400">Guitar &amp; piano shapes above the chart</div>
+                  <div className="text-[11px] text-slate-500">Guitar &amp; piano shapes above the chart</div>
                 </div>
                 <input type="checkbox" checked={settings.prefs.showChordDiagrams}
                   onChange={(e) => updatePrefs({ showChordDiagrams: e.target.checked })}
-                  className="w-4 h-4 accent-indigo-600 cursor-pointer" />
+                  className="w-4 h-4 accent-[#6350ef] cursor-pointer" />
               </div>
             </div>
           </section>
 
           <section>
-            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2.5">Section colors</h3>
+            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500 mb-2.5">Section colors</h3>
             <div className="space-y-2.5">
               {allKeys.map((key) => {
                 const v = getEffectiveStyle(key, settings.styles);
@@ -849,10 +872,10 @@ function SectionStylesPanel({
                     />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium truncate" style={{ color: v.chordColor }}>{label}</div>
-                      <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{v.chordColor.toUpperCase()}</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-500 mt-0.5">{v.chordColor.toUpperCase()}</div>
                     </div>
                     <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300 cursor-pointer select-none shrink-0">
-                      <input type="checkbox" checked={v.bold} onChange={(e) => updateStyle(key, { bold: e.target.checked })} className="w-4 h-4 accent-indigo-600" />
+                      <input type="checkbox" checked={v.bold} onChange={(e) => updateStyle(key, { bold: e.target.checked })} className="w-4 h-4 accent-[#6350ef]" />
                       Bold
                     </label>
                   </div>
@@ -962,10 +985,10 @@ function LineToolButton({
           // tightens to 28px on desktop where pointer precision is fine.
           "w-11 h-11 sm:w-7 sm:h-7 rounded-md flex items-center justify-center transition-colors " +
           (active
-            ? "text-indigo-500 bg-[#efe9fe] dark:bg-[#2a2440]"
+            ? "text-[#735fee] bg-[#efe9fe] dark:bg-[#2a2440]"
             : destructive
               ? "text-rose-500 dark:text-rose-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
-              : "text-slate-400 dark:text-slate-500 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/60")
+              : "text-slate-500 dark:text-slate-500 hover:text-[#735fee] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/60")
         }
       >
         {children}
@@ -1081,7 +1104,13 @@ export default function SongEditor({
   } | null>(null);
   // Seeded from this song's saved view prefs (SongEditor is keyed by song id, so
   // this runs per song). Defaults when none saved.
-  const [viewMode, setViewMode] = useState<ViewMode>(() => readSongView(song.id).viewMode ?? "standard");
+  // The reader's stored column choice (persisted per song). On narrow screens a
+  // stored 3-column choice DISPLAYS as 2 columns (see `viewMode` below) — ~100px
+  // columns break lyrics to 1–2 words per line on a phone — but the stored value
+  // is kept, so the same song still opens in 3 columns on an iPad.
+  const [storedViewMode, setViewMode] = useState<ViewMode>(() => readSongView(song.id).viewMode ?? "standard");
+  const narrowScreen = useMediaQuery(NARROW_SCREEN_QUERY);
+  const viewMode: ViewMode = narrowScreen && storedViewMode === "split-3" ? "split-2" : storedViewMode;
   // Has the reader made an explicit column choice with the 1/2/3 switcher (this
   // session, or a stored one from a previous visit to this song)? Fit-to-screen
   // auto-picks a column count, and it used to do so UNCONDITIONALLY — so in fit
@@ -1350,9 +1379,9 @@ export default function SongEditor({
   // it into the NEXT song's stored prefs (that would mutate a song you only passed
   // through). Genuine layout changes still write to the current song.id.
   useEffect(() => {
-    writeSongView(song.id, { viewMode, zoomOffset });
+    writeSongView(song.id, { viewMode: storedViewMode, zoomOffset });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode, zoomOffset]);
+  }, [storedViewMode, zoomOffset]);
 
   const baseFontSize = Math.min(FONT_MAX_PX, Math.max(FONT_MIN_PX, lyricBase + zoomOffset));
   // Ceiling for the fluid clamp() (the --lyric-font-size CSS var). The split-3
@@ -3112,7 +3141,7 @@ export default function SongEditor({
                 {(song.capo ?? 0) > 0 && (
                   <span className="shrink-0 px-1.5 py-px rounded-md bg-slate-200/70 dark:bg-slate-800/80 text-[11px] font-semibold leading-4 tabular-nums text-slate-600 dark:text-slate-300 whitespace-nowrap"
                     title={`Sounding key ${song.key} · chords shown as ${playKey(song.key, song.capo)} shapes`}>
-                    Capo {song.capo}<span className="font-normal text-slate-400 dark:text-slate-500"> · Key {song.key}</span>
+                    Capo {song.capo}<span className="font-normal text-slate-500 dark:text-slate-500"> · Key {song.key}</span>
                   </span>
                 )}
               </span>
@@ -3128,7 +3157,7 @@ export default function SongEditor({
               )}
               {presentControls ? (
                 <button type="button" title="Column layout" aria-label="Cycle column layout"
-                  onClick={() => { switchView(viewMode === "standard" ? "split-2" : viewMode === "split-2" ? "split-3" : "standard"); revealControls(); }}
+                  onClick={() => { switchView(viewMode === "standard" ? "split-2" : viewMode === "split-2" && !narrowScreen ? "split-3" : "standard"); revealControls(); }}
                   className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60 shrink-0">
                   <svg width="15" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="8" height="18" rx="1.5"/><rect x="13" y="3" width="8" height="18" rx="1.5"/></svg>
                 </button>
@@ -3140,6 +3169,7 @@ export default function SongEditor({
                 present mode crosses to the next setlist song (song.sections change). */}
             {song.sections.length > 0 && (
               <SongFlowBar
+          isDark={isDark}
                 compact
                 readOnly
                 sections={song.sections}
@@ -3242,17 +3272,17 @@ export default function SongEditor({
       )}
       {!presenting && setlistContext && (
         <div className="mb-3 -mt-2 print:hidden">
-          <div className="flex items-center justify-between gap-2 rounded-lg bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 px-3 py-1.5">
-            <div className="text-xs text-indigo-700 dark:text-indigo-300 truncate min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2 rounded-lg bg-[#f3f0ff]/70 dark:bg-[#2a2440]/40 border border-[#efe9fe] dark:border-[#2f2852]/50 px-3 py-1.5">
+            <div className="text-xs text-[#6350ef] dark:text-[#c9bdfb] truncate min-w-0 flex-1">
               <span className="font-semibold truncate">{setlistContext.setlistName}</span>
-              <span className="text-indigo-400 dark:text-indigo-500"> · {setlistContext.currentIndex + 1} of {setlistContext.total}</span>
+              <span className="text-[#6350ef] dark:text-[#b3a3ff]"> · {setlistContext.currentIndex + 1} of {setlistContext.total}</span>
             </div>
             <div className="flex items-center gap-1 shrink-0">
               {setlistContext.privateVersion && !setlistContext.privateVersion.isMine && (
                 <button type="button"
                   onClick={() => onPrivateVersion?.("make", song)}
                   title="Make your own private copy of this song for this setlist — it goes in My Versions; only you will see it. The shared song stays as is."
-                  className="h-7 px-2 mr-1 rounded-md flex items-center gap-1 text-[11px] font-semibold text-[#6350ef] dark:text-[#b3a3ff] hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors">
+                  className="h-7 px-2 mr-1 rounded-md flex items-center gap-1 text-[11px] font-semibold text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#efe9fe] dark:hover:bg-[#2f2852]/50 transition-colors">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                   <span className="hidden sm:inline">My own version</span>
                 </button>
@@ -3262,7 +3292,7 @@ export default function SongEditor({
                 disabled={!setlistContext.onPrev}
                 title="Previous song"
                 aria-label="Previous song"
-                className="w-7 h-7 rounded-md flex items-center justify-center text-[#6350ef] dark:text-[#b3a3ff] hover:bg-indigo-100 dark:hover:bg-indigo-900/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                className="w-7 h-7 rounded-md flex items-center justify-center text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#efe9fe] dark:hover:bg-[#2f2852]/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
               </button>
               <button type="button"
@@ -3270,7 +3300,7 @@ export default function SongEditor({
                 disabled={!setlistContext.onNext}
                 title="Next song"
                 aria-label="Next song"
-                className="w-7 h-7 rounded-md flex items-center justify-center text-[#6350ef] dark:text-[#b3a3ff] hover:bg-indigo-100 dark:hover:bg-indigo-900/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                className="w-7 h-7 rounded-md flex items-center justify-center text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#efe9fe] dark:hover:bg-[#2f2852]/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
               </button>
             </div>
@@ -3307,7 +3337,7 @@ export default function SongEditor({
                 setEditingTitle(false);
               }
             }}
-            className="text-2xl md:text-3xl font-bold tracking-tight bg-transparent outline-none w-full ring-2 ring-indigo-500 rounded-lg px-2 -mx-2 py-1"
+            className="text-2xl md:text-3xl font-bold tracking-tight bg-transparent outline-none w-full ring-2 ring-[#735fee] rounded-lg px-2 -mx-2 py-1"
           />
         ) : (
           <div className="flex items-center gap-2 flex-wrap">
@@ -3319,7 +3349,7 @@ export default function SongEditor({
               title={readOnly ? undefined : "Click to rename song"}
             >
               {song.title || (
-                <span className="text-slate-400 dark:text-slate-500">Untitled Song</span>
+                <span className="text-slate-500 dark:text-slate-500">Untitled Song</span>
               )}
             </button>
             {song.userId && song.userId !== currentUserId && (
@@ -3350,7 +3380,7 @@ export default function SongEditor({
                   "px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider transition-colors " +
                   (song.isDraft
                     ? "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600"
-                    : "border border-dashed border-slate-300 dark:border-slate-600 text-slate-400 dark:text-slate-500 hover:border-slate-400 hover:text-slate-600 dark:hover:text-slate-300")
+                    : "border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 dark:text-slate-500 hover:border-slate-400 hover:text-slate-600 dark:hover:text-slate-300")
                 }
               >
                 Draft
@@ -3374,11 +3404,11 @@ export default function SongEditor({
             Key
             <div className="relative">
               <button type="button" onClick={() => { setKeyPickerOpen(o => !o); setCapoPickerOpen(false); }}
-                className="font-semibold text-[#6350ef] dark:text-[#b3a3ff] hover:bg-indigo-50 dark:hover:bg-indigo-950/50 px-1.5 py-0.5 rounded-md transition-colors">
+                className="font-semibold text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/50 px-1.5 py-0.5 rounded-md transition-colors">
                 {song.key}
               </button>
               {keyPickerOpen && (
-                <div data-picker-popover onMouseDown={(e) => e.stopPropagation()} className="fixed inset-x-2 bottom-2 z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 sm:min-w-[300px] bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
+                <div data-picker-popover onMouseDown={(e) => e.stopPropagation()} className="fixed inset-x-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom,0px))] z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 sm:min-w-[300px] bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
                   <div className="grid grid-cols-6 gap-1.5">
                     {KEYS.map(k => (
                       <button key={k} type="button"
@@ -3401,7 +3431,7 @@ export default function SongEditor({
               <div className="relative">
                 <button type="button" onClick={() => { setTempoPanelOpen(o => !o); setKeyPickerOpen(false); setCapoPickerOpen(false); }}
                   title="Tempo & metronome"
-                  className="inline-flex items-center gap-1 font-semibold text-[#6350ef] dark:text-[#b3a3ff] hover:bg-indigo-50 dark:hover:bg-indigo-950/50 px-1.5 py-0.5 rounded-md transition-colors">
+                  className="inline-flex items-center gap-1 font-semibold text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/50 px-1.5 py-0.5 rounded-md transition-colors">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 13.8"/></svg>
                   {song.bpm != null ? `${song.bpm} BPM` : "Tempo"}
                 </button>
@@ -3429,18 +3459,18 @@ export default function SongEditor({
             {(song.capo ?? 0) > 0 ? (
               <button type="button" onClick={() => { setCapoPickerOpen(o => !o); setKeyPickerOpen(false); }}
                 title="Capo shifts the displayed chord shapes down; the sounding key is unchanged. Tap to change."
-                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 text-xs font-medium border border-indigo-200 dark:border-indigo-900 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors">
+                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#f3f0ff] dark:bg-[#2a2440]/50 text-[#6350ef] dark:text-[#c9bdfb] text-xs font-medium border border-[#e0d6fb] dark:border-[#2f2852] hover:bg-[#efe9fe] dark:hover:bg-[#2f2852]/50 transition-colors">
                 Sounding {song.key} · Capo {song.capo} · Play {playKey(song.key, song.capo)}
               </button>
             ) : (
               <button type="button" onClick={() => { setCapoPickerOpen(o => !o); setKeyPickerOpen(false); }}
-                className="font-semibold text-[#6350ef] dark:text-[#b3a3ff] hover:bg-indigo-50 dark:hover:bg-indigo-950/50 px-1.5 py-0.5 rounded-md transition-colors">
+                className="font-semibold text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/50 px-1.5 py-0.5 rounded-md transition-colors">
                 Capo
               </button>
             )}
             {capoPickerOpen && (
-              <div data-picker-popover onMouseDown={(e) => e.stopPropagation()} className="fixed inset-x-2 bottom-2 z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 sm:w-44 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
-                <div className="text-[10px] text-slate-400 uppercase tracking-wider text-center mb-1.5">Capo</div>
+              <div data-picker-popover onMouseDown={(e) => e.stopPropagation()} className="fixed inset-x-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom,0px))] z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 sm:w-44 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
+                <div className="text-[10px] text-slate-500 uppercase tracking-wider text-center mb-1.5">Capo</div>
                 {/* Rolling wheel → the centred fret is applied via the EXISTING
                     reshape path: handleCapoChange → update() → song.capo, read back
                     by the pill (playKey) and the chart (capoChord/displayChord). */}
@@ -3450,7 +3480,7 @@ export default function SongEditor({
                   onChange={(f) => handleCapoChange(f === 0 ? null : f)}
                   ariaLabel="Capo fret"
                 />
-                <div className="mt-2 text-[10px] text-slate-400 dark:text-slate-500 text-center">0 = no capo</div>
+                <div className="mt-2 text-[10px] text-slate-500 dark:text-slate-500 text-center">0 = no capo</div>
               </div>
             )}
           </div>
@@ -3475,7 +3505,7 @@ export default function SongEditor({
             className="w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
           </button>
-          <ViewToggle viewMode={viewMode} onChange={switchView} />
+          <ViewToggle viewMode={viewMode} onChange={switchView} allowThree={!narrowScreen} />
           <button type="button" onClick={enterPresent} title="Fullscreen performance mode" aria-label="Fullscreen performance mode"
             className={TOOLBAR_BTN + " " + TOOLBAR_BTN_REST}>
             <PlayIcon />
@@ -3529,7 +3559,7 @@ export default function SongEditor({
               <button type="button" onClick={() => setRefsOpen((o) => !o)}
                 title="References" aria-label="References" aria-haspopup="menu" aria-expanded={refsOpen}
                 className={"relative h-8 w-8 sm:h-9 sm:w-9 rounded-lg flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors " +
-                  (songLinks.length > 0 ? "text-slate-600 dark:text-slate-300" : "text-slate-400 dark:text-slate-500")}>
+                  (songLinks.length > 0 ? "text-slate-600 dark:text-slate-300" : "text-slate-500 dark:text-slate-500")}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                 {songLinks.length > 0 && (
                   <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#735fee] text-white text-[10px] font-bold leading-none flex items-center justify-center">{songLinks.length}</span>
@@ -3620,6 +3650,7 @@ export default function SongEditor({
 
       {!presenting && (
         <SongFlowBar
+          isDark={isDark}
           sections={song.sections}
           sectionStyles={sectionStyles}
           activeId={activeFlowId}
@@ -3663,7 +3694,7 @@ export default function SongEditor({
               className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="4" y1="5" x2="20" y2="5"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="19" x2="20" y2="19"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
               Chord diagrams
-              <span className="text-slate-400 dark:text-slate-500 font-normal">({diagramSymbols.length})</span>
+              <span className="text-slate-500 dark:text-slate-500 font-normal">({diagramSymbols.length})</span>
             </button>
           )}
         </div>
@@ -3714,7 +3745,9 @@ export default function SongEditor({
             const c = colors[colorKey];
             const styleKey = getSectionStyleKey(section.label);
             const sectionStyle = getEffectiveStyle(styleKey, sectionStyles.styles);
-            const chordColor = sectionStyle.chordColor;
+            // Section chord colours are user-customisable; keep whatever is chosen
+            // readable (WCAG AA 4.5:1) on the chart card in light or dark mode.
+            const chordColor = readableColor(sectionStyle.chordColor, isDark ? CARD_BG_DARK : CARD_BG_LIGHT);
             const labelWeightClass = sectionStyle.bold ? "font-extrabold" : "font-semibold";
             const sectionClassName = "group/section";
             const blockStyle: React.CSSProperties = effColumnView
@@ -3762,7 +3795,7 @@ export default function SongEditor({
                       onBlur={(e) =>
                         commitSectionLabel(section.id, e.target.value)
                       }
-                      className={`text-xs uppercase tracking-wider outline-none rounded-md px-2.5 py-1 ring-2 ring-indigo-500 ${labelWeightClass}`}
+                      className={`text-xs uppercase tracking-wider outline-none rounded-md px-2.5 py-1 ring-2 ring-[#735fee] ${labelWeightClass}`}
                       style={{ background: c.bg, color: c.fg }}
                     />
                   ) : readOnly ? (
@@ -3984,7 +4017,7 @@ export default function SongEditor({
                               (draggingId === ch.id
                                 // Dim the original in place while its ghost rides the pointer.
                                 ? "cursor-grabbing opacity-30"
-                                : "cursor-grab hover:bg-indigo-50 dark:hover:bg-indigo-950/60")
+                                : "cursor-grab hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/60")
                         }`}
                         style={{
                           fontSize: chordFontSize,
@@ -4031,7 +4064,7 @@ export default function SongEditor({
                               }
                             }}
                             onBlur={(e) => commitLine(line.id, e.target.value)}
-                            className="bg-slate-50 dark:bg-slate-800/60 outline-none rounded px-1 py-0.5 ring-2 ring-indigo-500 w-full"
+                            className="bg-slate-50 dark:bg-slate-800/60 outline-none rounded px-1 py-0.5 ring-2 ring-[#735fee] w-full"
                             spellCheck={false}
                             style={{ fontSize: lyricFontSize, fontFamily: lyricFontFamily, lineHeight }}
                           />
@@ -4169,7 +4202,7 @@ export default function SongEditor({
                                         "rounded leading-tight " +
                                         (readOnly || !showChords || !u.tappable
                                           ? ""
-                                          : "cursor-pointer hover:bg-indigo-50/70 dark:hover:bg-indigo-950/40")
+                                          : "cursor-pointer hover:bg-[#f3f0ff]/70 dark:hover:bg-[#2a2440]/40")
                                       }
                                       style={{ ...(u.tappable ? {} : { minWidth: "1ch" }), ...(lineHasChordRoom ? {} : { lineHeight: lineTextLeading }) }}
                                     >
@@ -4198,10 +4231,10 @@ export default function SongEditor({
                                         onCancel={() => setAddingChord(null)}
                                       />
                                     ) : (
-                                      <button
+                                      <button data-tap-expand
                                         type="button"
                                         onClick={() => startAddChord(line.id, addSlotIndex)}
-                                        className="font-semibold text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 rounded px-1 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 transition-colors"
+                                        className="font-semibold text-[#6350ef] hover:text-[#6350ef] dark:hover:text-[#c9bdfb] rounded px-1 hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/60 transition-colors"
                                         style={{ fontSize: chordFontSize }}
                                         title="Add a chord"
                                       >
@@ -4221,7 +4254,7 @@ export default function SongEditor({
                                   setAddingChord(null);
                                   setEditingLine(line.id);
                                 }}
-                                className="text-left text-slate-400 dark:text-slate-500 hover:text-indigo-500 transition-colors print:hidden"
+                                className="text-left text-slate-500 dark:text-slate-500 hover:text-[#735fee] transition-colors print:hidden"
                                 style={{ fontSize: lyricFontSize, fontFamily: lyricFontFamily, lineHeight }}
                               >
                                 {isFirstLine
@@ -4274,7 +4307,7 @@ export default function SongEditor({
                                   onMouseDown={(e) => e.stopPropagation()}
                                   className="absolute z-40 top-full left-0 mt-1 w-48 p-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/20"
                                 >
-                                  <div className="px-2 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                                  <div className="px-2 pt-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500">
                                     Add section
                                   </div>
                                   {COMMON_SECTION_TYPES.map((t) => (
@@ -4282,7 +4315,7 @@ export default function SongEditor({
                                       key={t}
                                       type="button"
                                       onClick={() => startSectionAtLine(line.id, t)}
-                                      className="w-full text-left px-2 py-1 rounded text-[12px] text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
+                                      className="w-full text-left px-2 py-1 rounded text-[12px] text-slate-700 dark:text-slate-200 hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/60 hover:text-[#6350ef] dark:hover:text-[#c9bdfb] transition-colors"
                                     >
                                       {t}
                                     </button>
@@ -4303,7 +4336,7 @@ export default function SongEditor({
                                       key={t}
                                       type="button"
                                       onClick={() => startSectionAtLine(line.id, t)}
-                                      className="w-full text-left pl-4 pr-2 py-1 rounded text-[12px] text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
+                                      className="w-full text-left pl-4 pr-2 py-1 rounded text-[12px] text-slate-600 dark:text-slate-300 hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/60 hover:text-[#6350ef] dark:hover:text-[#c9bdfb] transition-colors"
                                     >
                                       {t}
                                     </button>
@@ -4362,7 +4395,7 @@ export default function SongEditor({
                     <button
                       type="button"
                       onClick={() => addLineToSection(section.id)}
-                      className="text-xs text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center gap-1 mt-1 print:hidden"
+                      className="text-xs text-slate-500 dark:text-slate-400 hover:text-[#6350ef] dark:hover:text-[#b3a3ff] transition-colors flex items-center gap-1 mt-1 print:hidden"
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <line x1="12" y1="5" x2="12" y2="19" />
@@ -4388,7 +4421,7 @@ export default function SongEditor({
           <button
             type="button"
             onClick={addSection}
-            className="mt-8 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center gap-1.5 border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-600 rounded-xl px-4 py-2.5 w-full justify-center print:hidden"
+            className="mt-8 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-[#6350ef] dark:hover:text-[#b3a3ff] transition-colors flex items-center gap-1.5 border-2 border-dashed border-slate-200 dark:border-slate-800 hover:border-[#9d8bff] dark:hover:border-[#6350ef] rounded-xl px-4 py-2.5 w-full justify-center print:hidden"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="12" y1="5" x2="12" y2="19" />
@@ -4403,12 +4436,12 @@ export default function SongEditor({
       {!presenting && progressionInfo && (
         <div className="mt-6 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 px-4 py-3 print:hidden">
           <div className="flex items-center justify-between gap-3 mb-2">
-            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-500"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#735fee]"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
               Chord progression
             </div>
             <button type="button" onClick={() => setProgressionInfo(null)} aria-label="Dismiss"
-              className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-sm leading-none">×</button>
+              className="text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 text-sm leading-none">×</button>
           </div>
           <div className="flex items-baseline gap-2 flex-wrap">
             <span className="text-lg font-bold tracking-tight text-slate-800 dark:text-slate-100">{progressionInfo.progression}</span>
@@ -4417,7 +4450,7 @@ export default function SongEditor({
             )}
           </div>
           <div className="flex items-center gap-1.5 flex-wrap mt-2.5">
-            <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-900">Key of {progressionInfo.key}</span>
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#f3f0ff] dark:bg-[#2a2440]/50 text-[#6350ef] dark:text-[#c9bdfb] border border-[#efe9fe] dark:border-[#2f2852]">Key of {progressionInfo.key}</span>
             <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">{progressionInfo.style}</span>
             <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 capitalize">{progressionInfo.complexity}</span>
           </div>
@@ -4451,7 +4484,7 @@ export default function SongEditor({
               Right-click
             </span>{" "}
             a chord for Edit/Delete · clear & press{" "}
-            <kbd className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-[11px]">
+            <kbd className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-[11px] text-slate-600 dark:text-slate-300">
               Enter
             </kbd>{" "}
             to delete
@@ -4488,7 +4521,7 @@ export default function SongEditor({
               deleteChord(contextMenu.chordId);
               setContextMenu(null);
             }}
-            className="w-full text-left px-3 py-1.5 text-sm hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center gap-2"
+            className="w-full text-left px-3 py-1.5 text-sm hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-700 dark:text-rose-400 flex items-center gap-2"
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="3 6 5 6 21 6" />
@@ -4501,26 +4534,26 @@ export default function SongEditor({
         </div>
       )}
 
-      <div data-coach="quick-actions" className="fixed right-4 bottom-24 md:bottom-8 z-30 hidden sm:flex flex-col gap-2 print:hidden">
+      <div data-coach="quick-actions" className="fixed right-4 bottom-[calc(6rem+env(safe-area-inset-bottom,0px))] md:bottom-8 z-30 hidden sm:flex flex-col gap-2 print:hidden">
         <button type="button" onClick={() => setQuickActionsOpen(o => !o)} title="Quick Actions"
-          className={"w-11 h-11 rounded-full shadow-lg border flex items-center justify-center transition-colors " + (quickActionsOpen ? "bg-[#efe9fe] text-[#6350ef] border-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:border-[#3a3358]" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-indigo-50 dark:hover:bg-slate-700")}>
+          className={"w-11 h-11 rounded-full shadow-lg border flex items-center justify-center transition-colors " + (quickActionsOpen ? "bg-[#efe9fe] text-[#6350ef] border-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:border-[#3a3358]" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-[#f3f0ff] dark:hover:bg-slate-700")}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
         {/* Auto-scroll has nothing to drive in fit mode — hide it there. */}
         {!fitMode && (
           <button type="button" onClick={() => setAutoScrolling(o => !o)} title={autoScrolling ? "Pause" : "Auto-scroll"}
-            className={"w-11 h-11 rounded-full shadow-lg border flex items-center justify-center transition-colors " + (autoScrolling ? "bg-[#efe9fe] text-[#6350ef] border-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:border-[#3a3358]" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-indigo-50 dark:hover:bg-slate-700")}>
+            className={"w-11 h-11 rounded-full shadow-lg border flex items-center justify-center transition-colors " + (autoScrolling ? "bg-[#efe9fe] text-[#6350ef] border-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:border-[#3a3358]" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-[#f3f0ff] dark:hover:bg-slate-700")}>
             {autoScrolling
               ? <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
               : <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>}
           </button>
         )}
         <button type="button" onClick={() => adjustZoom(1)} title="Larger text" disabled={zoomOffset >= zoomMax}
-          className="w-11 h-11 rounded-full shadow-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 enabled:hover:bg-indigo-50 dark:enabled:hover:bg-slate-700 disabled:opacity-40 flex items-center justify-center transition-colors">
+          className="w-11 h-11 rounded-full shadow-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 enabled:hover:bg-[#f3f0ff] dark:enabled:hover:bg-slate-700 disabled:opacity-40 flex items-center justify-center transition-colors">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </button>
         <button type="button" onClick={() => adjustZoom(-1)} title="Smaller text" disabled={zoomOffset <= zoomMin}
-          className="w-11 h-11 rounded-full shadow-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 enabled:hover:bg-indigo-50 dark:enabled:hover:bg-slate-700 disabled:opacity-40 flex items-center justify-center transition-colors">
+          className="w-11 h-11 rounded-full shadow-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 enabled:hover:bg-[#f3f0ff] dark:enabled:hover:bg-slate-700 disabled:opacity-40 flex items-center justify-center transition-colors">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </button>
       </div>
@@ -4529,7 +4562,7 @@ export default function SongEditor({
       {dragCaret && (
         <div
           aria-hidden
-          className="fixed z-40 pointer-events-none rounded bg-indigo-400/25 ring-1 ring-indigo-400/60 print:hidden"
+          className="fixed z-40 pointer-events-none rounded bg-[#9d8bff]/25 ring-1 ring-[#9d8bff]/60 print:hidden"
           style={{ left: dragCaret.x, top: dragCaret.y, width: dragCaret.w, height: dragCaret.h }}
         />
       )}
@@ -4669,19 +4702,19 @@ export default function SongEditor({
           >
             <div className="flex items-center justify-between px-5 pt-4 pb-2">
               <div className="flex items-center gap-2">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-500"><path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z"/></svg>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#735fee]"><path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z"/></svg>
                 <h2 className="text-base font-semibold">Generate Chords</h2>
               </div>
               <button type="button" onClick={() => { if (!generating) setGenerateOpen(false); }} disabled={generating}
                 aria-label="Close"
-                className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40">
+                className="w-8 h-8 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
 
             <div className="px-5 pb-5 pt-1 space-y-4">
               <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5">Key</div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500 mb-1.5">Key</div>
                 <div className="grid grid-cols-6 gap-1.5">
                   {KEYS.map((k) => (
                     <button key={k} type="button" onClick={() => setGenKey(k)} disabled={generating}
@@ -4693,7 +4726,7 @@ export default function SongEditor({
               </div>
 
               <div>
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5">Style</div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500 mb-1.5">Style</div>
                 <div className="grid grid-cols-2 gap-1.5">
                   {(["Worship", "Gospel", "Contemporary", "Traditional"] as const).map((s) => (
                     <button key={s} type="button" onClick={() => setGenStyle(s)} disabled={generating}
@@ -4720,7 +4753,7 @@ export default function SongEditor({
                       </>
                     )}
                   </button>
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-500 text-center">
                     Review the generated chords, then Save to keep them.
                   </p>
                 </>
@@ -4732,7 +4765,7 @@ export default function SongEditor({
                     if (!vk) return null;
                     return (
                       <div className="flex items-start gap-2 rounded-lg bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 px-3 py-2">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-500 mt-0.5 shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-[#735fee] mt-0.5 shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                         <p className="text-[12px] leading-snug text-slate-500 dark:text-slate-400">
                           Typically played in <span className="font-semibold text-slate-700 dark:text-slate-200">{vk.typical}</span>. For male vocalist: <span className="font-semibold text-slate-700 dark:text-slate-200">{vk.male.join(" or ")}</span>. For female: <span className="font-semibold text-slate-700 dark:text-slate-200">{vk.female.join(" or ")}</span>.
                         </p>
@@ -4752,7 +4785,7 @@ export default function SongEditor({
 
                   {/* Feature 5 — regenerate with a different arrangement complexity to compare. */}
                   <div>
-                    <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5">Try another style</div>
+                    <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500 mb-1.5">Try another style</div>
                     <div className="grid grid-cols-3 gap-1.5">
                       {([
                         { key: "simple" as const, label: "Simple", sub: "3 chords" },
@@ -4762,7 +4795,7 @@ export default function SongEditor({
                         <button key={v.key} type="button" onClick={() => generateChords(v.key)} disabled={generating}
                           className={"h-12 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex flex-col items-center justify-center leading-none gap-0.5 " + (genComplexity === v.key ? "bg-[#efe9fe] text-[#6350ef] ring-1 ring-inset ring-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:ring-[#3a3358]" : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300")}>
                           <span>{v.label}</span>
-                          <span className={"text-[10px] " + (genComplexity === v.key ? "text-indigo-100" : "text-slate-400 dark:text-slate-500")}>{v.sub}</span>
+                          <span className={"text-[10px] " + (genComplexity === v.key ? "text-[#6350ef] dark:text-[#b3a3ff]" : "text-slate-500 dark:text-slate-500")}>{v.sub}</span>
                         </button>
                       ))}
                     </div>
@@ -4779,7 +4812,7 @@ export default function SongEditor({
                       "Done — review chords"
                     )}
                   </button>
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500 text-center">
+                  <p className="text-[11px] text-slate-500 dark:text-slate-500 text-center">
                     Try a variation, then Save to keep the version you like.
                   </p>
                 </>
@@ -4797,13 +4830,13 @@ export default function SongEditor({
             <div className="flex items-center justify-between px-5 pt-4 pb-2">
               <h2 className="text-base font-semibold">Save as</h2>
               <button type="button" onClick={() => setSaveAsCopyOpen(false)} aria-label="Close"
-                className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
+                className="w-8 h-8 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
             <div className="px-5 pb-5 pt-1 space-y-3">
               <div>
-                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5">New song title</label>
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500 mb-1.5">New song title</label>
                 <input
                   autoFocus
                   value={copyTitle}
@@ -4813,7 +4846,7 @@ export default function SongEditor({
                     if (e.key === "Enter" && copyTitle.trim()) { onSaveAsCopy(copyTitle.trim(), song); setSaveAsCopyOpen(false); }
                     else if (e.key === "Escape") setSaveAsCopyOpen(false);
                   }}
-                  className="w-full h-10 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-indigo-400 dark:focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 transition-colors text-sm"
+                  className="w-full h-10 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-sm"
                 />
               </div>
               <div className="flex items-center justify-end gap-2">
@@ -4986,7 +5019,7 @@ function WheelPicker({ values, value, onChange, ariaLabel, width = 84 }: {
   return (
     <div className="relative select-none mx-auto" style={{ height: WHEEL_ITEM_H * WHEEL_VISIBLE, width }} aria-label={ariaLabel}>
       {/* centre selection band (behind the numbers) */}
-      <div className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 z-0 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 border-y border-indigo-200 dark:border-indigo-800"
+      <div className="pointer-events-none absolute inset-x-0 top-1/2 -translate-y-1/2 z-0 rounded-lg bg-[#f3f0ff] dark:bg-[#2a2440]/50 border-y border-[#e0d6fb] dark:border-[#3a3358]"
         style={{ height: WHEEL_ITEM_H }} />
       <div
         ref={scrollRef}
@@ -5008,7 +5041,7 @@ function WheelPicker({ values, value, onChange, ariaLabel, width = 84 }: {
       >
         {values.map((v) => (
           <div key={v}
-            className="flex items-center justify-center font-bold text-indigo-600 dark:text-indigo-300 tabular-nums will-change-transform cursor-pointer"
+            className="flex items-center justify-center font-bold text-[#6350ef] dark:text-[#c9bdfb] tabular-nums will-change-transform cursor-pointer"
             style={{ height: WHEEL_ITEM_H, scrollSnapAlign: "center", fontSize: 22 }}>
             {v}
           </div>
@@ -5465,7 +5498,7 @@ function BeatBar({ metronome, playing, beats, variant, className }: {
               (lit
                 ? (downbeat
                     ? "bg-amber-400 ring-2 ring-amber-300/70 dark:ring-amber-400/40"
-                    : "bg-indigo-500 ring-2 ring-indigo-400/50 dark:ring-indigo-400/30")
+                    : "bg-[#735fee] ring-2 ring-[#9d8bff]/50 dark:ring-[#9d8bff]/30")
                 : (downbeat
                     ? "bg-amber-400/20 dark:bg-amber-400/15"
                     : "bg-slate-300/60 dark:bg-slate-700/60"))
@@ -5496,7 +5529,7 @@ function SoundToggle({ silent, onChange, variant }: {
         (present ? "w-7 h-7 " : "w-6 h-6 ") +
         (silent
           ? "bg-slate-200/80 dark:bg-slate-700/80 text-slate-500 dark:text-slate-400"
-          : "bg-indigo-100 dark:bg-indigo-950/70 text-[#6350ef] dark:text-[#b3a3ff]")
+          : "bg-[#efe9fe] dark:bg-[#2a2440]/70 text-[#6350ef] dark:text-[#b3a3ff]")
       }>
       {silent
         // muted speaker
@@ -5523,20 +5556,20 @@ function TempoPanel({ bpm, playing, onBpmChange, onToggle, metronome, silent, on
 }) {
   return (
     <div data-picker-popover onMouseDown={(e) => e.stopPropagation()}
-      className="fixed inset-x-2 bottom-2 z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
+      className="fixed inset-x-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom,0px))] z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
       <div className="flex items-center gap-3 px-1">
         {/* Rolling wheel IS the BPM control. Its centred value drives the shared
             tempo; the metronome reads it live. */}
         <div className="text-center">
           <WheelPicker values={BPM_VALUES} value={bpm} onChange={onBpmChange} ariaLabel="Beats per minute" />
-          <div className="text-[10px] text-slate-400 uppercase tracking-wider mt-0.5">BPM</div>
+          <div className="text-[10px] text-slate-500 uppercase tracking-wider mt-0.5">BPM</div>
         </div>
         <button type="button" aria-pressed={playing}
           onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); onToggle(); }}
           aria-label={playing ? "Stop metronome" : "Start metronome"}
           className={"w-10 h-10 rounded-full flex items-center justify-center transition-colors shrink-0 " + (playing
             ? SELECTED
-            : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600")}>
+            : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/60 hover:text-[#6350ef]")}>
           {playing
             ? <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
             : <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>}
@@ -5553,7 +5586,7 @@ function TempoPanel({ bpm, playing, onBpmChange, onToggle, metronome, silent, on
               onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); onTimeSignatureChange(ts); }}
               className={"px-2 h-7 rounded-lg text-xs font-semibold tabular-nums transition-colors " + (active
                 ? SELECTED
-                : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600")}>
+                : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/60 hover:text-[#6350ef]")}>
               {ts}
             </button>
           );
@@ -5583,12 +5616,34 @@ function MetronomePill({ bpm, playing, onToggle, raised, metronome, silent, onSi
   onSilentChange: (silent: boolean) => void;
   beats: number;
 }) {
+  // Get out of the way while the reader scrolls by hand: the pill floats over
+  // the chart, so during a finger/wheel scroll it fades out and returns ~1s
+  // after the gesture ends. Programmatic scrolling (auto-scroll) and playback
+  // don't trigger this, so the stop control stays put while performing.
+  const [scrollingByHand, setScrollingByHand] = useState(false);
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const onGesture = () => {
+      setScrollingByHand(true);
+      clearTimeout(t);
+      t = setTimeout(() => setScrollingByHand(false), 1000);
+    };
+    window.addEventListener("touchmove", onGesture, { passive: true });
+    window.addEventListener("wheel", onGesture, { passive: true });
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("touchmove", onGesture);
+      window.removeEventListener("wheel", onGesture);
+    };
+  }, []);
   return (
     // Wrapper carries the fixed position that used to live on the button —
     // the Sound/Silent control is interactive and can't nest inside a <button>.
     <div
       style={{ bottom: `calc(env(safe-area-inset-bottom) + ${raised ? "8rem" : "5rem"})`, transition: "all 0.2s ease" }}
-      className="fixed left-4 z-40 print:hidden flex flex-col gap-1.5 items-start">
+      aria-hidden={scrollingByHand || undefined}
+      className={"fixed left-4 z-40 print:hidden flex flex-col gap-1.5 items-start " +
+        (scrollingByHand ? "opacity-0 translate-y-2 pointer-events-none" : "opacity-100")}>
       {/* Beat bar sits directly above the pill so the tempo is glanceable from
           the same spot the user already looks to start/stop. */}
       <BeatBar metronome={metronome} playing={playing} beats={beats} variant="pill" className="w-24 self-stretch" />
@@ -5603,7 +5658,7 @@ function MetronomePill({ bpm, playing, onToggle, raised, metronome, silent, onSi
         // easy to hit to stop instantly.
         ? "h-10 gap-2 pl-3 pr-4 text-sm bg-[#efe9fe] text-[#6350ef] border border-[#e0d6fb] shadow-md shadow-violet-500/15 dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:border-[#3a3358]"
         // IDLE: quiet + minimal — small, low-contrast, barely there.
-        : "h-8 gap-1.5 pl-2 pr-2.5 text-xs bg-white/70 dark:bg-slate-900/70 text-slate-400 dark:text-slate-500 border border-slate-200/70 dark:border-slate-700/70 shadow-sm backdrop-blur")}>
+        : "h-8 gap-1.5 pl-2 pr-2.5 text-xs bg-white/70 dark:bg-slate-900/70 text-slate-500 dark:text-slate-500 border border-slate-200/70 dark:border-slate-700/70 shadow-sm backdrop-blur")}>
       <span className="inline-flex" style={playing ? { animation: `mp-beat ${(60 / bpm).toFixed(3)}s ease-in-out infinite` } : undefined}>
         {playing
           // ■ stop
@@ -5636,14 +5691,14 @@ function PrivateVersionBar({ pv, onAction }: {
       {confirmDiscard ? (
         <span className="flex items-center gap-1">
           <span className="text-[11px] text-amber-800 dark:text-amber-300">{pv.inLibrary ? "Go back to the shared song?" : "Discard your version?"}</span>
-          <button type="button" onClick={() => { setConfirmDiscard(false); onAction("discard"); }} className={btn + " text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"}>Yes</button>
+          <button type="button" onClick={() => { setConfirmDiscard(false); onAction("discard"); }} className={btn + " text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"}>Yes</button>
           <button type="button" onClick={() => setConfirmDiscard(false)} className={btn + " text-slate-600 dark:text-slate-300 hover:bg-amber-100 dark:hover:bg-amber-900/40"}>No</button>
         </span>
       ) : (
         <span className="flex items-center gap-1">
           {pv.canShare && (
             <button type="button" onClick={() => onAction("share")} title="Replace the shared song in this setlist with your version, for everyone"
-              className={btn + " text-[#6350ef] dark:text-[#b3a3ff] hover:bg-indigo-50 dark:hover:bg-indigo-950/40"}>Share with team</button>
+              className={btn + " text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/40"}>Share with team</button>
           )}
           {!pv.inLibrary && (
             <button type="button" onClick={() => onAction("library")} title="Also keep this version in your library"

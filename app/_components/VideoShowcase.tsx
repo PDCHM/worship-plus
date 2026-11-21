@@ -58,7 +58,7 @@ export default function VideoShowcase() {
     <section className="py-20 sm:py-24">
       <div className="max-w-6xl mx-auto px-5 sm:px-8">
         <div className="text-center max-w-2xl mx-auto mb-14 sm:mb-16">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-indigo-500 mb-3">See it in action</div>
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-[#735fee] mb-3">See it in action</div>
           <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">Real footage. No mockups.</h2>
         </div>
 
@@ -74,7 +74,7 @@ export default function VideoShowcase() {
 
                 {/* Copy */}
                 <div className={"text-center lg:text-left " + (videoLeft ? "lg:order-2" : "lg:order-1")}>
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-indigo-500 mb-3">{row.kicker}</div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-[#735fee] mb-3">{row.kicker}</div>
                   <h3 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">{row.headline}</h3>
                   <p className="mt-4 text-lg text-slate-500 leading-relaxed max-w-md mx-auto lg:mx-0">{row.body}</p>
                   <div className="mt-7 flex justify-center lg:justify-start">

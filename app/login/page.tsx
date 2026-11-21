@@ -84,7 +84,7 @@ export default function LoginPage() {
         <div className="flex flex-col items-center gap-3">
           <Image src="/worship-plus-icon.png" alt="Worship+" width={512} height={512} className="w-11 h-11 object-contain" priority />
           <svg
-            className="animate-spin h-4 w-4 text-slate-400"
+            className="animate-spin h-4 w-4 text-slate-500"
             viewBox="0 0 24 24"
             fill="none"
             aria-label="Loading"
@@ -110,7 +110,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-6 py-12 bg-gradient-to-b from-slate-50 via-white to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 text-slate-900 dark:text-slate-100">
+    <div className="min-h-screen flex items-center justify-center px-6 pt-[calc(3rem+env(safe-area-inset-top,0px))] pb-[calc(3rem+env(safe-area-inset-bottom,0px))] bg-gradient-to-b from-slate-50 via-white to-slate-50 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 text-slate-900 dark:text-slate-100">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center mb-8">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -167,7 +167,7 @@ export default function LoginPage() {
                 <div className="w-full h-px bg-slate-200 dark:bg-slate-800" />
               </div>
               <div className="relative flex justify-center">
-                <span className="px-2 bg-white dark:bg-slate-900 text-[11px] text-slate-400 uppercase tracking-wider">
+                <span className="px-2 bg-white dark:bg-slate-900 text-[11px] text-slate-500 uppercase tracking-wider">
                   or
                 </span>
               </div>
@@ -181,7 +181,7 @@ export default function LoginPage() {
             {error && (
               <p
                 role="alert"
-                className="text-sm text-rose-600 dark:text-rose-400 text-center"
+                className="text-sm text-rose-700 dark:text-rose-400 text-center"
               >
                 {error}
               </p>
@@ -196,7 +196,7 @@ export default function LoginPage() {
           <Link href="/privacy" className="text-[#6350ef] dark:text-[#b3a3ff] hover:underline">Privacy Policy</Link>.
         </p>
 
-        <p className="text-center mt-3 text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">
+        <p className="text-center mt-3 text-[11px] text-slate-500 dark:text-slate-500 leading-relaxed">
           Magic-link emails sent via Supabase Auth.
           <br />
           We never share your information.

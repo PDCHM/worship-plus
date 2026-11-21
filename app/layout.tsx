@@ -111,7 +111,13 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#4f46e5",
+  // Soft brand purple (was the old heavy indigo #4f46e5).
+  themeColor: "#735fee",
+  // Draw edge-to-edge so the installed iPhone app (statusBarStyle
+  // "black-translucent") gets real env(safe-area-inset-*) values; every bar
+  // that touches a screen edge pads itself with them (top bar, bottom nav,
+  // sheets, toasts, floating controls).
+  viewportFit: "cover",
 };
 
 const themeScript = `(function(){try{var s=localStorage.getItem('wp-theme');var d=s?s==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;if(d)document.documentElement.classList.add('dark');}catch(e){}})();`;

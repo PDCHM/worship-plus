@@ -106,7 +106,7 @@ export default function SettingsView({ settings, onChange, plan, onUpgrade }: Pr
       {/* ── Print ── */}
       <Section title="Print">
         <Row label="Page size">
-          <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+          <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 seg-group">
             {(["A4", "Letter"] as const).map((p) => (
               <button
                 key={p}
@@ -124,7 +124,7 @@ export default function SettingsView({ settings, onChange, plan, onUpgrade }: Pr
           </div>
         </Row>
         <Row label="Columns" hint="2-column layout fits more on one page">
-          <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden">
+          <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 seg-group">
             {([1, 2] as const).map((cols) => (
               <button
                 key={cols}
@@ -160,7 +160,7 @@ export default function SettingsView({ settings, onChange, plan, onUpgrade }: Pr
         <span className="w-11 h-11 shrink-0 rounded-xl bg-white dark:bg-slate-900 flex items-center justify-center text-xl shadow-sm" aria-hidden="true">☕</span>
         <span className="min-w-0 flex-1">
           <span className="block text-sm font-semibold text-[#6a4cf0] dark:text-violet-300">Support Worship+</span>
-          <span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">Optional — the app stays free either way.</span>
+          <span className="block text-xs text-slate-600 dark:text-slate-400 mt-0.5">Optional — the app stays free either way.</span>
         </span>
         <svg className="shrink-0 text-[#a99be0] dark:text-violet-400/70" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
       </button>
@@ -172,7 +172,7 @@ export default function SettingsView({ settings, onChange, plan, onUpgrade }: Pr
         <button
           type="button"
           onClick={resetAll}
-          className="text-sm font-medium text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 transition-colors"
+          className="text-sm font-medium text-rose-700 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 transition-colors"
         >
           Reset all settings to defaults
         </button>
@@ -282,12 +282,12 @@ function AccountSection() {
         </button>
       </Row>
       {exportError && (
-        <p className="text-xs text-rose-600 dark:text-rose-400 mt-2">{exportError}</p>
+        <p className="text-xs text-rose-700 dark:text-rose-400 mt-2">{exportError}</p>
       )}
 
       {/* ── Danger zone ── */}
       <div className="mt-6 pt-5 border-t border-slate-200 dark:border-slate-800">
-        <h3 className="text-sm font-semibold text-rose-600 dark:text-rose-400">Delete account</h3>
+        <h3 className="text-sm font-semibold text-rose-700 dark:text-rose-400">Delete account</h3>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
           Permanently deletes your account and all your songs, setlists, folders and comments.
           This cannot be undone. Type <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">DELETE</span> to confirm.
@@ -311,7 +311,7 @@ function AccountSection() {
           </button>
         </div>
         {deleteError && (
-          <p className="text-xs text-rose-600 dark:text-rose-400 mt-2">{deleteError}</p>
+          <p className="text-xs text-rose-700 dark:text-rose-400 mt-2">{deleteError}</p>
         )}
       </div>
     </div>

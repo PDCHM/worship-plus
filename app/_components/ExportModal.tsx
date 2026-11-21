@@ -305,10 +305,10 @@ export default function ExportModal({ song, onPrint, onClose }: Props) {
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800">
           <div>
             <h2 className="font-semibold text-sm">Export Song</h2>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 truncate max-w-[220px]">{song.title}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-500 mt-0.5 truncate max-w-[220px]">{song.title}</p>
           </div>
           <button type="button" onClick={onClose}
-            className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
+            className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
@@ -318,7 +318,7 @@ export default function ExportModal({ song, onPrint, onClose }: Props) {
         <div className="py-2">
           {GROUPS.map((group) => (
             <div key={group.label}>
-              <div className="px-5 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              <div className="px-5 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500">
                 {group.label}
               </div>
               {group.ids.map((id) => {
@@ -338,9 +338,9 @@ export default function ExportModal({ song, onPrint, onClose }: Props) {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{f.label}</span>
-                        {f.ext && <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-1 rounded">{f.ext}</span>}
+                        {f.ext && <span className="text-[10px] font-mono text-slate-500 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-1 rounded">{f.ext}</span>}
                       </div>
-                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 leading-snug truncate">{f.desc}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-500 mt-0.5 leading-snug truncate">{f.desc}</p>
                     </div>
                     <svg className="shrink-0 text-slate-300 dark:text-slate-600" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -355,7 +355,7 @@ export default function ExportModal({ song, onPrint, onClose }: Props) {
 
           {/* Share with other apps — expandable; sub-formats are all ChordPro. */}
           <div>
-            <div className="px-5 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+            <div className="px-5 pt-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500">
               Share with other apps
             </div>
             <button
@@ -370,9 +370,9 @@ export default function ExportModal({ song, onPrint, onClose }: Props) {
               </div>
               <div className="min-w-0 flex-1">
                 <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Others</span>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 leading-snug truncate">SongBook Pro · ChordPro · OnSong</p>
+                <p className="text-xs text-slate-500 dark:text-slate-500 mt-0.5 leading-snug truncate">SongBook Pro · ChordPro · OnSong</p>
               </div>
-              <svg className={`shrink-0 text-slate-400 dark:text-slate-500 transition-transform duration-200 ${othersOpen ? "rotate-180" : ""}`} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg className={`shrink-0 text-slate-500 dark:text-slate-500 transition-transform duration-200 ${othersOpen ? "rotate-180" : ""}`} width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="6 9 12 15 18 9" />
               </svg>
             </button>
@@ -387,7 +387,7 @@ export default function ExportModal({ song, onPrint, onClose }: Props) {
               >
                 <div className="min-w-0 flex-1 flex items-center gap-1.5">
                   <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{o.label}</span>
-                  <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-1 rounded">.{o.ext}</span>
+                  <span className="text-[10px] font-mono text-slate-500 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-1 rounded">.{o.ext}</span>
                 </div>
                 <svg className="shrink-0 text-slate-300 dark:text-slate-600" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -399,7 +399,7 @@ export default function ExportModal({ song, onPrint, onClose }: Props) {
           </div>
         </div>
 
-        <p className="text-xs text-slate-400 dark:text-slate-500 text-center px-5 py-3 border-t border-slate-100 dark:border-slate-800">
+        <p className="text-xs text-slate-500 dark:text-slate-500 text-center px-5 py-3 border-t border-slate-100 dark:border-slate-800">
           PDF exports via the print dialog — choose <span className="font-medium">Save as PDF</span>
         </p>
       </div>

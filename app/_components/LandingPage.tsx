@@ -11,7 +11,8 @@ import type { ReactNode } from "react";
    Everything is sized for an iPhone first and simply breathes wider on larger
    screens; nothing has a fixed width, so there is no horizontal scroll. */
 
-const BRAND = "#7a5cff";
+// Brand purple for text/icons on light surfaces (AA 5.35:1 on white).
+const BRAND = "#6350ef";
 
 /* Line icons — Lucide (ISC licence) path data, inlined so the page needs no
    icon package. Thin stroke, brand purple. */
@@ -83,7 +84,7 @@ function ChartMockup() {
           Key B
         </span>
       </div>
-      <div className="mt-4 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Chorus</div>
+      <div className="mt-4 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">Chorus</div>
       <div className="mt-2 space-y-2.5">
         {CHART.map((line, i) => (
           <div key={i} className="flex flex-wrap gap-x-1.5">
@@ -105,7 +106,7 @@ export default function LandingPage() {
     <div className="min-h-screen overflow-x-hidden bg-white text-slate-900">
       {/* ── 1. HERO ── */}
       <section
-        className="relative overflow-hidden px-5 pt-6 pb-36 text-center text-white sm:pb-44"
+        className="relative overflow-hidden px-5 pt-[calc(1.5rem+env(safe-area-inset-top,0px))] pb-36 text-center text-white sm:pb-44"
         style={{ background: "linear-gradient(165deg, #6f4cf0 0%, #8f71ff 48%, #b196ff 100%)" }}
       >
         {/* Soft white glow, top-right. */}
@@ -130,7 +131,7 @@ export default function LandingPage() {
           </p>
           <Link href="/login"
             className="mt-8 inline-flex items-center justify-center rounded-2xl bg-white px-8 py-3.5 text-base font-bold shadow-lg shadow-violet-900/20 transition-transform hover:scale-[1.02]"
-            style={{ color: "#5b3be0" }}>
+            style={{ color: "#6350ef" }}>
             Get started — it&apos;s free
           </Link>
           <div className="mt-5">
@@ -148,7 +149,7 @@ export default function LandingPage() {
 
       {/* ── 3. FEATURES ── */}
       <section className="px-5 pt-16 pb-14 sm:pt-20">
-        <h2 className="text-center text-sm font-semibold text-slate-400">Everything your worship team needs</h2>
+        <h2 className="text-center text-sm font-semibold text-slate-500">Everything your worship team needs</h2>
         <div className="mx-auto mt-5 grid max-w-3xl grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
           {FEATURES.map((f) => (
             <div key={f.label}
@@ -168,7 +169,7 @@ export default function LandingPage() {
           <p className="mt-2 text-base font-medium text-white/85">Every feature. Every musician. Every device.</p>
           <Link href="/login"
             className="mt-6 inline-flex items-center justify-center rounded-2xl bg-white px-7 py-3 text-base font-bold transition-transform hover:scale-[1.02]"
-            style={{ color: "#5b3be0" }}>
+            style={{ color: "#6350ef" }}>
             Start free →
           </Link>
         </div>
@@ -177,7 +178,7 @@ export default function LandingPage() {
       {/* ── 5. FOOTER ── */}
       <footer className="px-5 pb-10 text-center">
         <p className="text-sm font-medium text-slate-500">Built to serve the local church. 🙏</p>
-        <div className="mt-2 text-sm text-slate-400">
+        <div className="mt-2 text-sm text-slate-500">
           <Link href="/terms" className="hover:text-slate-600">Terms</Link>
           <span className="mx-2">·</span>
           <Link href="/privacy" className="hover:text-slate-600">Privacy</Link>

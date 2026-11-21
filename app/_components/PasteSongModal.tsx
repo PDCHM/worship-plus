@@ -95,7 +95,7 @@ export default function PasteSongModal({ open, onClose, aiIntent = false, onImpo
           <button
             type="button"
             onClick={handleClose}
-            className="w-8 h-8 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center justify-center shrink-0"
+            className="w-8 h-8 rounded-md text-slate-500 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center justify-center shrink-0"
             aria-label="Close"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
@@ -110,7 +110,7 @@ export default function PasteSongModal({ open, onClose, aiIntent = false, onImpo
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-xs font-medium text-slate-500 dark:text-slate-400 mr-1">Detected:</span>
               {preview.formats.length ? preview.formats.map((f) => (
-                <span key={f} className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300">
+                <span key={f} className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-[#f3f0ff] text-[#6350ef] dark:bg-[#2a2440]/60 dark:text-[#c9bdfb]">
                   {FORMAT_LABEL[f]}
                 </span>
               )) : (
@@ -118,7 +118,7 @@ export default function PasteSongModal({ open, onClose, aiIntent = false, onImpo
                   No chords found — lyrics only
                 </span>
               )}
-              <span className="text-[11px] text-slate-400 dark:text-slate-500 ml-auto">Key {preview.key}</span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-500 ml-auto">Key {preview.key}</span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               {title.trim() || preview.meta.title || "Untitled Song"}
@@ -157,7 +157,7 @@ export default function PasteSongModal({ open, onClose, aiIntent = false, onImpo
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Song title"
-                className="w-full h-10 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-indigo-400 dark:focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 transition-colors text-sm"
+                className="w-full h-10 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-sm"
               />
             </div>
             <div>
@@ -168,7 +168,7 @@ export default function PasteSongModal({ open, onClose, aiIntent = false, onImpo
                 value={artist}
                 onChange={(e) => setArtist(e.target.value)}
                 placeholder="Artist"
-                className="w-full h-10 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-indigo-400 dark:focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 transition-colors text-sm"
+                className="w-full h-10 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-sm"
               />
             </div>
           </div>
@@ -190,7 +190,7 @@ export default function PasteSongModal({ open, onClose, aiIntent = false, onImpo
               }
               rows={14}
               spellCheck={false}
-              className="w-full p-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-indigo-400 dark:focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 transition-colors text-sm font-mono"
+              className="w-full p-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-sm font-mono"
               style={{ minHeight: "16rem", whiteSpace: "pre" }}
             />
           </div>

@@ -312,13 +312,13 @@ export default function Library({
               )}
               {keyFilter && (
                 <button type="button" onClick={() => setKeyFilter(null)}
-                  className="inline-flex items-center gap-1 h-6 pl-2 pr-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 font-medium">
+                  className="inline-flex items-center gap-1 h-6 pl-2 pr-1.5 rounded-full bg-[#f3f0ff] dark:bg-[#2a2440]/50 text-[#6350ef] dark:text-[#c9bdfb] font-medium">
                   Key of {keyFilter} <ChipX />
                 </button>
               )}
               {favFilter && (
                 <button type="button" onClick={() => setFavFilter(false)}
-                  className="inline-flex items-center gap-1 h-6 pl-2 pr-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 font-medium">
+                  className="inline-flex items-center gap-1 h-6 pl-2 pr-1.5 rounded-full bg-[#f3f0ff] dark:bg-[#2a2440]/50 text-[#6350ef] dark:text-[#c9bdfb] font-medium">
                   Favourites <ChipX />
                 </button>
               )}
@@ -366,7 +366,7 @@ export default function Library({
                 {/* Popover: mobile = bottom sheet pinned within the viewport
                     (inset-x-2, can't clip off either edge); sm+ = anchored dropdown. */}
                 {panel === "sort" && (
-                  <div role="menu" className="fixed inset-x-2 bottom-2 z-50 py-1 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xl shadow-slate-900/20 sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-full sm:mt-1 sm:w-48 sm:rounded-lg sm:shadow-xl sm:z-40">
+                  <div role="menu" className="fixed inset-x-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom,0px))] z-50 py-1 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xl shadow-slate-900/20 sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-full sm:mt-1 sm:w-48 sm:rounded-lg sm:shadow-xl sm:z-40">
                     <button type="button" role="menuitem" onClick={() => { setSortRecent(false); setSortCol("title"); setSortDir("asc"); setPanel(null); }}
                       className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
                       A–Z {!sortRecent && <CheckMark />}
@@ -390,7 +390,7 @@ export default function Library({
                 {/* Popover: mobile = bottom sheet within the viewport (inset-x-2) so
                     the key chips + labels get full width and never clip; sm+ = dropdown. */}
                 {panel === "filter" && (
-                  <div className="fixed inset-x-2 bottom-2 z-50 p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xl shadow-slate-900/20 space-y-3 sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-full sm:mt-1 sm:w-64 sm:rounded-lg sm:shadow-xl sm:z-40">
+                  <div className="fixed inset-x-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom,0px))] z-50 p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xl shadow-slate-900/20 space-y-3 sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-full sm:mt-1 sm:w-64 sm:rounded-lg sm:shadow-xl sm:z-40">
                     <button type="button" onClick={() => setFavFilter((f) => !f)}
                       className="w-full flex items-center justify-between px-2 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
                       <span className="flex items-center gap-2 text-sm font-medium">
@@ -400,7 +400,7 @@ export default function Library({
                       {favFilter && <CheckMark />}
                     </button>
                     <div>
-                      <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5 px-1">Key</div>
+                      <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500 mb-1.5 px-1">Key</div>
                       {availableKeys.length > 0 ? (
                         <div className="flex flex-wrap gap-1.5">
                           {availableKeys.map((k) => (
@@ -408,7 +408,7 @@ export default function Library({
                               className={"h-8 min-w-8 px-2 rounded-lg text-sm font-semibold transition-colors " + (keyFilter === k ? "bg-[#efe9fe] text-[#6350ef] ring-1 ring-inset ring-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:ring-[#3a3358]" : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600")}>{k}</button>
                           ))}
                         </div>
-                      ) : <p className="text-xs text-slate-400 px-1">No keys in your songs yet.</p>}
+                      ) : <p className="text-xs text-slate-500 px-1">No keys in your songs yet.</p>}
                     </div>
                     {anyFilter && (
                       <button type="button" onClick={() => { setFavFilter(false); setKeyFilter(null); }}
@@ -420,7 +420,7 @@ export default function Library({
             </div>
           )}
           <div
-            className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden"
+            className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 seg-group"
             role="group"
             aria-label="Library view mode"
           >
@@ -458,7 +458,7 @@ export default function Library({
 
       <div className="mb-6 relative">
         <svg
-          className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+          className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none"
           width="16"
           height="16"
           viewBox="0 0 24 24"
@@ -477,14 +477,14 @@ export default function Library({
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search title or artist…"
           aria-label="Search songs"
-          className="w-full h-11 pl-10 pr-9 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none focus:border-indigo-400 dark:focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 transition-colors text-sm"
+          className="w-full h-11 pl-10 pr-9 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-sm"
         />
         {query && (
           <button
             type="button"
             onClick={() => setQuery("")}
             aria-label="Clear search"
-            className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 flex items-center justify-center"
+            className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full text-slate-500 hover:text-slate-600 dark:hover:text-slate-200 flex items-center justify-center"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -502,7 +502,7 @@ export default function Library({
             onNewSong={onNewSong}
           />
         ) : (
-          <div className="text-center py-16 text-slate-400 dark:text-slate-500">
+          <div className="text-center py-16 text-slate-500 dark:text-slate-500">
             <p className="text-sm">
               {query.trim()
                 ? `No songs match "${query.trim()}"`
@@ -689,7 +689,7 @@ export default function Library({
           >
             <div className="p-5">
               <h3 className="text-lg font-bold tracking-tight mb-3">Save as</h3>
-              <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5">New song title</label>
+              <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500 mb-1.5">New song title</label>
               <input
                 autoFocus
                 value={saveAsTarget.title}
@@ -699,7 +699,7 @@ export default function Library({
                   if (e.key === "Enter" && saveAsTarget.title.trim()) { onSaveAsCopy?.(saveAsTarget.songId, saveAsTarget.title.trim()); setSaveAsTarget(null); }
                   else if (e.key === "Escape") setSaveAsTarget(null);
                 }}
-                className="w-full h-10 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-indigo-400 dark:focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 transition-colors text-sm"
+                className="w-full h-10 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-sm"
               />
             </div>
             <div className="px-5 pb-5 pt-1 flex items-center justify-end gap-2">
@@ -725,7 +725,7 @@ export default function Library({
 
       {/* ── Bulk action bar (floating pill) ── */}
       {selectMode && selected.size > 0 && (
-        <div className="fixed left-1/2 -translate-x-1/2 bottom-20 md:bottom-6 z-40 flex items-center gap-2 px-2 py-2 rounded-2xl bg-slate-900 dark:bg-slate-800 text-white shadow-2xl shadow-slate-900/40 border border-slate-700/50 print:hidden">
+        <div className="fixed left-1/2 -translate-x-1/2 bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] md:bottom-6 z-40 flex items-center gap-2 px-2 py-2 rounded-2xl bg-slate-900 dark:bg-slate-800 text-white shadow-2xl shadow-slate-900/40 border border-slate-700/50 print:hidden">
           <span className="px-2 text-sm font-medium tabular-nums">{selected.size} selected</span>
           <button
             type="button"
@@ -781,18 +781,18 @@ export default function Library({
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800">
               <div>
                 <h2 className="font-semibold text-sm">Add to setlist</h2>
-                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
+                <p className="text-xs text-slate-500 dark:text-slate-500 mt-0.5">
                   {selected.size} {selected.size === 1 ? "song" : "songs"} selected
                 </p>
               </div>
               <button type="button" onClick={() => setAddToSetlistOpen(false)}
-                className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
+                className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
             <div className="overflow-y-auto">
               {setlists.length === 0 ? (
-                <p className="text-center py-10 px-5 text-sm text-slate-400 dark:text-slate-500">
+                <p className="text-center py-10 px-5 text-sm text-slate-500 dark:text-slate-500">
                   No setlists yet. Create one from the Setlists tab first.
                 </p>
               ) : (
@@ -812,7 +812,7 @@ export default function Library({
                 ))
               )}
             </div>
-            <p className="px-5 py-3 text-[11px] text-slate-400 dark:text-slate-500 text-center border-t border-slate-100 dark:border-slate-800">
+            <p className="px-5 py-3 text-[11px] text-slate-500 dark:text-slate-500 text-center border-t border-slate-100 dark:border-slate-800">
               Team setlists — open the setlist to add songs
             </p>
           </div>
@@ -839,18 +839,18 @@ export default function Library({
               <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800">
                 <div className="min-w-0">
                   <h2 className="font-semibold text-sm">{isFolder ? "Add to folder" : "Add to setlist"}</h2>
-                  <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 truncate">
+                  <p className="text-xs text-slate-500 dark:text-slate-500 mt-0.5 truncate">
                     {pickTarget.songTitle.trim() || "Untitled Song"}
                   </p>
                 </div>
                 <button type="button" onClick={() => !bulkBusy && setPickTarget(null)} aria-label="Close"
-                  className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0">
+                  className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
               </div>
               <div className="overflow-y-auto">
                 {options.length === 0 ? (
-                  <p className="text-center py-10 px-5 text-sm text-slate-400 dark:text-slate-500">
+                  <p className="text-center py-10 px-5 text-sm text-slate-500 dark:text-slate-500">
                     {isFolder
                       ? "No folders yet. Create one from the Folders tab first."
                       : "No setlists yet. Create one from the Setlists tab first."}
@@ -879,7 +879,7 @@ export default function Library({
                 )}
               </div>
               {!isFolder && (
-                <p className="px-5 py-3 text-[11px] text-slate-400 dark:text-slate-500 text-center border-t border-slate-100 dark:border-slate-800">
+                <p className="px-5 py-3 text-[11px] text-slate-500 dark:text-slate-500 text-center border-t border-slate-100 dark:border-slate-800">
                   Team setlists — open the setlist to add songs
                 </p>
               )}
@@ -928,7 +928,7 @@ function LibraryWelcome({
           </span>
           <span className="min-w-0">
             <span className="block font-semibold text-sm">Import from photo</span>
-            <span className="block text-xs text-indigo-100/90">Snap a photo of your chords — Claude reads it in.</span>
+            <span className="block text-xs text-white/90">Snap a photo of your chords — Claude reads it in.</span>
           </span>
         </button>
 
@@ -936,7 +936,7 @@ function LibraryWelcome({
         <button
           type="button"
           onClick={onImportFile}
-          className="w-full flex items-center gap-4 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-800 transition-colors"
+          className="w-full flex items-center gap-4 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-[#c9bdfb] dark:hover:border-[#3a3358] transition-colors"
         >
           <span className="w-10 h-10 rounded-xl bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff] flex items-center justify-center shrink-0">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -953,7 +953,7 @@ function LibraryWelcome({
         <button
           type="button"
           onClick={onNewSong}
-          className="w-full flex items-center gap-4 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-800 transition-colors"
+          className="w-full flex items-center gap-4 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-[#c9bdfb] dark:hover:border-[#3a3358] transition-colors"
         >
           <span className="w-10 h-10 rounded-xl bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff] flex items-center justify-center shrink-0">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1077,7 +1077,7 @@ function MenuItem({
 }) {
   const toneClasses =
     tone === "danger"
-      ? "text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+      ? "text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
       : "text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700";
   return (
     <button
@@ -1114,7 +1114,7 @@ function DotsButton({
       onMouseDown={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
       aria-label="More actions"
-      className="w-8 h-8 rounded-full flex items-center justify-center text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+      className="w-8 h-8 rounded-full flex items-center justify-center text-slate-500 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
     >
       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
         <circle cx="5" cy="12" r="1.6" />
@@ -1190,10 +1190,10 @@ function SongCard({
         }
       }}
       className={
-        "group relative rounded-2xl bg-white dark:bg-slate-900 border transition-all p-5 cursor-pointer select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 " +
+        "group relative rounded-2xl bg-white dark:bg-slate-900 border transition-all p-5 cursor-pointer select-none focus:outline-none focus-visible:ring-2 focus-visible:ring-[#735fee] " +
         (selected
-          ? "border-indigo-500 dark:border-indigo-500 ring-2 ring-indigo-500/40"
-          : "border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-700 hover:shadow-md hover:-translate-y-0.5")
+          ? "border-[#735fee] dark:border-[#735fee] ring-2 ring-[#735fee]/40"
+          : "border-slate-200 dark:border-slate-800 hover:border-[#c9bdfb] dark:hover:border-[#5a46dc] hover:shadow-md hover:-translate-y-0.5")
       }
       aria-label={selectMode ? `Select ${song.title}` : `Open ${song.title}`}
     >
@@ -1208,33 +1208,35 @@ function SongCard({
           <Checkbox checked={selected} />
         </button>
       )}
-      <div className={"flex items-start justify-between gap-3 pr-16 " + (selectMode ? "pl-8" : "")}>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <h3 className="font-semibold text-base text-slate-900 dark:text-slate-100 truncate">
-              {song.title}
-            </h3>
-            {song.isDraft && <DraftBadge />}
-          </div>
-          <p className="text-sm text-slate-500 dark:text-slate-400 truncate mt-0.5">
-            {song.artist || "Unknown artist"}
-          </p>
+      {/* Title gets the card's full width (up to 2 lines) — the key badge and the
+          star / ⋯ actions live on the bottom row, so narrow tablet cards no
+          longer truncate every title to a few letters. */}
+      <div className={"min-w-0 " + (selectMode ? "pl-8" : "")}>
+        <div className="flex items-start gap-1.5 min-w-0">
+          <h3 className="font-semibold text-base leading-snug text-slate-900 dark:text-slate-100 line-clamp-2 break-words">
+            {song.title}
+          </h3>
+          {song.isDraft && <span className="shrink-0 mt-0.5"><DraftBadge /></span>}
         </div>
-        <span className="shrink-0 inline-flex items-center justify-center min-w-[2.5rem] h-7 px-2 rounded-md bg-[#efe9fe] dark:bg-[#2a2440] text-indigo-700 dark:text-indigo-300 text-xs font-bold uppercase tracking-wide">
+        <p className="text-sm text-slate-500 dark:text-slate-400 truncate mt-0.5">
+          {song.artist || "Unknown artist"}
+        </p>
+      </div>
+      <div className={"mt-3 flex items-center gap-2 min-w-0 " + (selectMode ? "pl-8" : "")}>
+        {/* Key exactly as written — no uppercase, so "Bb" never reads "BB". */}
+        <span className="shrink-0 inline-flex items-center justify-center min-w-[2.5rem] h-7 px-2 rounded-md bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#c9bdfb] text-xs font-bold tracking-wide">
           {song.key}
         </span>
+        <span className="min-w-0 truncate text-xs text-slate-500 dark:text-slate-500">
+          {[song.capo ? `Capo ${song.capo}` : null, song.bpm ? `${song.bpm} bpm` : null].filter(Boolean).join(" · ")}
+        </span>
+        {!selectMode && (
+          <div className="ml-auto -mr-2 flex items-center shrink-0">
+            <StarButton favorite={song.favorite} onClick={onToggleFavorite} />
+            <DotsButton onClick={onMenu} />
+          </div>
+        )}
       </div>
-      <div className={"mt-4 flex items-center gap-3 text-xs text-slate-400 dark:text-slate-500 " + (selectMode ? "pl-8" : "")}>
-        {song.capo ? <span>Capo {song.capo}</span> : null}
-        {song.capo && song.bpm ? <span>·</span> : null}
-        {song.bpm ? <span>{song.bpm} bpm</span> : null}
-      </div>
-      {!selectMode && (
-        <div className="absolute top-3 right-3 flex items-center gap-1">
-          <StarButton favorite={song.favorite} onClick={onToggleFavorite} />
-          <DotsButton onClick={onMenu} />
-        </div>
-      )}
     </div>
   );
 }
@@ -1317,7 +1319,7 @@ export function SongRow({
           activate();
         }
       }}
-      className={"group grid items-center gap-2 sm:gap-3 px-4 py-2.5 cursor-pointer select-none transition-colors hover:bg-indigo-50/60 dark:hover:bg-indigo-950/30 border-b border-slate-100 dark:border-slate-800/60 last:border-b-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-indigo-500 grid-cols-[1fr_64px_44px_32px_32px] sm:grid-cols-[1fr_140px_56px_32px_32px] " + (selected ? "bg-indigo-50 dark:bg-indigo-950/40" : oddRow ? "bg-white dark:bg-slate-900" : "bg-slate-50 dark:bg-slate-800/40")}
+      className={"group grid items-center gap-2 sm:gap-3 px-4 py-2.5 cursor-pointer select-none transition-colors hover:bg-[#f3f0ff]/60 dark:hover:bg-[#2a2440]/30 border-b border-slate-100 dark:border-slate-800/60 last:border-b-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#735fee] grid-cols-[1fr_64px_44px_32px_32px] sm:grid-cols-[1fr_140px_56px_32px_32px] " + (selected ? "bg-[#f3f0ff] dark:bg-[#2a2440]/40" : oddRow ? "bg-white dark:bg-slate-900" : "bg-slate-50 dark:bg-slate-800/40")}
       aria-label={selectMode ? `Select ${song.title}` : `Open ${song.title}`}
     >
       <div className="min-w-0 flex items-center gap-2.5">
@@ -1349,7 +1351,7 @@ export function SongRow({
       </div>
       <div className="flex items-center justify-center">
         <span
-          className="inline-flex items-center justify-center min-w-[2.25rem] h-6 px-2 rounded-md text-[11px] font-bold uppercase tracking-wide"
+          className="inline-flex items-center justify-center min-w-[2.25rem] h-6 px-2 rounded-md text-[11px] font-bold tracking-wide"
           style={{ background: keyColor.bg, color: keyColor.fg }}
         >
           {song.key}

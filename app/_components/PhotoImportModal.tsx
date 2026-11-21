@@ -71,7 +71,7 @@ export default function PhotoImportModal({
         <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <span className="font-semibold text-sm">Import from photo</span>
           <button type="button" onClick={onClose} disabled={busy} aria-label="Close"
-            className="w-7 h-7 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40">
+            className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
@@ -100,11 +100,11 @@ export default function PhotoImportModal({
           )}
 
           {error && (
-            <p className="text-xs text-rose-600 dark:text-rose-400" role="alert">{error}</p>
+            <p className="text-xs text-rose-700 dark:text-rose-400" role="alert">{error}</p>
           )}
 
           <button type="button" onClick={() => inputRef.current?.click()} disabled={busy || preparing || items.length >= MAX}
-            className="w-full h-11 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400 flex items-center justify-center gap-2 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+            className="w-full h-11 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-[#9d8bff] hover:text-[#6350ef] dark:hover:text-[#b3a3ff] flex items-center justify-center gap-2 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             {preparing ? (
               <><span className="w-4 h-4 rounded-full border-2 border-slate-300 border-t-slate-600 dark:border-slate-600 dark:border-t-slate-300 animate-spin" /> Preparing…</>
             ) : (

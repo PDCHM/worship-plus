@@ -1,5 +1,6 @@
 "use client";
 
+import { readableColor } from "@/lib/contrast";
 import { ChordDiagramSheet } from "@/app/_components/ChordDiagrams";
 import { uniqueChordSymbols } from "@/lib/chords/diagrams";
 import { useEffect, useState } from "react";
@@ -114,7 +115,8 @@ export function SongSheet({ song, settings, sectionStyles }: Props) {
           const section  = block.section;
           const colorKey = getSectionColorKey(section.label);
           const color    = colorMap[colorKey];
-          const chordColor = getEffectiveStyle(getSectionStyleKey(section.label), sectionStyles.styles).chordColor;
+          const chordColor = readableColor(
+            getEffectiveStyle(getSectionStyleKey(section.label), sectionStyles.styles).chordColor, "#ffffff"); // paper
 
           return (
             <div
