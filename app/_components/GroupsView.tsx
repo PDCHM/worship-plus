@@ -1,5 +1,6 @@
 "use client";
 import { backdropDismiss } from "@/lib/backdropDismiss";
+import { SELECTED } from "@/lib/selectedStyle";
 import { useState } from "react";
 import type { Song } from "@/lib/song";
 import { initialsFrom, PersonGlyph } from "@/app/_components/Avatar";
@@ -303,50 +304,62 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
           ) : (
             <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden">
               {members.map((m, idx) => (
-                <div key={m.id} className={"flex items-center gap-3 px-4 py-3 "+(idx<members.length-1?"border-b border-slate-100 dark:border-slate-800":"")}>
-                  <div className="w-9 h-9 rounded-full bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400 text-sm font-semibold shrink-0">
-                    {initialsFrom(m.displayName, m.email) || <PersonGlyph />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">{m.displayName ?? "Unknown"}</div>
-                    {m.email && <div className="text-xs text-slate-400 truncate">{m.email}</div>}
-                    <div className="flex items-center gap-2 mt-0.5">
-                      {insLabel(m) && <span className="text-xs text-slate-400">{insLabel(m)}</span>}
-                      <span className={"text-xs px-1.5 py-0.5 rounded-full "+(m.status==="joined"?"bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600":"bg-amber-50 dark:bg-amber-950/40 text-amber-600")}>
-                        {m.status==="joined"?"Joined":"Pending"}
-                      </span>
+                // One layout for every row. Phone: [avatar + text] on line 1, the
+                // controls on their own line below, right-aligned — so they can
+                // never overlap the name or the Joined/Pending badge. sm+: the
+                // controls sit beside the text, vertically centred.
+                <div key={m.id} data-member-row
+                  className={"flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-4 py-3 "+(idx<members.length-1?"border-b border-slate-100 dark:border-slate-800":"")}>
+                  <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="w-10 h-10 rounded-full bg-[#efe9fe] dark:bg-[#2a2440] flex items-center justify-center text-[#6d5bf0] dark:text-[#b3a3ff] text-sm font-semibold shrink-0">
+                      {initialsFrom(m.displayName, m.email) || <PersonGlyph />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{m.displayName ?? "Unknown"}</div>
+                      {m.email && <div className="text-xs text-slate-400 truncate">{m.email}</div>}
+                      {/* Own line: instrument/category + status. Wraps inside
+                          the text column instead of spilling under controls. */}
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 min-w-0">
+                        {insLabel(m) && <span className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-full">{insLabel(m)}</span>}
+                        <span className={"shrink-0 text-[11px] font-medium leading-none px-2 py-1 rounded-full "+(m.status==="joined"?"bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400":"bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400")}>
+                          {m.status==="joined"?"Joined":"Pending"}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                  {/* Leaders show a static badge; a leader can toggle any other
-                      member between Editor and Member in place. No control on
-                      self or on fellow leaders (role is enforced by RLS). */}
-                  {m.role === "leader" ? (
-                    <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 shrink-0">Leader</span>
-                  ) : m.userId === userId ? (
-                    <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 shrink-0">{ROLE_LABEL[m.role]}</span>
-                  ) : (
-                    <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden shrink-0" role="group" aria-label="Member role">
-                      {(["editor", "member"] as const).map((r) => (
-                        <button key={r} type="button"
-                          onClick={() => { if (m.role !== r) { onSetMemberRole(m.id, r); showToast(`${m.displayName ?? "Member"} is now ${ROLE_LABEL[r]}`); } }}
-                          className={"px-2 py-1 text-xs font-medium transition-colors "+(m.role===r?"bg-indigo-600 text-white":"bg-white dark:bg-slate-900 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800")}>
-                          {ROLE_LABEL[r]}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {m.status==="pending" && m.userId !== userId && (
-                    <button type="button" onClick={() => copyInvite(m.id, m.displayName??"")}
-                      className="h-8 px-3 rounded-lg text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 hover:bg-indigo-100 transition-colors shrink-0">
-                      Invite
-                    </button>
-                  )}
-                  {m.userId !== userId && (
-                    <button type="button" onClick={() => setRemoveMemberTarget({ id: m.id, name: m.displayName ?? "this member" })}
-                      className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                    </button>
-                  )}
+                  {/* Controls column. Leaders show a static badge; a leader can
+                      toggle any other member between Editor and Member in place.
+                      No control on self or on fellow leaders (role is enforced by
+                      RLS). */}
+                  <div className="flex items-center justify-end gap-2 shrink-0 self-end sm:self-center">
+                    {m.role === "leader" ? (
+                      <span className="h-8 inline-flex items-center text-xs font-semibold px-3 rounded-lg bg-[#efe9fe] dark:bg-[#2a2440] text-[#6d5bf0] dark:text-[#b3a3ff]">Leader</span>
+                    ) : m.userId === userId ? (
+                      <span className="h-8 inline-flex items-center text-xs font-medium px-3 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500">{ROLE_LABEL[m.role]}</span>
+                    ) : (
+                      <div className="flex h-8 rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden" role="group" aria-label="Member role">
+                        {(["editor", "member"] as const).map((r) => (
+                          <button key={r} type="button" aria-pressed={m.role===r}
+                            onClick={() => { if (m.role !== r) { onSetMemberRole(m.id, r); showToast(`${m.displayName ?? "Member"} is now ${ROLE_LABEL[r]}`); } }}
+                            className={"px-2.5 text-xs font-medium transition-colors "+(m.role===r?SELECTED:"bg-white dark:bg-slate-900 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800")}>
+                            {ROLE_LABEL[r]}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {m.status==="pending" && m.userId !== userId && (
+                      <button type="button" onClick={() => copyInvite(m.id, m.displayName??"")}
+                        className="h-8 px-3 rounded-lg text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 transition-colors">
+                        Invite
+                      </button>
+                    )}
+                    {m.userId !== userId && (
+                      <button type="button" aria-label={`Remove ${m.displayName ?? "member"}`} onClick={() => setRemoveMemberTarget({ id: m.id, name: m.displayName ?? "this member" })}
+                        className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
