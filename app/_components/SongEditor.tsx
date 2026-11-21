@@ -114,26 +114,30 @@ function writeSongView(songId: string, prefs: SongViewPrefs) {
 // Edit / Markup toggle icons — exact path data lifted from Lucide's `square-pen`
 // and `highlighter` glyphs (ISC-licensed), inlined to match this codebase's
 // inline-SVG convention rather than pull in the lucide-react dependency.
-// Round lavender toolbar buttons (Edit, Present). Light: #efe9fe fill, #e0d6fb
-// 1px border, #6d5bf0 icon. Dark: #2a2440 / #3a3358 / #b3a3ff. Edit's ACTIVE
-// state (edit mode on) inverts to a solid brand-purple circle with a white icon
-// so the toggle state stays obvious.
-// 36px circles (same size as the top-bar coffee/avatar buttons) with a 20px
-// icon. Measured on the built page: this is the largest size that keeps this
-// toolbar on ONE line on a 390px iPhone in both view AND edit mode (edit mode
-// adds the Save button). 64px wrapped it onto four lines; 44px and 40px wrapped
-// edit mode onto two.
-const TOOLBAR_CIRCLE_BTN =
-  "w-9 h-9 shrink-0 rounded-full border flex items-center justify-center transition-colors";
-const TOOLBAR_CIRCLE_IDLE =
-  "bg-[#efe9fe] border-[#e0d6fb] text-[#6d5bf0] hover:bg-[#e6dcfd] dark:bg-[#2a2440] dark:border-[#3a3358] dark:text-[#b3a3ff] dark:hover:bg-[#332c4f]";
-const TOOLBAR_CIRCLE_ACTIVE =
-  "bg-[#6d5bf0] border-[#6d5bf0] text-white hover:bg-[#5f4de0] dark:bg-[#7d6cf5] dark:border-[#7d6cf5] dark:text-white";
+// Edit / Present toolbar buttons. At REST they match the neighbouring toolbar
+// buttons exactly (light-grey rounded square, slate icon — same as highlighter /
+// link / more), so the row looks uniform. The round lavender circle (#efe9fe /
+// #e0d6fb border / #6d5bf0 icon; dark #2a2440 / #3a3358 / #b3a3ff) is an
+// ACTIVE-STATE indicator only:
+//   • Edit: circled while edit mode is ON.
+//   • Present: the toolbar is hidden while presenting, so its circle shows
+//     while the button is being pressed (the "engaged" moment).
+// Same size in every state (32px / 36px on sm+), so toggling never shifts the
+// layout or wraps the toolbar.
+const TOOLBAR_BTN =
+  "h-8 w-8 sm:h-9 sm:w-9 shrink-0 border flex items-center justify-center transition-colors";
+const TOOLBAR_BTN_REST =
+  "rounded-lg border-transparent bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300";
+const TOOLBAR_BTN_ACTIVE =
+  "rounded-full bg-[#efe9fe] border-[#e0d6fb] text-[#6d5bf0] dark:bg-[#2a2440] dark:border-[#3a3358] dark:text-[#b3a3ff]";
+// Present has no persistent "on" state on the toolbar → circle while pressed.
+const TOOLBAR_BTN_PRESSED =
+  "active:rounded-full active:bg-[#efe9fe] active:border-[#e0d6fb] active:text-[#6d5bf0] dark:active:bg-[#2a2440] dark:active:border-[#3a3358] dark:active:text-[#b3a3ff]";
 
 // Edit — "pencil + line".
 function PencilLineIcon() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M12 20h9" />
       <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
       <path d="m15 5 3 3" />
@@ -144,7 +148,7 @@ function PencilLineIcon() {
 // Present — "presentation screen".
 function PresentationIcon() {
   return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M2 3h20" />
       <path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3" />
       <path d="m7 21 5-5 5 5" />
@@ -3470,7 +3474,7 @@ export default function SongEditor({
           </button>
           <ViewToggle viewMode={viewMode} onChange={switchView} />
           <button type="button" onClick={enterPresent} title="Fullscreen performance mode" aria-label="Fullscreen performance mode"
-            className={TOOLBAR_CIRCLE_BTN + " " + TOOLBAR_CIRCLE_IDLE}>
+            className={TOOLBAR_BTN + " " + TOOLBAR_BTN_REST + " " + TOOLBAR_BTN_PRESSED}>
             <PresentationIcon />
           </button>
         </div>
@@ -3491,7 +3495,7 @@ export default function SongEditor({
               title={editMode ? "Switch to read-only performance mode" : "Switch to edit mode"}
               aria-pressed={editMode}
               aria-label={editMode ? "Switch to read-only performance mode" : "Switch to edit mode"}
-              className={TOOLBAR_CIRCLE_BTN + " " + (editMode ? TOOLBAR_CIRCLE_ACTIVE : TOOLBAR_CIRCLE_IDLE)}>
+              className={TOOLBAR_BTN + " " + (editMode ? TOOLBAR_BTN_ACTIVE : TOOLBAR_BTN_REST)}>
               <PencilLineIcon />
             </button>
           )}
