@@ -114,14 +114,44 @@ function writeSongView(songId: string, prefs: SongViewPrefs) {
 // Edit / Markup toggle icons — exact path data lifted from Lucide's `square-pen`
 // and `highlighter` glyphs (ISC-licensed), inlined to match this codebase's
 // inline-SVG convention rather than pull in the lucide-react dependency.
-function SquarePenIcon() {
+// Round lavender toolbar buttons (Edit, Present). Light: #efe9fe fill, #e0d6fb
+// 1px border, #6d5bf0 icon. Dark: #2a2440 / #3a3358 / #b3a3ff. Edit's ACTIVE
+// state (edit mode on) inverts to a solid brand-purple circle with a white icon
+// so the toggle state stays obvious.
+// 36px circles (same size as the top-bar coffee/avatar buttons) with a 20px
+// icon. Measured on the built page: this is the largest size that keeps this
+// toolbar on ONE line on a 390px iPhone in both view AND edit mode (edit mode
+// adds the Save button). 64px wrapped it onto four lines; 44px and 40px wrapped
+// edit mode onto two.
+const TOOLBAR_CIRCLE_BTN =
+  "w-9 h-9 shrink-0 rounded-full border flex items-center justify-center transition-colors";
+const TOOLBAR_CIRCLE_IDLE =
+  "bg-[#efe9fe] border-[#e0d6fb] text-[#6d5bf0] hover:bg-[#e6dcfd] dark:bg-[#2a2440] dark:border-[#3a3358] dark:text-[#b3a3ff] dark:hover:bg-[#332c4f]";
+const TOOLBAR_CIRCLE_ACTIVE =
+  "bg-[#6d5bf0] border-[#6d5bf0] text-white hover:bg-[#5f4de0] dark:bg-[#7d6cf5] dark:border-[#7d6cf5] dark:text-white";
+
+// Edit — "pencil + line".
+function PencilLineIcon() {
   return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-      <path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" />
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+      <path d="m15 5 3 3" />
     </svg>
   );
 }
+
+// Present — "presentation screen".
+function PresentationIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 3h20" />
+      <path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3" />
+      <path d="m7 21 5-5 5 5" />
+    </svg>
+  );
+}
+
 function HighlighterIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -3440,8 +3470,8 @@ export default function SongEditor({
           </button>
           <ViewToggle viewMode={viewMode} onChange={switchView} />
           <button type="button" onClick={enterPresent} title="Fullscreen performance mode" aria-label="Fullscreen performance mode"
-            className="w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-lg flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-colors">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+            className={TOOLBAR_CIRCLE_BTN + " " + TOOLBAR_CIRCLE_IDLE}>
+            <PresentationIcon />
           </button>
         </div>
         <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-end">
@@ -3461,13 +3491,8 @@ export default function SongEditor({
               title={editMode ? "Switch to read-only performance mode" : "Switch to edit mode"}
               aria-pressed={editMode}
               aria-label={editMode ? "Switch to read-only performance mode" : "Switch to edit mode"}
-              className={
-                "h-8 w-8 sm:h-9 sm:w-9 rounded-lg flex items-center justify-center transition-colors " +
-                (editMode
-                  ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-600/30"
-                  : "bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300")
-              }>
-              <SquarePenIcon />
+              className={TOOLBAR_CIRCLE_BTN + " " + (editMode ? TOOLBAR_CIRCLE_ACTIVE : TOOLBAR_CIRCLE_IDLE)}>
+              <PencilLineIcon />
             </button>
           )}
           {readOnly && (
