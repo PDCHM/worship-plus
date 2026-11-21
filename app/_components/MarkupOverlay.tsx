@@ -1,5 +1,6 @@
 "use client";
 
+import { SELECTED } from "@/lib/selectedStyle";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { getStroke } from "perfect-freehand";
 import { createClient } from "@/lib/supabase/client";
@@ -1070,7 +1071,7 @@ export default function MarkupOverlay({
                   onClick={() => { setWidth(w); setWidthOpen(false); }}
                   aria-label={`Stroke width ${w}`}
                   aria-pressed={width === w}
-                  className={"w-10 h-10 rounded-lg flex items-center justify-center transition-colors " + (width === w ? "bg-indigo-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60")}
+                  className={"w-10 h-10 rounded-lg flex items-center justify-center transition-colors " + (width === w ? SELECTED : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60")}
                 >
                   <span className="block rounded-full bg-current" style={{ width: w + 2, height: w + 2 }} />
                 </button>
@@ -1099,7 +1100,7 @@ function TBtn({
       className={
         "w-10 h-10 shrink-0 rounded-lg flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed " +
         (active
-          ? "bg-indigo-600 text-white"
+          ? SELECTED
           : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800")
       }
     >

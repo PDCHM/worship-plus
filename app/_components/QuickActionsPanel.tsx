@@ -1,5 +1,6 @@
 "use client";
 
+import { SELECTED, SWITCH_ON } from "@/lib/selectedStyle";
 import { useEffect, useRef, useState } from "react";
 import {
   CHART_FONT_FAMILY,
@@ -141,7 +142,7 @@ export default function QuickActionsPanel({
         </QARow>
         <QARow label="Chords">
           <button type="button" onClick={() => onSettingsChange({ ...settings, showChords: !showChords })}
-            className={"relative w-10 h-6 rounded-full transition-colors " + (showChords ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-600")}>
+            className={"relative w-10 h-6 rounded-full transition-colors " + (showChords ? SWITCH_ON : "bg-slate-200 dark:bg-slate-600")}>
             <span className={"absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform " + (showChords ? "translate-x-4" : "translate-x-0")} />
           </button>
         </QARow>
@@ -150,13 +151,13 @@ export default function QuickActionsPanel({
             <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden" role="group" aria-label="Play layout">
               <button type="button" onClick={() => onPlayLayoutChange("scroll")} aria-pressed={playLayout === "scroll"}
                 title="Continuous scroll"
-                className={"h-7 px-2.5 text-xs font-semibold flex items-center gap-1 transition-colors " + (playLayout === "scroll" ? "bg-indigo-600 text-white" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")}>
+                className={"h-7 px-2.5 text-xs font-semibold flex items-center gap-1 transition-colors " + (playLayout === "scroll" ? SELECTED : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")}>
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="6 13 12 19 18 13"/></svg>
                 Scroll
               </button>
               <button type="button" onClick={() => onPlayLayoutChange("fit")} aria-pressed={playLayout === "fit"}
                 title="Fit to screen (columns)"
-                className={"h-7 px-2.5 text-xs font-semibold flex items-center gap-1 transition-colors " + (playLayout === "fit" ? "bg-indigo-600 text-white" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")}>
+                className={"h-7 px-2.5 text-xs font-semibold flex items-center gap-1 transition-colors " + (playLayout === "fit" ? SELECTED : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")}>
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="8" height="16" rx="1"/><rect x="13" y="4" width="8" height="16" rx="1"/></svg>
                 Fit
               </button>
@@ -166,7 +167,7 @@ export default function QuickActionsPanel({
         {fsSupported && (
           <QARow label="Fullscreen">
             <button type="button" onClick={toggleFullscreen} aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-              className={"h-7 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors " + (isFullscreen ? "bg-indigo-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-indigo-50 hover:text-indigo-600")}>
+              className={"h-7 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors " + (isFullscreen ? SELECTED : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-indigo-50 hover:text-indigo-600")}>
               {isFullscreen
                 ? <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 14h3a2 2 0 0 1 2 2v3M20 10h-3a2 2 0 0 1-2-2V5M15 5v3a2 2 0 0 0 2 2h3M9 19v-3a2 2 0 0 0-2-2H4"/></svg>Exit</>
                 : <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg>Enter</>}
@@ -178,7 +179,7 @@ export default function QuickActionsPanel({
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Auto-scroll</span>
               <button type="button" onClick={onToggleAutoScroll}
-                className={"h-7 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors " + (autoScrolling ? "bg-indigo-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-indigo-50 hover:text-indigo-600")}>
+                className={"h-7 px-3 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors " + (autoScrolling ? SELECTED : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-indigo-50 hover:text-indigo-600")}>
                 {autoScrolling
                   ? <><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>Pause</>
                   : <><svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>Play</>}

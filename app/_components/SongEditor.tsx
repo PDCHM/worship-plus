@@ -1,5 +1,6 @@
 "use client";
 
+import { SELECTED, SELECTED_ON_DARK } from "@/lib/selectedStyle";
 import { backdropDismiss } from "@/lib/backdropDismiss";
 import { FEATURE_AI_CHORDS } from "@/lib/flags";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -124,6 +125,11 @@ function writeSongView(songId: string, prefs: SongViewPrefs) {
 //     while the button is being pressed (the "engaged" moment).
 // Same size in every state (32px / 36px on sm+), so toggling never shifts the
 // layout or wraps the toolbar.
+// Save (primary action): brand purple #7a5cff — lighter than the old indigo-600
+// so it no longer dominates, still clearly a filled, tappable primary button.
+const SAVE_BTN =
+  "bg-[#7a5cff] hover:bg-[#6d5bf0] active:bg-[#6350e6] text-white shadow-sm shadow-violet-500/20 transition-colors";
+
 const TOOLBAR_BTN =
   "h-8 w-8 sm:h-9 sm:w-9 shrink-0 border flex items-center justify-center transition-colors";
 const TOOLBAR_BTN_REST =
@@ -368,7 +374,7 @@ function ViewToggle({
         aria-pressed={active}
         className={`w-8 sm:w-10 h-8 sm:h-9 flex items-center justify-center transition-colors ${
           active
-            ? "bg-indigo-600 text-white"
+            ? SELECTED
             : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
         }`}
       >
@@ -626,8 +632,9 @@ function SongFlowBar({
           const isDragging = dragId === s.id;
           const chipColor = getEffectiveStyle(getSectionStyleKey(s.label), sectionStyles.styles).chordColor;
           const chipStyle: React.CSSProperties = { touchAction: readOnly || isEditing ? "auto" : "none" };
-          if (isActive) { chipStyle.backgroundColor = chipColor; chipStyle.color = "#fff"; }
-          else { chipStyle.backgroundColor = hexAlpha(chipColor, 0.15); chipStyle.color = chipColor; }
+          // Selected chip = shared lavender SELECTED style (via className); the
+          // others keep their per-section colour tint.
+          if (!isActive) { chipStyle.backgroundColor = hexAlpha(chipColor, 0.15); chipStyle.color = chipColor; }
           return (
             <div
               key={s.id}
@@ -641,7 +648,7 @@ function SongFlowBar({
               className={
                 "shrink-0 h-7 px-3 rounded-full text-xs font-semibold transition-all select-none flex items-center justify-center text-center " +
                 (readOnly ? "cursor-pointer " : "cursor-grab active:cursor-grabbing ") +
-                (isActive ? "shadow-sm" : "hover:opacity-80") +
+                (isActive ? SELECTED : "hover:opacity-80") +
                 (isDragging ? " opacity-60 scale-105" : "")
               }
             >
@@ -743,7 +750,7 @@ function SegBtn({ active, onClick, children, disabled }: { active: boolean; onCl
         "h-7 px-2.5 text-xs font-medium transition-colors flex-1 " +
         (disabled ? "opacity-40 cursor-not-allowed " : "") +
         (active
-          ? "bg-indigo-600 text-white"
+          ? SELECTED
           : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")
       }>
       {children}
@@ -3118,7 +3125,7 @@ export default function SongEditor({
                   aria-pressed={presentDiagrams}
                   onClick={() => { setPresentDiagrams((v) => !v); revealControls(); }}
                   className={"w-7 h-7 rounded-lg flex items-center justify-center shrink-0 " + (presentDiagrams
-                    ? "bg-indigo-600 text-white"
+                    ? SELECTED
                     : "text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60")}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="4" y1="5" x2="20" y2="5"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="19" x2="20" y2="19"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
                 </button>
@@ -3188,7 +3195,7 @@ export default function SongEditor({
                     never mistaken for the metronome play. Highlights while running. */}
                 <button type="button" onClick={() => { setAutoScrolling((o) => !o); revealControls(); }}
                   aria-pressed={autoScrolling}
-                  className={"flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm font-medium transition-colors " + (autoScrolling ? "bg-indigo-500 text-white" : "hover:bg-white/10")}>
+                  className={"flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm font-medium transition-colors " + (autoScrolling ? SELECTED_ON_DARK : "hover:bg-white/10")}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="7 5 12 10 17 5"/><polyline points="7 13 12 18 17 13"/></svg>
                   {autoScrolling ? "Scrolling" : "Auto-scroll"}
                 </button>
@@ -3380,7 +3387,7 @@ export default function SongEditor({
                     {KEYS.map(k => (
                       <button key={k} type="button"
                         onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); handleTranspose(k); setKeyPickerOpen(false); }}
-                        className={"min-w-9 h-9 px-2 rounded-lg text-sm font-semibold transition-all " + (song.key === k ? "bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/40 scale-105" : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300")}>
+                        className={"min-w-9 h-9 px-2 rounded-lg text-sm font-semibold transition-all " + (song.key === k ? SELECTED : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300")}>
                         {k}
                       </button>
                     ))}
@@ -3510,10 +3517,10 @@ export default function SongEditor({
               aria-pressed={markupMode}
               aria-label={markupMode ? "Exit markup mode" : "Enter markup mode"}
               className={
-                "h-8 w-8 sm:h-9 sm:w-9 rounded-lg flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed " +
+                "h-8 w-8 sm:h-9 sm:w-9 border flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed " +
                 (markupMode
-                  ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-600/30"
-                  : "bg-slate-100 enabled:hover:bg-slate-200 dark:bg-slate-800 dark:enabled:hover:bg-slate-700 text-slate-600 dark:text-slate-300")
+                  ? TOOLBAR_BTN_ACTIVE
+                  : "rounded-lg border-transparent bg-slate-100 enabled:hover:bg-slate-200 dark:bg-slate-800 dark:enabled:hover:bg-slate-700 text-slate-600 dark:text-slate-300")
               }>
               <HighlighterIcon />
             </button>
@@ -3561,7 +3568,7 @@ export default function SongEditor({
             <button
               type="button"
               onClick={() => { setCopyTitle((song.title.trim() || "Untitled Song") + " (copy)"); setSaveAsCopyOpen(true); }}
-              className="h-9 px-3 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center gap-1.5 shadow-sm shadow-indigo-600/30"
+              className={"h-9 px-3 rounded-lg text-sm font-medium flex items-center gap-1.5 " + SAVE_BTN}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
               <span className="hidden sm:inline">Save copy</span>
@@ -3571,7 +3578,7 @@ export default function SongEditor({
             <button
               type="button"
               onClick={onSave}
-              className="h-9 pl-3 pr-2.5 rounded-l-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center gap-1.5 shadow-sm shadow-indigo-600/30"
+              className={"h-9 pl-3 pr-2.5 rounded-l-lg text-sm font-medium flex items-center gap-1.5 " + SAVE_BTN}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
@@ -3586,7 +3593,7 @@ export default function SongEditor({
               aria-label="Save options"
               aria-haspopup="menu"
               aria-expanded={saveMenuOpen}
-              className="h-9 px-1.5 rounded-r-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors flex items-center justify-center border-l border-indigo-500/60 shadow-sm shadow-indigo-600/30"
+              className={"h-9 px-1.5 rounded-r-lg flex items-center justify-center border-l border-white/35 " + SAVE_BTN}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
             </button>
@@ -4500,13 +4507,13 @@ export default function SongEditor({
 
       <div data-coach="quick-actions" className="fixed right-4 bottom-24 md:bottom-8 z-30 hidden sm:flex flex-col gap-2 print:hidden">
         <button type="button" onClick={() => setQuickActionsOpen(o => !o)} title="Quick Actions"
-          className={"w-11 h-11 rounded-full shadow-lg border flex items-center justify-center transition-colors " + (quickActionsOpen ? "bg-indigo-600 text-white border-indigo-600" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-indigo-50 dark:hover:bg-slate-700")}>
+          className={"w-11 h-11 rounded-full shadow-lg border flex items-center justify-center transition-colors " + (quickActionsOpen ? "bg-[#efe9fe] text-[#6d5bf0] border-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:border-[#3a3358]" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-indigo-50 dark:hover:bg-slate-700")}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
         {/* Auto-scroll has nothing to drive in fit mode — hide it there. */}
         {!fitMode && (
           <button type="button" onClick={() => setAutoScrolling(o => !o)} title={autoScrolling ? "Pause" : "Auto-scroll"}
-            className={"w-11 h-11 rounded-full shadow-lg border flex items-center justify-center transition-colors " + (autoScrolling ? "bg-indigo-600 text-white border-indigo-600" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-indigo-50 dark:hover:bg-slate-700")}>
+            className={"w-11 h-11 rounded-full shadow-lg border flex items-center justify-center transition-colors " + (autoScrolling ? "bg-[#efe9fe] text-[#6d5bf0] border-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:border-[#3a3358]" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-indigo-50 dark:hover:bg-slate-700")}>
             {autoScrolling
               ? <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
               : <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>}
@@ -5532,7 +5539,7 @@ function TempoPanel({ bpm, playing, onBpmChange, onToggle, metronome, silent, on
           onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); onToggle(); }}
           aria-label={playing ? "Stop metronome" : "Start metronome"}
           className={"w-10 h-10 rounded-full flex items-center justify-center transition-colors shrink-0 " + (playing
-            ? "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shadow-indigo-600/30"
+            ? SELECTED
             : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600")}>
           {playing
             ? <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
@@ -5549,7 +5556,7 @@ function TempoPanel({ bpm, playing, onBpmChange, onToggle, metronome, silent, on
             <button key={ts} type="button" aria-pressed={active}
               onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); onTimeSignatureChange(ts); }}
               className={"px-2 h-7 rounded-lg text-xs font-semibold tabular-nums transition-colors " + (active
-                ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/30"
+                ? SELECTED
                 : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 hover:text-indigo-600")}>
               {ts}
             </button>
@@ -5598,7 +5605,7 @@ function MetronomePill({ bpm, playing, onToggle, raised, metronome, silent, onSi
       className={"inline-flex items-center rounded-full font-semibold tabular-nums " + (playing
         // PLAYING: prominent accent-filled stop control — bigger, filled, ring-lifted,
         // easy to hit to stop instantly.
-        ? "h-10 gap-2 pl-3 pr-4 text-sm bg-indigo-600 text-white shadow-lg shadow-indigo-600/40 ring-2 ring-indigo-500/25"
+        ? "h-10 gap-2 pl-3 pr-4 text-sm bg-[#efe9fe] text-[#6d5bf0] border border-[#e0d6fb] shadow-md shadow-violet-500/15 dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:border-[#3a3358]"
         // IDLE: quiet + minimal — small, low-contrast, barely there.
         : "h-8 gap-1.5 pl-2 pr-2.5 text-xs bg-white/70 dark:bg-slate-900/70 text-slate-400 dark:text-slate-500 border border-slate-200/70 dark:border-slate-700/70 shadow-sm backdrop-blur")}>
       <span className="inline-flex" style={playing ? { animation: `mp-beat ${(60 / bpm).toFixed(3)}s ease-in-out infinite` } : undefined}>
