@@ -80,7 +80,7 @@ export default function AddSongSheet({ onBuildNew, onPasteChart, onAiChords, onI
               <span className="text-slate-400 dark:text-slate-500">(also ChordPro, OnSong, PowerPoint, RTF)</span>
             </div>
             <button type="button" onClick={() => { onImportFile(); onClose(); }}
-              className="w-full h-11 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold flex items-center justify-center gap-2 transition-colors shadow-sm shadow-indigo-600/30">
+              className="w-full h-11 rounded-xl bg-[#735fee] hover:bg-[#6650e6] text-white text-sm font-semibold flex items-center justify-center gap-2 transition-colors shadow-sm shadow-violet-500/20">
               {ICON_FILE}
               Choose file
             </button>
@@ -142,7 +142,7 @@ function SheetBtn({ icon, label, desc, onClick, disabled, chevron, badge }: {
   return (
     <button type="button" onClick={onClick} disabled={disabled}
       className="w-full flex items-center gap-4 px-4 py-3.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-left disabled:opacity-40 disabled:cursor-not-allowed">
-      <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center text-indigo-500 dark:text-indigo-400 shrink-0">
+      <div className="w-10 h-10 rounded-xl bg-[#efe9fe] dark:bg-[#2a2440] flex items-center justify-center text-indigo-500 dark:text-indigo-400 shrink-0">
         {icon}
       </div>
       <div className="min-w-0 flex-1">

@@ -60,7 +60,10 @@ export default function Avatar({
   return (
     <span
       className={
-        "rounded-full overflow-hidden bg-gradient-to-br from-indigo-400 to-violet-500 text-white font-semibold flex items-center justify-center select-none " +
+        // Solid lavender fallback (not a Tailwind bg-gradient-*, which compiles to an
+        // "in oklab" gradient that some browsers drop — leaving white initials on
+        // nothing, i.e. an invisible avatar).
+        "rounded-full overflow-hidden bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff] ring-1 ring-inset ring-[#e0d6fb] dark:ring-[#3a3358] font-semibold flex items-center justify-center select-none " +
         className
       }
       // The initials are decorative next to the name shown beside them; the

@@ -80,7 +80,7 @@ export default function UpgradeModal({ currentPlan, userId, userEmail, reason, o
                 (featured ? "border-indigo-300 dark:border-indigo-700 ring-1 ring-indigo-200 dark:ring-indigo-900" : "border-slate-200 dark:border-slate-800")
               }>
                 {featured && (
-                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide bg-gradient-to-r from-indigo-500 to-violet-600 text-white">
+                  <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide bg-[#735fee] text-white">
                     Popular
                   </span>
                 )}
@@ -112,7 +112,7 @@ export default function UpgradeModal({ currentPlan, userId, userEmail, reason, o
                     (isCurrent
                       ? "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500"
                       : featured
-                        ? "bg-gradient-to-br from-indigo-500 to-violet-600 text-white hover:from-indigo-600 hover:to-violet-700 disabled:opacity-60"
+                        ? "bg-[#735fee] text-white hover:bg-[#6650e6] disabled:opacity-60"
                         : "bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-white disabled:opacity-60")
                   }
                 >

@@ -3686,7 +3686,7 @@ export default function Home() {
               </button>
               <button type="button" disabled={!saveAsPrompt.title.trim()}
                 onClick={() => { void saveAsCopy(saveAsPrompt.song, saveAsPrompt.title.trim(), saveAsPrompt.after); setSaveAsPrompt(null); }}
-                className="h-10 px-4 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed text-white transition-colors shadow-sm shadow-indigo-600/30">
+                className="h-10 px-4 rounded-lg text-sm font-semibold bg-[#735fee] hover:bg-[#6650e6] disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed text-white transition-colors shadow-sm shadow-violet-500/20">
                 Save as
               </button>
             </div>
@@ -3722,7 +3722,7 @@ function UnsavedModal({ onSave, onSaveAs, onDiscard, onCancel }: { onSave: () =>
         <h2 className="font-bold text-lg mb-1">Unsaved changes</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Save your changes before leaving, or discard them.</p>
         <div className="flex flex-col gap-2">
-          <button type="button" onClick={onSave} className="w-full h-10 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors">Save changes</button>
+          <button type="button" onClick={onSave} className="w-full h-10 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] transition-colors">Save changes</button>
           <button type="button" onClick={onSaveAs} className="w-full h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">Save as…</button>
           <button type="button" onClick={onDiscard} className="w-full h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 text-sm font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">Discard changes</button>
           <button type="button" onClick={onCancel} className="w-full h-10 text-slate-400 dark:text-slate-500 text-sm hover:text-slate-600 dark:hover:text-slate-300 transition-colors">Cancel — keep editing</button>
@@ -3810,7 +3810,7 @@ function TopNav({
               Opens SupportModal. */}
           <button type="button" onClick={() => setSupportOpen(true)}
             aria-label="Support Worship+" title="Support Worship+"
-            className="w-9 h-9 shrink-0 flex items-center justify-center text-[#6d5bf0] dark:text-[#b3a3ff] hover:text-[#5b3be0] dark:hover:text-violet-200 transition-colors">
+            className="w-9 h-9 shrink-0 flex items-center justify-center text-[#6350ef] dark:text-[#b3a3ff] hover:text-[#5b3be0] dark:hover:text-violet-200 transition-colors">
             {/* Lucide "coffee" (ISC) */}
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M10 2v2" /><path d="M14 2v2" /><path d="M6 2v2" />
@@ -4141,7 +4141,7 @@ function BottomTabs({ view, onNavigate, onAdd }: { view: View; onNavigate: (v: V
         icon={<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>} />
       <div className="flex-1 flex items-center justify-center">
         <button type="button" onClick={onAdd} aria-label="Add song"
-          className="w-10 h-10 rounded-full bg-gradient-to-br from-[#7a5cff] to-[#9a80ff] text-white shadow-md shadow-violet-500/30 hover:from-[#6f4cf0] hover:to-[#8f71ff] flex items-center justify-center transition-colors">
+          className="w-10 h-10 rounded-full bg-[#735fee] text-white shadow-md shadow-violet-500/30 hover:bg-[#6650e6] flex items-center justify-center transition-colors">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
       </div>
@@ -4176,7 +4176,7 @@ function Placeholder({ icon, title, body }: { icon: "folder" | "users"; title: s
   return (
     <div className="max-w-3xl w-full mx-auto px-4 sm:px-6 py-12 md:py-16">
       <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-10 md:p-14 text-center">
-        <div className="inline-flex w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 items-center justify-center text-indigo-500 dark:text-indigo-400 mb-4">
+        <div className="inline-flex w-14 h-14 rounded-2xl bg-[#efe9fe] dark:bg-[#2a2440] items-center justify-center text-indigo-500 dark:text-indigo-400 mb-4">
           {icon === "folder" ? (
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
           ) : (
@@ -4195,7 +4195,7 @@ function EmptyState({ message, cta, onAction }: { message: string; cta: string; 
     <div className="max-w-md w-full mx-auto px-4 sm:px-6 py-16 text-center">
       <p className="text-slate-500 dark:text-slate-400 mb-4">{message}</p>
       <button type="button" onClick={onAction}
-        className="h-10 px-4 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white transition-colors">
+        className="h-10 px-4 rounded-lg text-sm font-medium bg-[#735fee] hover:bg-[#6650e6] text-white transition-colors">
         {cta}
       </button>
     </div>
@@ -4224,7 +4224,7 @@ function DeleteVersionsPrompt({ name, titles, onChoose }: {
         </div>
         <div className="flex flex-col gap-2">
           <button type="button" onClick={() => onChoose("save")}
-            className="h-10 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold">Save to library &amp; delete setlist</button>
+            className="h-10 rounded-xl bg-[#735fee] hover:bg-[#6650e6] text-white text-sm font-semibold">Save to library &amp; delete setlist</button>
           <button type="button" onClick={() => onChoose("delete")}
             className="h-10 rounded-xl text-sm font-medium text-rose-600 dark:text-rose-400 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-950/60">Delete anyway</button>
           <button type="button" onClick={() => onChoose("cancel")}

@@ -123,7 +123,7 @@ export default function SupportForm({ onSubmitted }: { onSubmitted?: () => void 
           type="button"
           onClick={submit}
           disabled={submitting}
-          className="h-10 px-4 rounded-xl text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-60"
+          className="h-10 px-4 rounded-xl text-sm font-semibold bg-[#735fee] text-white hover:bg-[#6650e6] transition-colors disabled:opacity-60"
         >
           {submitting ? "Sending…" : "Send message"}
         </button>

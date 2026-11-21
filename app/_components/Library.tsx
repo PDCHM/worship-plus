@@ -295,7 +295,7 @@ export default function Library({
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
               {heading}
             </h1>
-            <button onClick={()=>setAddSheetOpen(true)} className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center hover:bg-indigo-700 transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+            <button onClick={()=>setAddSheetOpen(true)} className="w-8 h-8 rounded-full bg-[#735fee] text-white flex items-center justify-center hover:bg-[#6650e6] transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
           </div>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             {filtered.length} {filtered.length === 1 ? "song" : "songs"}
@@ -382,7 +382,7 @@ export default function Library({
               <div className="relative">
                 <button type="button" onClick={() => setPanel((p) => (p === "filter" ? null : "filter"))}
                   aria-haspopup="menu" aria-expanded={panel === "filter"}
-                  className={"h-10 px-3 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 " + (anyFilter ? "bg-indigo-600 text-white hover:bg-indigo-700" : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700")}>
+                  className={"h-10 px-3 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 " + (anyFilter ? "bg-[#efe9fe] text-[#6350ef] ring-1 ring-inset ring-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:ring-[#3a3358] hover:bg-[#e6dcfd] dark:hover:bg-[#332c4f]" : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700")}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
                   <span className="hidden sm:inline">Filter</span>
                   {filterCount > 0 && <span className="ml-0.5 min-w-[18px] h-[18px] px-1 rounded-full text-[11px] font-bold flex items-center justify-center bg-white/25 text-white">{filterCount}</span>}
@@ -405,7 +405,7 @@ export default function Library({
                         <div className="flex flex-wrap gap-1.5">
                           {availableKeys.map((k) => (
                             <button key={k} type="button" onClick={() => setKeyFilter((cur) => (cur === k ? null : k))}
-                              className={"h-8 min-w-8 px-2 rounded-lg text-sm font-semibold transition-colors " + (keyFilter === k ? "bg-indigo-600 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600")}>{k}</button>
+                              className={"h-8 min-w-8 px-2 rounded-lg text-sm font-semibold transition-colors " + (keyFilter === k ? "bg-[#efe9fe] text-[#6350ef] ring-1 ring-inset ring-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:ring-[#3a3358]" : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600")}>{k}</button>
                           ))}
                         </div>
                       ) : <p className="text-xs text-slate-400 px-1">No keys in your songs yet.</p>}
@@ -714,7 +714,7 @@ export default function Library({
                 type="button"
                 disabled={!saveAsTarget.title.trim()}
                 onClick={() => { onSaveAsCopy?.(saveAsTarget.songId, saveAsTarget.title.trim()); setSaveAsTarget(null); }}
-                className="h-10 px-4 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed text-white transition-colors shadow-sm shadow-indigo-600/30"
+                className="h-10 px-4 rounded-lg text-sm font-semibold bg-[#735fee] hover:bg-[#6650e6] disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed text-white transition-colors shadow-sm shadow-violet-500/20"
               >
                 Save as
               </button>
@@ -919,7 +919,7 @@ function LibraryWelcome({
         <button
           type="button"
           onClick={onImportPhoto}
-          className="w-full flex items-center gap-4 p-4 rounded-2xl bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-sm shadow-indigo-600/20"
+          className="w-full flex items-center gap-4 p-4 rounded-2xl bg-[#735fee] text-white hover:bg-[#6650e6] transition-colors shadow-sm shadow-violet-500/20"
         >
           <span className="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center shrink-0">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -938,7 +938,7 @@ function LibraryWelcome({
           onClick={onImportFile}
           className="w-full flex items-center gap-4 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-800 transition-colors"
         >
-          <span className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+          <span className="w-10 h-10 rounded-xl bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff] flex items-center justify-center shrink-0">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
             </svg>
@@ -955,7 +955,7 @@ function LibraryWelcome({
           onClick={onNewSong}
           className="w-full flex items-center gap-4 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-800 transition-colors"
         >
-          <span className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+          <span className="w-10 h-10 rounded-xl bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff] flex items-center justify-center shrink-0">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z" />
             </svg>
@@ -1011,7 +1011,7 @@ function Checkbox({ checked }: { checked: boolean }) {
       className={
         "w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors " +
         (checked
-          ? "bg-indigo-600 border-indigo-600 text-white"
+          ? "bg-[#efe9fe] border-[#b9abf7] text-[#6350ef] dark:bg-[#2a2440] dark:border-[#6a5bc4] dark:text-[#b3a3ff]"
           : "border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800")
       }
     >
@@ -1025,7 +1025,7 @@ function Checkbox({ checked }: { checked: boolean }) {
 // Active-option check for the Sort menu / Favourites toggle.
 function CheckMark() {
   return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-600 dark:text-indigo-400 shrink-0"><polyline points="20 6 9 17 4 12"/></svg>
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" className="text-[#6350ef] dark:text-[#b3a3ff] shrink-0"><polyline points="20 6 9 17 4 12"/></svg>
   );
 }
 // Small ✕ inside an active-filter chip.
@@ -1055,7 +1055,7 @@ function ViewBtn({
       aria-pressed={active}
       className={`w-10 h-10 flex items-center justify-center transition-colors ${
         active
-          ? "bg-indigo-600 text-white"
+          ? "bg-[#efe9fe] text-[#6350ef] ring-1 ring-inset ring-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:ring-[#3a3358]"
           : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
       }`}
     >
@@ -1220,7 +1220,7 @@ function SongCard({
             {song.artist || "Unknown artist"}
           </p>
         </div>
-        <span className="shrink-0 inline-flex items-center justify-center min-w-[2.5rem] h-7 px-2 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-xs font-bold uppercase tracking-wide">
+        <span className="shrink-0 inline-flex items-center justify-center min-w-[2.5rem] h-7 px-2 rounded-md bg-[#efe9fe] dark:bg-[#2a2440] text-indigo-700 dark:text-indigo-300 text-xs font-bold uppercase tracking-wide">
           {song.key}
         </span>
       </div>
@@ -1254,7 +1254,7 @@ function SortHeader({
     <button
       type="button"
       onClick={onClick}
-      className={"text-[11px] font-semibold uppercase tracking-wider transition-colors flex items-center gap-1 " + (center ? "justify-center " : "") + (active ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200")}
+      className={"text-[11px] font-semibold uppercase tracking-wider transition-colors flex items-center gap-1 " + (center ? "justify-center " : "") + (active ? "text-[#6350ef] dark:text-[#b3a3ff]" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200")}
     >
       <span>{label}</span>
       {active && <span aria-hidden>{sortDir === "asc" ? "↑" : "↓"}</span>}

@@ -100,7 +100,7 @@ function NoGroupView({ onCreateGroup, showToast }: GroupsViewProps) {
   };
   return (
     <div className="max-w-md w-full mx-auto px-4 py-16 text-center">
-      <div className="w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center mx-auto mb-5">
+      <div className="w-16 h-16 rounded-2xl bg-[#efe9fe] dark:bg-[#2a2440] flex items-center justify-center mx-auto mb-5">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-indigo-500">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
           <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
@@ -116,7 +116,7 @@ function NoGroupView({ onCreateGroup, showToast }: GroupsViewProps) {
             className="w-full h-10 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-indigo-400" />
           <div className="flex gap-2">
             <button type="button" onClick={handleCreate} disabled={loading||!name.trim()}
-              className="flex-1 h-10 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50">
+              className="flex-1 h-10 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] disabled:opacity-50">
               {loading ? "Creating…" : "Create Team"}
             </button>
             <button type="button" onClick={() => { setCreating(false); setName(""); }}
@@ -125,7 +125,7 @@ function NoGroupView({ onCreateGroup, showToast }: GroupsViewProps) {
         </div>
       ) : (
         <button type="button" onClick={() => setCreating(true)}
-          className="w-full h-11 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors">
+          className="w-full h-11 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] transition-colors">
           Create Your Team
         </button>
       )}
@@ -163,7 +163,7 @@ function TeamListView({ memberships, onSelect, onCreateGroup, showToast }: {
         </div>
         {!creating && (
           <button type="button" onClick={() => setCreating(true)}
-            className="h-9 px-4 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 flex items-center gap-1.5">
+            className="h-9 px-4 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] flex items-center gap-1.5">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             New Team
           </button>
@@ -177,7 +177,7 @@ function TeamListView({ memberships, onSelect, onCreateGroup, showToast }: {
             className="w-full h-10 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-indigo-400" />
           <div className="flex gap-2">
             <button type="button" onClick={handleCreate} disabled={loading||!name.trim()}
-              className="flex-1 h-10 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50">
+              className="flex-1 h-10 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] disabled:opacity-50">
               {loading ? "Creating…" : "Create Team"}
             </button>
             <button type="button" onClick={() => { setCreating(false); setName(""); }}
@@ -191,7 +191,7 @@ function TeamListView({ memberships, onSelect, onCreateGroup, showToast }: {
           return (
             <button key={group.id} type="button" onClick={() => onSelect(group.id)}
               className="w-full flex items-center gap-3 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-indigo-300 transition-colors text-left">
-              <div className="w-11 h-11 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center text-indigo-600 dark:text-indigo-400 font-semibold shrink-0">
+              <div className="w-11 h-11 rounded-xl bg-[#efe9fe] dark:bg-[#2a2440] flex items-center justify-center text-[#6350ef] dark:text-[#b3a3ff] font-semibold shrink-0">
                 {/^[0-9]/.test(group.name.trim()) ? (
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                 ) : group.name.charAt(0).toUpperCase()}
@@ -200,7 +200,7 @@ function TeamListView({ memberships, onSelect, onCreateGroup, showToast }: {
                 <div className="text-sm font-semibold truncate">{group.name}</div>
                 <div className="text-xs text-slate-500 mt-0.5">{memberCount} member{memberCount!==1?"s":""}</div>
               </div>
-              <span className={"text-xs font-semibold px-2.5 py-1 rounded-lg shrink-0 "+(isLeader?"bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400":"bg-slate-100 dark:bg-slate-800 text-slate-500")}>
+              <span className={"text-xs font-semibold px-2.5 py-1 rounded-lg shrink-0 "+(isLeader?"bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff]":"bg-slate-100 dark:bg-slate-800 text-slate-500")}>
                 {ROLE_LABEL[role]}
               </span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="text-slate-300 shrink-0"><polyline points="9 18 15 12 9 6"/></svg>
@@ -281,7 +281,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
           )}
           <p className="text-sm text-slate-500 mt-0.5">{members.length} member{members.length!==1?"s":""}</p>
         </div>
-        <span className="px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 text-xs font-semibold mt-1">Leader</span>
+        <span className="px-2.5 py-1 rounded-lg bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff] text-xs font-semibold mt-1">Leader</span>
       </div>
       <div className="flex gap-1 mb-4 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl w-fit">
         {(["members","songs"] as const).map(t => (
@@ -295,7 +295,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
         <div>
           <div className="flex justify-end mb-3">
             <button type="button" onClick={() => setAddOpen(true)}
-              className="h-9 px-4 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 flex items-center gap-1.5">
+              className="h-9 px-4 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] flex items-center gap-1.5">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add Member
             </button>
           </div>
@@ -311,7 +311,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
                 <div key={m.id} data-member-row
                   className={"flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-4 py-3 "+(idx<members.length-1?"border-b border-slate-100 dark:border-slate-800":"")}>
                   <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <div className="w-10 h-10 rounded-full bg-[#efe9fe] dark:bg-[#2a2440] flex items-center justify-center text-[#6d5bf0] dark:text-[#b3a3ff] text-sm font-semibold shrink-0">
+                    <div className="w-10 h-10 rounded-full bg-[#efe9fe] dark:bg-[#2a2440] flex items-center justify-center text-[#6350ef] dark:text-[#b3a3ff] text-sm font-semibold shrink-0">
                       {initialsFrom(m.displayName, m.email) || <PersonGlyph />}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -333,7 +333,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
                       RLS). */}
                   <div className="flex items-center justify-end gap-2 shrink-0 self-end sm:self-center">
                     {m.role === "leader" ? (
-                      <span className="h-8 inline-flex items-center text-xs font-semibold px-3 rounded-lg bg-[#efe9fe] dark:bg-[#2a2440] text-[#6d5bf0] dark:text-[#b3a3ff]">Leader</span>
+                      <span className="h-8 inline-flex items-center text-xs font-semibold px-3 rounded-lg bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff]">Leader</span>
                     ) : m.userId === userId ? (
                       <span className="h-8 inline-flex items-center text-xs font-medium px-3 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500">{ROLE_LABEL[m.role]}</span>
                     ) : (
@@ -349,7 +349,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
                     )}
                     {m.status==="pending" && m.userId !== userId && (
                       <button type="button" onClick={() => copyInvite(m.id, m.displayName??"")}
-                        className="h-8 px-3 rounded-lg text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 transition-colors">
+                        className="h-8 px-3 rounded-lg text-xs font-semibold bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff] hover:bg-indigo-100 transition-colors">
                         Invite
                       </button>
                     )}
@@ -370,7 +370,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
         <div>
           <div className="flex justify-end mb-3">
             <button type="button" onClick={() => setAddSongsOpen(true)}
-              className="h-9 px-4 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 flex items-center gap-1.5">
+              className="h-9 px-4 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] flex items-center gap-1.5">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add Songs
             </button>
           </div>
@@ -446,7 +446,7 @@ function MemberView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
       </button>
       <div className="flex items-start justify-between mb-6">
         <div><h1 className="text-2xl font-bold">{group.name}</h1><p className="text-sm text-slate-500 mt-0.5">{sharedSongs.length} shared song{sharedSongs.length!==1?"s":""}</p></div>
-        <span className={"px-2.5 py-1 rounded-lg text-xs font-semibold mt-1 "+(myRole==="editor"?"bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400":"bg-slate-100 dark:bg-slate-800 text-slate-500")}>{ROLE_LABEL[myRole]}</span>
+        <span className={"px-2.5 py-1 rounded-lg text-xs font-semibold mt-1 "+(myRole==="editor"?"bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff]":"bg-slate-100 dark:bg-slate-800 text-slate-500")}>{ROLE_LABEL[myRole]}</span>
       </div>
       <TeamSetlistList setlists={teamSetlists} onOpen={onOpenSetlist} />
       {sharedSongs.length===0 ? (
@@ -539,7 +539,7 @@ function AddMemberModal({ groupId, suggestions, onAdd, onClose, showToast }: { g
                 {matches.map(s => (
                   <button key={s.id} type="button" onMouseDown={(e) => { e.preventDefault(); pick(s); }}
                     className="w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-2">
-                    <span className="w-7 h-7 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 text-xs font-semibold flex items-center justify-center shrink-0">{initialsFrom(s.displayName) || <PersonGlyph />}</span>
+                    <span className="w-7 h-7 rounded-full bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff] text-xs font-semibold flex items-center justify-center shrink-0">{initialsFrom(s.displayName) || <PersonGlyph />}</span>
                     <span className="min-w-0">
                       <span className="block text-sm font-medium truncate">{s.displayName}</span>
                       {insLabel(s) && <span className="block text-xs text-slate-400 truncate">{insLabel(s)}</span>}
@@ -554,7 +554,7 @@ function AddMemberModal({ groupId, suggestions, onAdd, onClose, showToast }: { g
             <div className="flex gap-2">
               {[["member","Member"],["editor","Editor"],["leader","Leader"]].map(([v,l]) => (
                 <button key={v} type="button" onClick={() => setRole(v)}
-                  className={"flex-1 h-9 rounded-xl text-sm font-medium border transition-colors "+(role===v?"border-indigo-500 bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600":"border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400")}>
+                  className={"flex-1 h-9 rounded-xl text-sm font-medium border transition-colors "+(role===v?"border-indigo-500 bg-[#efe9fe] dark:bg-[#2a2440] text-indigo-600":"border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400")}>
                   {l}
                 </button>
               ))}
@@ -566,7 +566,7 @@ function AddMemberModal({ groupId, suggestions, onAdd, onClose, showToast }: { g
             <div className="grid grid-cols-4 gap-1.5">
               {INSTRUMENTS.map(ins => (
                 <button key={ins.id} type="button" onClick={() => setInstrument(ins.id)}
-                  className={"rounded-xl p-2 text-center border transition-all "+(instrument===ins.id?"border-indigo-500 bg-indigo-50 dark:bg-indigo-950/60":"border-slate-200 dark:border-slate-700 hover:border-indigo-300")}>
+                  className={"rounded-xl p-2 text-center border transition-all "+(instrument===ins.id?"border-indigo-500 bg-[#efe9fe] dark:bg-[#2a2440]":"border-slate-200 dark:border-slate-700 hover:border-indigo-300")}>
                   <div className="text-base">{ins.emoji}</div>
                   <div className={"text-[10px] font-medium mt-0.5 "+(instrument===ins.id?"text-indigo-600":"text-slate-500")}>{ins.label}</div>
                 </button>
@@ -580,7 +580,7 @@ function AddMemberModal({ groupId, suggestions, onAdd, onClose, showToast }: { g
         </div>
         <div className="px-5 pb-5">
           <button type="button" onClick={handleAdd} disabled={loading||!name.trim()}
-            className="w-full h-10 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50">
+            className="w-full h-10 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] disabled:opacity-50">
             {loading ? "Adding…" : "Add Member"}
           </button>
         </div>

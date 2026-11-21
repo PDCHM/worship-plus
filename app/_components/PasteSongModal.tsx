@@ -135,7 +135,7 @@ export default function PasteSongModal({ open, onClose, aiIntent = false, onImpo
                         const row = buildChordLine(line.chords, line.lyric);
                         return (
                           <div key={line.id}>
-                            {row && <div className="whitespace-pre font-semibold text-indigo-600 dark:text-indigo-400">{row}</div>}
+                            {row && <div className="whitespace-pre font-semibold text-[#6350ef] dark:text-[#b3a3ff]">{row}</div>}
                             {line.lyric && <div className="whitespace-pre text-slate-800 dark:text-slate-100">{line.lyric}</div>}
                           </div>
                         );
@@ -209,7 +209,7 @@ export default function PasteSongModal({ open, onClose, aiIntent = false, onImpo
             type="button"
             onClick={handleImport}
             disabled={!text.trim()}
-            className="h-10 px-4 rounded-lg text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed text-white transition-colors shadow-sm shadow-indigo-600/30"
+            className="h-10 px-4 rounded-lg text-sm font-medium bg-[#735fee] hover:bg-[#6650e6] disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed text-white transition-colors shadow-sm shadow-violet-500/20"
           >
             {aiIntent ? "Continue to chords" : step === "edit" ? "Review" : "Import Song"}
           </button>

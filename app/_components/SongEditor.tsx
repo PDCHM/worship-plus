@@ -118,23 +118,23 @@ function writeSongView(songId: string, prefs: SongViewPrefs) {
 // Toolbar buttons. At REST they all match (light-grey rounded square, slate
 // icon — same as highlighter / link / more), so the row looks uniform.
 //   • Edit: a toggle — the round lavender circle (#efe9fe / #e0d6fb border /
-//     #6d5bf0 icon; dark #2a2440 / #3a3358 / #b3a3ff) shows while edit mode
+//     #6350ef icon; dark #2a2440 / #3a3358 / #b3a3ff) shows while edit mode
 //     is ON.
 //   • Play (perform): a plain momentary button that LAUNCHES fullscreen
 //     perform mode — no active/selected state, no circle.
 // Same size in every state (32px / 36px on sm+), so toggling never shifts the
 // layout or wraps the toolbar.
-// Save (primary action): brand purple #7a5cff — lighter than the old indigo-600
-// so it no longer dominates, still clearly a filled, tappable primary button.
+// Save (primary action): the app-wide primary purple #735fee — lighter than
+// the old indigo so it no longer dominates, white text still 4.56:1 (AA).
 const SAVE_BTN =
-  "bg-[#7a5cff] hover:bg-[#6d5bf0] active:bg-[#6350e6] text-white shadow-sm shadow-violet-500/20 transition-colors";
+  "bg-[#735fee] hover:bg-[#6650e6] active:bg-[#5a46dc] text-white shadow-sm shadow-violet-500/20 transition-colors";
 
 const TOOLBAR_BTN =
   "h-8 w-8 sm:h-9 sm:w-9 shrink-0 border flex items-center justify-center transition-colors";
 const TOOLBAR_BTN_REST =
   "rounded-lg border-transparent bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300";
 const TOOLBAR_BTN_ACTIVE =
-  "rounded-full bg-[#efe9fe] border-[#e0d6fb] text-[#6d5bf0] dark:bg-[#2a2440] dark:border-[#3a3358] dark:text-[#b3a3ff]";
+  "rounded-full bg-[#efe9fe] border-[#e0d6fb] text-[#6350ef] dark:bg-[#2a2440] dark:border-[#3a3358] dark:text-[#b3a3ff]";
 
 // Edit — "pencil + line".
 function PencilLineIcon() {
@@ -309,7 +309,7 @@ function ToolBtn({
 }) {
   const toneClasses =
     tone === "accent"
-      ? "text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/60"
+      ? "text-[#6350ef] dark:text-[#b3a3ff] hover:bg-indigo-50 dark:hover:bg-indigo-950/60"
       : tone === "danger"
         ? "text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
         : "text-slate-500 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-100 dark:hover:bg-slate-800";
@@ -338,7 +338,7 @@ function PasteHint({
     <button
       type="button"
       onClick={onClick}
-      className="w-full py-2.5 rounded-lg border-2 border-dashed border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 text-sm font-medium hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors flex items-center justify-center gap-2 print:hidden"
+      className="w-full py-2.5 rounded-lg border-2 border-dashed border-indigo-300 dark:border-indigo-700 text-[#6350ef] dark:text-[#b3a3ff] text-sm font-medium hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:border-indigo-400 dark:hover:border-indigo-500 transition-colors flex items-center justify-center gap-2 print:hidden"
     >
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
         <rect x="9" y="9" width="13" height="13" rx="2" />
@@ -868,7 +868,7 @@ function SectionStylesPanel({
             Close
           </button>
           <button type="button" onClick={() => { void onSave(settings); onClose(); }}
-            className="h-9 px-4 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition-colors shadow-sm shadow-indigo-600/30">
+            className="h-9 px-4 rounded-lg text-sm font-semibold bg-[#735fee] hover:bg-[#6650e6] text-white transition-colors shadow-sm shadow-violet-500/20">
             Save
           </button>
         </footer>
@@ -962,7 +962,7 @@ function LineToolButton({
           // tightens to 28px on desktop where pointer precision is fine.
           "w-11 h-11 sm:w-7 sm:h-7 rounded-md flex items-center justify-center transition-colors " +
           (active
-            ? "text-indigo-500 bg-indigo-50 dark:bg-indigo-950/60"
+            ? "text-indigo-500 bg-[#efe9fe] dark:bg-[#2a2440]"
             : destructive
               ? "text-rose-500 dark:text-rose-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
               : "text-slate-400 dark:text-slate-500 hover:text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/60")
@@ -3252,7 +3252,7 @@ export default function SongEditor({
                 <button type="button"
                   onClick={() => onPrivateVersion?.("make", song)}
                   title="Make your own private copy of this song for this setlist — it goes in My Versions; only you will see it. The shared song stays as is."
-                  className="h-7 px-2 mr-1 rounded-md flex items-center gap-1 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors">
+                  className="h-7 px-2 mr-1 rounded-md flex items-center gap-1 text-[11px] font-semibold text-[#6350ef] dark:text-[#b3a3ff] hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                   <span className="hidden sm:inline">My own version</span>
                 </button>
@@ -3262,7 +3262,7 @@ export default function SongEditor({
                 disabled={!setlistContext.onPrev}
                 title="Previous song"
                 aria-label="Previous song"
-                className="w-7 h-7 rounded-md flex items-center justify-center text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                className="w-7 h-7 rounded-md flex items-center justify-center text-[#6350ef] dark:text-[#b3a3ff] hover:bg-indigo-100 dark:hover:bg-indigo-900/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
               </button>
               <button type="button"
@@ -3270,7 +3270,7 @@ export default function SongEditor({
                 disabled={!setlistContext.onNext}
                 title="Next song"
                 aria-label="Next song"
-                className="w-7 h-7 rounded-md flex items-center justify-center text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                className="w-7 h-7 rounded-md flex items-center justify-center text-[#6350ef] dark:text-[#b3a3ff] hover:bg-indigo-100 dark:hover:bg-indigo-900/50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
               </button>
             </div>
@@ -3325,7 +3325,7 @@ export default function SongEditor({
             {song.userId && song.userId !== currentUserId && (
               <span
                 title="This song is shared with you. Saves apply for everyone with edit access."
-                className="px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 text-[11px] font-semibold uppercase tracking-wider"
+                className="px-2 py-0.5 rounded-full bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff] text-[11px] font-semibold uppercase tracking-wider"
               >
                 Shared
               </span>
@@ -3374,7 +3374,7 @@ export default function SongEditor({
             Key
             <div className="relative">
               <button type="button" onClick={() => { setKeyPickerOpen(o => !o); setCapoPickerOpen(false); }}
-                className="font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 px-1.5 py-0.5 rounded-md transition-colors">
+                className="font-semibold text-[#6350ef] dark:text-[#b3a3ff] hover:bg-indigo-50 dark:hover:bg-indigo-950/50 px-1.5 py-0.5 rounded-md transition-colors">
                 {song.key}
               </button>
               {keyPickerOpen && (
@@ -3401,7 +3401,7 @@ export default function SongEditor({
               <div className="relative">
                 <button type="button" onClick={() => { setTempoPanelOpen(o => !o); setKeyPickerOpen(false); setCapoPickerOpen(false); }}
                   title="Tempo & metronome"
-                  className="inline-flex items-center gap-1 font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 px-1.5 py-0.5 rounded-md transition-colors">
+                  className="inline-flex items-center gap-1 font-semibold text-[#6350ef] dark:text-[#b3a3ff] hover:bg-indigo-50 dark:hover:bg-indigo-950/50 px-1.5 py-0.5 rounded-md transition-colors">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 13.8"/></svg>
                   {song.bpm != null ? `${song.bpm} BPM` : "Tempo"}
                 </button>
@@ -3434,7 +3434,7 @@ export default function SongEditor({
               </button>
             ) : (
               <button type="button" onClick={() => { setCapoPickerOpen(o => !o); setKeyPickerOpen(false); }}
-                className="font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/50 px-1.5 py-0.5 rounded-md transition-colors">
+                className="font-semibold text-[#6350ef] dark:text-[#b3a3ff] hover:bg-indigo-50 dark:hover:bg-indigo-950/50 px-1.5 py-0.5 rounded-md transition-colors">
                 Capo
               </button>
             )}
@@ -3486,7 +3486,7 @@ export default function SongEditor({
             <button type="button" onClick={canUseAiChords ? openGenerate : onRequireUpgrade}
               title="Generate chords with AI"
               aria-label="Generate chords with AI"
-              className="h-8 sm:h-9 px-2 sm:px-3 rounded-lg text-sm font-medium flex items-center gap-1.5 bg-gradient-to-br from-indigo-500 to-violet-600 text-white hover:from-indigo-600 hover:to-violet-700 shadow-sm shadow-indigo-600/30 transition-colors">
+              className="h-8 sm:h-9 px-2 sm:px-3 rounded-lg text-sm font-medium flex items-center gap-1.5 bg-[#735fee] text-white hover:bg-[#6650e6] shadow-sm shadow-violet-500/20 transition-colors">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z"/>
               </svg>
@@ -3532,7 +3532,7 @@ export default function SongEditor({
                   (songLinks.length > 0 ? "text-slate-600 dark:text-slate-300" : "text-slate-400 dark:text-slate-500")}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                 {songLinks.length > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-indigo-600 text-white text-[10px] font-bold leading-none flex items-center justify-center">{songLinks.length}</span>
+                  <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#735fee] text-white text-[10px] font-bold leading-none flex items-center justify-center">{songLinks.length}</span>
                 )}
               </button>
               {refsOpen && (
@@ -4503,13 +4503,13 @@ export default function SongEditor({
 
       <div data-coach="quick-actions" className="fixed right-4 bottom-24 md:bottom-8 z-30 hidden sm:flex flex-col gap-2 print:hidden">
         <button type="button" onClick={() => setQuickActionsOpen(o => !o)} title="Quick Actions"
-          className={"w-11 h-11 rounded-full shadow-lg border flex items-center justify-center transition-colors " + (quickActionsOpen ? "bg-[#efe9fe] text-[#6d5bf0] border-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:border-[#3a3358]" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-indigo-50 dark:hover:bg-slate-700")}>
+          className={"w-11 h-11 rounded-full shadow-lg border flex items-center justify-center transition-colors " + (quickActionsOpen ? "bg-[#efe9fe] text-[#6350ef] border-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:border-[#3a3358]" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-indigo-50 dark:hover:bg-slate-700")}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
         {/* Auto-scroll has nothing to drive in fit mode — hide it there. */}
         {!fitMode && (
           <button type="button" onClick={() => setAutoScrolling(o => !o)} title={autoScrolling ? "Pause" : "Auto-scroll"}
-            className={"w-11 h-11 rounded-full shadow-lg border flex items-center justify-center transition-colors " + (autoScrolling ? "bg-[#efe9fe] text-[#6d5bf0] border-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:border-[#3a3358]" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-indigo-50 dark:hover:bg-slate-700")}>
+            className={"w-11 h-11 rounded-full shadow-lg border flex items-center justify-center transition-colors " + (autoScrolling ? "bg-[#efe9fe] text-[#6350ef] border-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:border-[#3a3358]" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-indigo-50 dark:hover:bg-slate-700")}>
             {autoScrolling
               ? <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
               : <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>}
@@ -4536,7 +4536,7 @@ export default function SongEditor({
       {dragGhost && (
         <div
           aria-hidden
-          className="fixed z-50 pointer-events-none font-bold px-1 rounded-md bg-indigo-600 text-white shadow-lg shadow-indigo-600/40 whitespace-nowrap print:hidden"
+          className="fixed z-50 pointer-events-none font-bold px-1 rounded-md bg-[#735fee] text-white shadow-lg shadow-violet-500/20 whitespace-nowrap print:hidden"
           style={{ left: dragGhost.x, top: dragGhost.y, fontSize: chordFontSize, fontFamily: lyricFontFamily, transform: "translate(-50%, -130%)" }}
         >
           {dragGhost.text}
@@ -4685,7 +4685,7 @@ export default function SongEditor({
                 <div className="grid grid-cols-6 gap-1.5">
                   {KEYS.map((k) => (
                     <button key={k} type="button" onClick={() => setGenKey(k)} disabled={generating}
-                      className={"h-9 px-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-50 " + (genKey === k ? "bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/40" : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300")}>
+                      className={"h-9 px-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-50 " + (genKey === k ? "bg-[#735fee] text-white shadow-md shadow-violet-500/20" : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300")}>
                       {k}
                     </button>
                   ))}
@@ -4697,7 +4697,7 @@ export default function SongEditor({
                 <div className="grid grid-cols-2 gap-1.5">
                   {(["Worship", "Gospel", "Contemporary", "Traditional"] as const).map((s) => (
                     <button key={s} type="button" onClick={() => setGenStyle(s)} disabled={generating}
-                      className={"h-10 px-3 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 " + (genStyle === s ? "bg-indigo-600 text-white" : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300")}>
+                      className={"h-10 px-3 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 " + (genStyle === s ? "bg-[#efe9fe] text-[#6350ef] ring-1 ring-inset ring-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:ring-[#3a3358]" : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300")}>
                       {s}
                     </button>
                   ))}
@@ -4707,7 +4707,7 @@ export default function SongEditor({
               {!generatedOnce ? (
                 <>
                   <button type="button" onClick={() => generateChords()} disabled={generating}
-                    className="w-full h-11 rounded-xl text-sm font-semibold bg-gradient-to-br from-indigo-500 to-violet-600 text-white hover:from-indigo-600 hover:to-violet-700 shadow-sm shadow-indigo-600/30 transition-colors flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
+                    className="w-full h-11 rounded-xl text-sm font-semibold bg-[#735fee] text-white hover:bg-[#6650e6] shadow-sm shadow-violet-500/20 transition-colors flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
                     {generating ? (
                       <>
                         <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
@@ -4760,7 +4760,7 @@ export default function SongEditor({
                         { key: "complex" as const, label: "Complex", sub: "full" },
                       ]).map((v) => (
                         <button key={v.key} type="button" onClick={() => generateChords(v.key)} disabled={generating}
-                          className={"h-12 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex flex-col items-center justify-center leading-none gap-0.5 " + (genComplexity === v.key ? "bg-indigo-600 text-white" : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300")}>
+                          className={"h-12 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex flex-col items-center justify-center leading-none gap-0.5 " + (genComplexity === v.key ? "bg-[#efe9fe] text-[#6350ef] ring-1 ring-inset ring-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:ring-[#3a3358]" : "bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300")}>
                           <span>{v.label}</span>
                           <span className={"text-[10px] " + (genComplexity === v.key ? "text-indigo-100" : "text-slate-400 dark:text-slate-500")}>{v.sub}</span>
                         </button>
@@ -4769,7 +4769,7 @@ export default function SongEditor({
                   </div>
 
                   <button type="button" onClick={() => setGenerateOpen(false)} disabled={generating}
-                    className="w-full h-11 rounded-xl text-sm font-semibold bg-gradient-to-br from-indigo-500 to-violet-600 text-white hover:from-indigo-600 hover:to-violet-700 shadow-sm shadow-indigo-600/30 transition-colors flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
+                    className="w-full h-11 rounded-xl text-sm font-semibold bg-[#735fee] text-white hover:bg-[#6650e6] shadow-sm shadow-violet-500/20 transition-colors flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed">
                     {generating ? (
                       <>
                         <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
@@ -4824,7 +4824,7 @@ export default function SongEditor({
                 <button type="button"
                   disabled={!copyTitle.trim()}
                   onClick={() => { onSaveAsCopy(copyTitle.trim(), song); setSaveAsCopyOpen(false); }}
-                  className="h-9 px-4 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed text-white transition-colors shadow-sm shadow-indigo-600/30">
+                  className="h-9 px-4 rounded-lg text-sm font-semibold bg-[#735fee] hover:bg-[#6650e6] disabled:bg-slate-200 dark:disabled:bg-slate-700 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed text-white transition-colors shadow-sm shadow-violet-500/20">
                   Save as
                 </button>
               </div>
@@ -5496,7 +5496,7 @@ function SoundToggle({ silent, onChange, variant }: {
         (present ? "w-7 h-7 " : "w-6 h-6 ") +
         (silent
           ? "bg-slate-200/80 dark:bg-slate-700/80 text-slate-500 dark:text-slate-400"
-          : "bg-indigo-100 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400")
+          : "bg-indigo-100 dark:bg-indigo-950/70 text-[#6350ef] dark:text-[#b3a3ff]")
       }>
       {silent
         // muted speaker
@@ -5601,7 +5601,7 @@ function MetronomePill({ bpm, playing, onToggle, raised, metronome, silent, onSi
       className={"inline-flex items-center rounded-full font-semibold tabular-nums " + (playing
         // PLAYING: prominent accent-filled stop control — bigger, filled, ring-lifted,
         // easy to hit to stop instantly.
-        ? "h-10 gap-2 pl-3 pr-4 text-sm bg-[#efe9fe] text-[#6d5bf0] border border-[#e0d6fb] shadow-md shadow-violet-500/15 dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:border-[#3a3358]"
+        ? "h-10 gap-2 pl-3 pr-4 text-sm bg-[#efe9fe] text-[#6350ef] border border-[#e0d6fb] shadow-md shadow-violet-500/15 dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:border-[#3a3358]"
         // IDLE: quiet + minimal — small, low-contrast, barely there.
         : "h-8 gap-1.5 pl-2 pr-2.5 text-xs bg-white/70 dark:bg-slate-900/70 text-slate-400 dark:text-slate-500 border border-slate-200/70 dark:border-slate-700/70 shadow-sm backdrop-blur")}>
       <span className="inline-flex" style={playing ? { animation: `mp-beat ${(60 / bpm).toFixed(3)}s ease-in-out infinite` } : undefined}>
@@ -5643,7 +5643,7 @@ function PrivateVersionBar({ pv, onAction }: {
         <span className="flex items-center gap-1">
           {pv.canShare && (
             <button type="button" onClick={() => onAction("share")} title="Replace the shared song in this setlist with your version, for everyone"
-              className={btn + " text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"}>Share with team</button>
+              className={btn + " text-[#6350ef] dark:text-[#b3a3ff] hover:bg-indigo-50 dark:hover:bg-indigo-950/40"}>Share with team</button>
           )}
           {!pv.inLibrary && (
             <button type="button" onClick={() => onAction("library")} title="Also keep this version in your library"

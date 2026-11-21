@@ -37,7 +37,7 @@ function PhotoFallback({ onTryPhotoImport }: { onTryPhotoImport: () => void }) {
         Snap a photo of your chord chart instead — it&apos;s the most reliable way to bring a song in.
       </p>
       <button type="button" onClick={onTryPhotoImport}
-        className="mt-2 inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors">
+        className="mt-2 inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-[#735fee] hover:bg-[#6650e6] text-white text-sm font-semibold transition-colors">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
           <circle cx="12" cy="13" r="4" />
@@ -122,7 +122,7 @@ export default function SongSearchSheet({ findInLibrary, onOpenExisting, onCreat
               type="button"
               onClick={search}
               disabled={!query.trim() || loading}
-              className="h-10 px-4 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 flex items-center justify-center gap-1.5 shrink-0"
+              className="h-10 px-4 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] disabled:opacity-50 flex items-center justify-center gap-1.5 shrink-0"
             >
               {loading ? (
                 <svg className="animate-spin" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
@@ -155,7 +155,7 @@ export default function SongSearchSheet({ findInLibrary, onOpenExisting, onCreat
                     <div className="text-base font-bold text-slate-900 dark:text-slate-100 truncate">{result.title}</div>
                     {result.artist && <div className="text-sm text-slate-500 dark:text-slate-400 truncate">{result.artist}</div>}
                   </div>
-                  <span className="shrink-0 inline-flex items-center justify-center min-w-[2.25rem] h-6 px-2 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-[11px] font-bold uppercase tracking-wide">
+                  <span className="shrink-0 inline-flex items-center justify-center min-w-[2.25rem] h-6 px-2 rounded-md bg-[#efe9fe] dark:bg-[#2a2440] text-indigo-700 dark:text-indigo-300 text-[11px] font-bold uppercase tracking-wide">
                     {result.key}
                   </span>
                 </div>
@@ -185,7 +185,7 @@ export default function SongSearchSheet({ findInLibrary, onOpenExisting, onCreat
                   <button
                     type="button"
                     onClick={() => onOpenExisting(existingId)}
-                    className="w-full h-11 rounded-xl text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 flex items-center justify-center gap-2"
+                    className="w-full h-11 rounded-xl text-sm font-semibold bg-[#735fee] text-white hover:bg-[#6650e6] flex items-center justify-center gap-2"
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
                     Open in library
@@ -197,7 +197,7 @@ export default function SongSearchSheet({ findInLibrary, onOpenExisting, onCreat
                 <button
                   type="button"
                   onClick={() => onCreateWithAi(result)}
-                  className="w-full h-11 rounded-xl text-sm font-semibold bg-gradient-to-br from-indigo-500 to-violet-600 text-white hover:from-indigo-600 hover:to-violet-700 shadow-sm shadow-indigo-600/30 flex items-center justify-center gap-2"
+                  className="w-full h-11 rounded-xl text-sm font-semibold bg-[#735fee] text-white hover:bg-[#6650e6] shadow-sm shadow-violet-500/20 flex items-center justify-center gap-2"
                 >
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z"/></svg>
                   Create with AI Chords

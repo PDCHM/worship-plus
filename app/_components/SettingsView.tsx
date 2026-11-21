@@ -54,7 +54,7 @@ export default function SettingsView({ settings, onChange, plan, onUpgrade }: Pr
             aria-checked={settings.darkMode}
             aria-label="Toggle dark mode"
             className={`relative w-12 h-7 rounded-full transition-colors ${
-              settings.darkMode ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
+              settings.darkMode ? "bg-[#9d8bff] dark:bg-[#7d6cf5]" : "bg-slate-200 dark:bg-slate-700"
             }`}
           >
             <span className={`absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-white shadow-md transition-transform ${
@@ -73,7 +73,7 @@ export default function SettingsView({ settings, onChange, plan, onUpgrade }: Pr
             role="switch"
             aria-checked={settings.capoByDefault}
             className={`relative w-12 h-7 rounded-full transition-colors ${
-              settings.capoByDefault ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
+              settings.capoByDefault ? "bg-[#9d8bff] dark:bg-[#7d6cf5]" : "bg-slate-200 dark:bg-slate-700"
             }`}
           >
             <span className={`absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-white shadow-md transition-transform ${
@@ -93,7 +93,7 @@ export default function SettingsView({ settings, onChange, plan, onUpgrade }: Pr
             aria-checked={settings.showMetronomePill}
             aria-label="Toggle metronome pill"
             className={`relative w-12 h-7 rounded-full transition-colors ${
-              settings.showMetronomePill ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-700"
+              settings.showMetronomePill ? "bg-[#9d8bff] dark:bg-[#7d6cf5]" : "bg-slate-200 dark:bg-slate-700"
             }`}
           >
             <span className={`absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-white shadow-md transition-transform ${
@@ -114,7 +114,7 @@ export default function SettingsView({ settings, onChange, plan, onUpgrade }: Pr
                 onClick={() => update({ printLayout: p })}
                 className={`h-10 px-4 text-sm font-medium transition-colors ${
                   settings.printLayout === p
-                    ? "bg-indigo-600 text-white"
+                    ? "bg-[#efe9fe] text-[#6350ef] ring-1 ring-inset ring-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:ring-[#3a3358]"
                     : "bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
                 }`}
               >
@@ -132,7 +132,7 @@ export default function SettingsView({ settings, onChange, plan, onUpgrade }: Pr
                 onClick={() => update({ printColumns: cols })}
                 className={`h-10 px-4 text-sm font-medium transition-colors ${
                   (settings.printColumns ?? 1) === cols
-                    ? "bg-indigo-600 text-white"
+                    ? "bg-[#efe9fe] text-[#6350ef] ring-1 ring-inset ring-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:ring-[#3a3358]"
                     : "bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
                 }`}
               >

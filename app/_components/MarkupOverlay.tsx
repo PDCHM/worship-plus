@@ -966,7 +966,7 @@ export default function MarkupOverlay({
             title="Done"
             onPointerDown={(e) => e.preventDefault()}
             onClick={commitNote}
-            className="w-8 h-8 shrink-0 rounded-md flex items-center justify-center bg-indigo-600 hover:bg-indigo-700 text-white transition-colors"
+            className="w-8 h-8 shrink-0 rounded-md flex items-center justify-center bg-[#735fee] hover:bg-[#6650e6] text-white transition-colors"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
           </button>
@@ -1040,7 +1040,7 @@ export default function MarkupOverlay({
               type="button"
               onClick={handleDone}
               aria-label="Done"
-              className="ml-0.5 h-10 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold flex items-center gap-1.5 transition-colors shrink-0"
+              className="ml-0.5 h-10 px-3 rounded-lg bg-[#735fee] hover:bg-[#6650e6] text-white text-sm font-semibold flex items-center gap-1.5 transition-colors shrink-0"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
               <span className="hidden sm:inline">Done</span>

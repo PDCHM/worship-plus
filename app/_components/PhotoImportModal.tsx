@@ -120,7 +120,7 @@ export default function PhotoImportModal({
             onChange={(e) => { void addFiles(e.target.files); e.target.value = ""; }} />
 
           <button type="button" onClick={() => onImport(items.map((it) => it.file))} disabled={busy || preparing || items.length === 0}
-            className="w-full h-11 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold flex items-center justify-center gap-2 transition-colors shadow-sm shadow-indigo-600/30 disabled:opacity-50 disabled:cursor-not-allowed">
+            className="w-full h-11 rounded-xl bg-[#735fee] hover:bg-[#6650e6] text-white text-sm font-semibold flex items-center justify-center gap-2 transition-colors shadow-sm shadow-violet-500/20 disabled:opacity-50 disabled:cursor-not-allowed">
             {busy ? (
               <><span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white animate-spin" /> Reading…</>
             ) : (

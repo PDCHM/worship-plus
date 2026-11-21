@@ -80,7 +80,7 @@ export default function SetlistPage() {
             <p className="text-slate-500 dark:text-slate-400 mb-4">
               {status === "error" ? "Something went wrong loading this setlist." : "This setlist doesn't exist or you don't have access to it."}
             </p>
-            <Link href="/" className="inline-flex h-10 px-4 items-center rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700">Open Worship+</Link>
+            <Link href="/" className="inline-flex h-10 px-4 items-center rounded-lg text-sm font-medium bg-[#735fee] text-white hover:bg-[#6650e6]">Open Worship+</Link>
           </div>
         )}
 
@@ -107,7 +107,7 @@ export default function SetlistPage() {
                       <span className="block text-sm font-medium truncate">{s.title}</span>
                       {s.artist && <span className="block text-xs text-slate-400 truncate">{s.artist}</span>}
                     </span>
-                    {s.key && <span className="shrink-0 inline-flex items-center justify-center min-w-[2.25rem] h-6 px-2 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-[11px] font-bold uppercase tracking-wide">{s.key}</span>}
+                    {s.key && <span className="shrink-0 inline-flex items-center justify-center min-w-[2.25rem] h-6 px-2 rounded-md bg-[#efe9fe] dark:bg-[#2a2440] text-indigo-700 dark:text-indigo-300 text-[11px] font-bold uppercase tracking-wide">{s.key}</span>}
                   </li>
                 ))}
               </ol>

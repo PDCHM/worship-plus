@@ -29,7 +29,7 @@ export default function GlobalError({
           <button
             type="button"
             onClick={() => reset()}
-            className="mt-5 h-10 px-5 rounded-xl text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+            className="mt-5 h-10 px-5 rounded-xl text-sm font-semibold bg-[#735fee] text-white hover:bg-[#6650e6] transition-colors"
           >
             Try again
           </button>

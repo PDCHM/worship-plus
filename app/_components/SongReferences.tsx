@@ -273,7 +273,7 @@ function LinkForm({
         <button type="button" onClick={() => setEditing(null)}
           className="h-8 px-3 rounded-lg bg-slate-100 dark:bg-slate-800 text-sm font-medium">Cancel</button>
         <button type="button" onClick={onSubmit} disabled={!editing.url.trim() || saving}
-          className="h-8 px-3 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50">
+          className="h-8 px-3 rounded-lg bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] disabled:opacity-50">
           {editing.id ? "Save" : "Add"}
         </button>
       </div>

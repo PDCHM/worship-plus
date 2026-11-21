@@ -80,7 +80,7 @@ export default function SubscriptionSection({ plan, onUpgrade }: Props) {
           <button
             type="button"
             onClick={onUpgrade}
-            className="h-10 px-4 rounded-xl text-sm font-semibold bg-gradient-to-br from-indigo-500 to-violet-600 text-white hover:from-indigo-600 hover:to-violet-700 shadow-sm shadow-indigo-600/30 transition-colors"
+            className="h-10 px-4 rounded-xl text-sm font-semibold bg-[#735fee] text-white hover:bg-[#6650e6] shadow-sm shadow-violet-500/20 transition-colors"
           >
             Upgrade
           </button>

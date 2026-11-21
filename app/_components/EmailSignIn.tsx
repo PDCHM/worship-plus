@@ -64,7 +64,7 @@ export default function EmailSignIn({
         <button
           type="button"
           onClick={() => { setSentTo(null); setEmail(""); }}
-          className="mt-3 text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+          className="mt-3 text-xs text-[#6350ef] dark:text-[#b3a3ff] hover:underline"
         >
           Use a different address
         </button>

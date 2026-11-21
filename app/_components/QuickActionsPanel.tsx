@@ -97,7 +97,7 @@ export default function QuickActionsPanel({
             <StepBtn onClick={() => onTranspose(prevKey)} label="Previous key">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="15 18 9 12 15 6"/></svg>
             </StepBtn>
-            <span className="w-8 text-center font-bold text-sm text-indigo-600 dark:text-indigo-400">{song.key}</span>
+            <span className="w-8 text-center font-bold text-sm text-[#6350ef] dark:text-[#b3a3ff]">{song.key}</span>
             <StepBtn onClick={() => onTranspose(nextKey)} label="Next key">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
             </StepBtn>
@@ -113,7 +113,7 @@ export default function QuickActionsPanel({
               {/* Tap the value to reset to 0 (no capo). */}
               <button type="button" onClick={() => onCapoChange(null)} disabled={capo === 0}
                 title="Tap to reset capo" aria-label="Reset capo"
-                className="w-8 text-center font-bold text-sm text-indigo-600 dark:text-indigo-400 enabled:hover:text-indigo-700 dark:enabled:hover:text-indigo-300 transition-colors disabled:cursor-default">
+                className="w-8 text-center font-bold text-sm text-[#6350ef] dark:text-[#b3a3ff] enabled:hover:text-indigo-700 dark:enabled:hover:text-indigo-300 transition-colors disabled:cursor-default">
                 {capo}
               </button>
               <StepBtn onClick={() => onCapoChange(Math.min(11, capo + 1))} label="Capo up" disabled={capo >= 11}>
@@ -235,7 +235,7 @@ function ChartFontPicker({ value, onChange }: { value: ChartFont; onChange: (fon
           {CHART_FONT_OPTIONS.map(opt => (
             <li key={opt.value} role="option" aria-selected={opt.value === value}>
               <button type="button" onClick={() => { onChange(opt.value); setOpen(false); }}
-                className={"w-full text-left px-3 py-1.5 text-sm transition-colors " + (opt.value === value ? "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-semibold" : "text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800")}
+                className={"w-full text-left px-3 py-1.5 text-sm transition-colors " + (opt.value === value ? "bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff] font-semibold" : "text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800")}
                 style={{ fontFamily: CHART_FONT_FAMILY[opt.value] }}>
                 {opt.label}
               </button>

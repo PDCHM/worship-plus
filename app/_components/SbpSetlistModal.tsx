@@ -95,7 +95,7 @@ export default function SbpSetlistModal({
               : mode === "new" ? { kind: "new", names }
               : { kind: "library" },
             )}
-            className="flex-1 min-w-0 h-11 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold truncate transition-colors shadow-sm shadow-indigo-600/30 disabled:opacity-50 disabled:cursor-not-allowed">
+            className="flex-1 min-w-0 h-11 px-4 rounded-xl bg-[#735fee] hover:bg-[#6650e6] text-white text-sm font-semibold truncate transition-colors shadow-sm shadow-violet-500/20 disabled:opacity-50 disabled:cursor-not-allowed">
             {confirmLabel}
           </button>
         </div>

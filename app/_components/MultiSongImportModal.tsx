@@ -67,7 +67,7 @@ export default function MultiSongImportModal({
         <div className="p-4 pt-2 space-y-2 border-t border-slate-100 dark:border-slate-800">
           <button type="button" disabled={!selected.length}
             onClick={() => onImport(selected.map((r) => ({ ...r.song, title: r.title.trim() || r.song.title })))}
-            className="w-full h-11 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold transition-colors shadow-sm shadow-indigo-600/30 disabled:opacity-50 disabled:cursor-not-allowed">
+            className="w-full h-11 rounded-xl bg-[#735fee] hover:bg-[#6650e6] text-white text-sm font-semibold transition-colors shadow-sm shadow-violet-500/20 disabled:opacity-50 disabled:cursor-not-allowed">
             {selected.length === 1 ? "Import 1 song" : `Import ${selected.length} songs`}
           </button>
           <button type="button" onClick={onImportAsOne}

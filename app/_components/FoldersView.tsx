@@ -170,7 +170,7 @@ export default function FoldersView(props: FoldersViewProps) {
         <button
           type="button"
           onClick={() => props.onNavigate("all")}
-          className="h-9 px-4 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700"
+          className="h-9 px-4 rounded-lg text-sm font-medium bg-[#735fee] text-white hover:bg-[#6650e6]"
         >
           Back
         </button>
@@ -255,14 +255,14 @@ function Overview({
       <div className="flex justify-end -mb-6">
         <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden" role="group" aria-label="Folders view mode">
           <button type="button" onClick={() => setViewMode("grid")} aria-pressed={viewMode === "grid"} aria-label="Grid view" title="Grid view"
-            className={"w-9 h-9 flex items-center justify-center transition-colors " + (viewMode === "grid" ? "bg-indigo-600 text-white" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")}>
+            className={"w-9 h-9 flex items-center justify-center transition-colors " + (viewMode === "grid" ? "bg-[#efe9fe] text-[#6350ef] ring-1 ring-inset ring-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:ring-[#3a3358]" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>
               <rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>
             </svg>
           </button>
           <button type="button" onClick={() => setViewMode("list")} aria-pressed={viewMode === "list"} aria-label="List view" title="List view"
-            className={"w-9 h-9 flex items-center justify-center transition-colors " + (viewMode === "list" ? "bg-indigo-600 text-white" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")}>
+            className={"w-9 h-9 flex items-center justify-center transition-colors " + (viewMode === "list" ? "bg-[#efe9fe] text-[#6350ef] ring-1 ring-inset ring-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:ring-[#3a3358]" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
               <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
@@ -275,7 +275,7 @@ function Overview({
       <section>
         <div className="flex items-center gap-2 mb-4 cursor-pointer group" onClick={() => setShowNewFolder(true)}>
           <h2 className="font-semibold text-base">Folders</h2>
-          <span className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-sm font-bold group-hover:bg-indigo-600 group-hover:text-white transition-colors">+</span>
+          <span className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-[#6350ef] dark:text-[#b3a3ff] flex items-center justify-center text-sm font-bold group-hover:bg-[#735fee] group-hover:text-white transition-colors">+</span>
         </div>
         {showNewFolder && (
           <NewNameInput
@@ -335,7 +335,7 @@ function Overview({
           onClick={() => (canUseSetlists ? setShowNewSetlist(true) : onRequireUpgrade())}
         >
           <h2 className="font-semibold text-base">Setlists</h2>
-          <span className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center text-sm font-bold group-hover:bg-indigo-600 group-hover:text-white transition-colors">+</span>
+          <span className="w-5 h-5 rounded-full bg-indigo-100 dark:bg-indigo-950/60 text-[#6350ef] dark:text-[#b3a3ff] flex items-center justify-center text-sm font-bold group-hover:bg-[#735fee] group-hover:text-white transition-colors">+</span>
         </div>
         {showNewSetlist && (
           <div className="mb-4 flex flex-col sm:flex-row gap-2">
@@ -365,7 +365,7 @@ function Overview({
               type="button"
               onClick={() => submit(newSetlistName, "setlist", newSetlistTeam || null)}
               disabled={!newSetlistName.trim()}
-              className="h-10 px-4 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+              className="h-10 px-4 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] disabled:opacity-50"
             >
               Create
             </button>
@@ -454,14 +454,14 @@ function ViewToggle({ value, onChange }: { value: "grid" | "list"; onChange: (v:
   return (
     <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden" role="group" aria-label="View mode">
       <button type="button" onClick={() => onChange("grid")} aria-pressed={value === "grid"} aria-label="Grid view" title="Grid view"
-        className={"w-9 h-9 flex items-center justify-center transition-colors " + (value === "grid" ? "bg-indigo-600 text-white" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")}>
+        className={"w-9 h-9 flex items-center justify-center transition-colors " + (value === "grid" ? "bg-[#efe9fe] text-[#6350ef] ring-1 ring-inset ring-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:ring-[#3a3358]" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>
           <rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>
         </svg>
       </button>
       <button type="button" onClick={() => onChange("list")} aria-pressed={value === "list"} aria-label="List view" title="List view"
-        className={"w-9 h-9 flex items-center justify-center transition-colors " + (value === "list" ? "bg-indigo-600 text-white" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")}>
+        className={"w-9 h-9 flex items-center justify-center transition-colors " + (value === "list" ? "bg-[#efe9fe] text-[#6350ef] ring-1 ring-inset ring-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:ring-[#3a3358]" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
           <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
@@ -499,7 +499,7 @@ function FolderDetail({
           <button
             type="button"
             onClick={() => onAddSongs(folder.id)}
-            className="h-8 px-3 rounded-lg text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5"
+            className="h-8 px-3 rounded-lg text-xs font-medium bg-[#735fee] text-white hover:bg-[#6650e6] flex items-center gap-1.5"
           >
             <PlusIconSm /> Add Songs
           </button>
@@ -511,7 +511,7 @@ function FolderDetail({
           <button
             type="button"
             onClick={() => onAddSongs(folder.id)}
-            className="text-indigo-600 dark:text-indigo-400 hover:underline"
+            className="text-[#6350ef] dark:text-[#b3a3ff] hover:underline"
           >
             Add some
           </button>
@@ -850,7 +850,7 @@ function SetlistDetail({
           <button
             type="button"
             onClick={() => onAddSongs(folder.id)}
-            className="h-8 px-3 rounded-lg text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 flex items-center gap-1.5 shrink-0"
+            className="h-8 px-3 rounded-lg text-xs font-medium bg-[#735fee] text-white hover:bg-[#6650e6] flex items-center gap-1.5 shrink-0"
           >
             <PlusIconSm /> Add Songs
           </button>
@@ -869,7 +869,7 @@ function SetlistDetail({
           <button
             type="button"
             onClick={() => onAddSongs(folder.id)}
-            className="text-indigo-600 dark:text-indigo-400 hover:underline"
+            className="text-[#6350ef] dark:text-[#b3a3ff] hover:underline"
           >
             Add some
           </button></>)}
@@ -1164,7 +1164,7 @@ function AddEventModal({ type, defaultLabel, defaultDate, edit, onSave, onClose 
         <div className="px-4 pb-4 flex justify-end gap-2">
           <button type="button" onClick={onClose} className="h-9 px-4 rounded-xl bg-slate-100 dark:bg-slate-800 text-sm font-medium">Cancel</button>
           <button type="button" onClick={save} disabled={!date || saving}
-            className="h-9 px-4 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50">{edit ? "Save" : "Add"}</button>
+            className="h-9 px-4 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] disabled:opacity-50">{edit ? "Save" : "Add"}</button>
         </div>
       </div>
     </div>
@@ -1253,7 +1253,7 @@ export function AddSongsModal({
             <button
               type="button"
               onClick={toggleAllVisible}
-              className="shrink-0 h-8 px-2 rounded-lg text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+              className="shrink-0 h-8 px-2 rounded-lg text-xs font-medium text-[#6350ef] dark:text-[#b3a3ff] hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
             >
               {allVisibleSelected ? "Clear" : "Select all"}
             </button>
@@ -1282,7 +1282,7 @@ export function AddSongsModal({
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                     </span>
                   ) : (
-                    <span className={"w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors " + (checked ? "bg-indigo-600 border-indigo-600 text-white" : "border-slate-300 dark:border-slate-600")}>
+                    <span className={"w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors " + (checked ? "bg-[#efe9fe] border-[#b9abf7] text-[#6350ef] dark:bg-[#2a2440] dark:border-[#6a5bc4] dark:text-[#b3a3ff]" : "border-slate-300 dark:border-slate-600")}>
                       {checked && (
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                       )}
@@ -1307,7 +1307,7 @@ export function AddSongsModal({
             type="button"
             onClick={handleDone}
             disabled={adding}
-            className="w-full h-9 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="w-full h-9 rounded-lg text-sm font-semibold bg-[#735fee] text-white hover:bg-[#6650e6] disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {adding ? "Adding…" : selected.size ? `Add ${selected.size} song${selected.size === 1 ? "" : "s"}` : "Done"}
           </button>
@@ -1360,7 +1360,7 @@ function ItemCard({
         <div className={`w-8 h-8 rounded-lg mb-3 flex items-center justify-center ${
           item.type === "setlist"
             ? "bg-violet-50 dark:bg-violet-950/60 text-violet-500 dark:text-violet-400"
-            : "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-500 dark:text-indigo-400"
+            : "bg-[#efe9fe] dark:bg-[#2a2440] text-indigo-500 dark:text-indigo-400"
         }`}>
           {item.type === "setlist" ? <ListIconSm /> : <FolderIconSm />}
         </div>
@@ -1484,7 +1484,7 @@ function ItemRow({
 
   return (
     <div ref={rootRef} className={"relative flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors " + (isLast ? "" : "border-b border-slate-100 dark:border-slate-800")}>
-      <div className={"w-8 h-8 rounded-lg flex items-center justify-center shrink-0 " + (item.type === "setlist" ? "bg-violet-50 dark:bg-violet-950/60 text-violet-500 dark:text-violet-400" : "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-500 dark:text-indigo-400")}>
+      <div className={"w-8 h-8 rounded-lg flex items-center justify-center shrink-0 " + (item.type === "setlist" ? "bg-violet-50 dark:bg-violet-950/60 text-violet-500 dark:text-violet-400" : "bg-[#efe9fe] dark:bg-[#2a2440] text-indigo-500 dark:text-indigo-400")}>
         {item.type === "setlist" ? <ListIconSm /> : <FolderIconSm />}
       </div>
       <div className="flex-1 min-w-0 cursor-pointer" onClick={!renaming ? onClick : undefined}>
@@ -1713,7 +1713,7 @@ function DetailHeader({
       <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
         folder.type === "setlist"
           ? "bg-violet-50 dark:bg-violet-950/60 text-violet-500"
-          : "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-500"
+          : "bg-[#efe9fe] dark:bg-[#2a2440] text-indigo-500"
       }`}>
         {folder.type === "setlist" ? <ListIconSm /> : <FolderIconSm />}
       </div>
@@ -1786,7 +1786,7 @@ function SongCard({
       className="relative group rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors cursor-pointer"
       onClick={onClick}
     >
-      <div className="w-7 h-7 rounded-md bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center text-indigo-500 text-xs font-bold mb-3">
+      <div className="w-7 h-7 rounded-md bg-[#efe9fe] dark:bg-[#2a2440] flex items-center justify-center text-indigo-500 text-xs font-bold mb-3">
         {(song.title[0] ?? "?").toUpperCase()}
       </div>
       <div className="text-sm font-semibold truncate mb-0.5">{song.title}</div>
@@ -1819,7 +1819,7 @@ function EmptyHint({ label, sub, cta, onClick }: {
       <button
         type="button"
         onClick={onClick}
-        className="mt-4 h-9 px-4 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors"
+        className="mt-4 h-9 px-4 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] transition-colors"
       >
         {cta}
       </button>
@@ -1843,7 +1843,7 @@ function NewNameInput({ placeholder, value, onChange, onSubmit, onCancel }: {
         className="flex-1 h-9 px-3 rounded-lg bg-white dark:bg-slate-800 border border-indigo-400 outline-none text-sm"
       />
       <button type="button" onClick={onSubmit}
-        className="h-9 px-3 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700">
+        className="h-9 px-3 rounded-lg text-sm font-medium bg-[#735fee] text-white hover:bg-[#6650e6]">
         Create
       </button>
       <button type="button" onClick={onCancel}
@@ -1936,7 +1936,7 @@ function MyVersionsBox({ items, canShare, showToggle, onOpen, onAction }: {
                 <span className="flex items-center gap-1">
                   {canShare && it.inSetlist && (
                     <button type="button" onClick={() => onAction("share", it)} title="Replace the shared song in this setlist with your version, for everyone"
-                      className={btn + " text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"}>Share with team</button>
+                      className={btn + " text-[#6350ef] dark:text-[#b3a3ff] hover:bg-indigo-50 dark:hover:bg-indigo-950/40"}>Share with team</button>
                   )}
                   {scoped && (
                     <button type="button" onClick={() => onAction("library", it)} title="Keep a copy in your library — survives if this setlist is deleted"

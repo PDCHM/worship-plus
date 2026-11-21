@@ -48,7 +48,7 @@ const ROWS: Row[] = [
 // CTA classes lifted verbatim from the hero / pricing buttons.
 const CTA: Record<Row["cta"]["variant"], string> = {
   primary:
-    "inline-flex h-12 px-7 items-center justify-center rounded-xl text-sm font-semibold bg-gradient-to-br from-indigo-500 to-violet-600 text-white hover:from-indigo-600 hover:to-violet-700 shadow-lg shadow-indigo-600/25 transition-colors",
+    "inline-flex h-12 px-7 items-center justify-center rounded-xl text-sm font-semibold bg-[#735fee] text-white hover:bg-[#6650e6] shadow-lg shadow-violet-500/20 transition-colors",
   secondary:
     "inline-flex h-12 px-7 items-center justify-center rounded-xl text-sm font-semibold bg-white text-slate-700 border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-colors",
 };

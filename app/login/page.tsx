@@ -150,7 +150,7 @@ export default function LoginPage() {
                 setSent(false);
                 setEmail("");
               }}
-              className="mt-4 text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+              className="mt-4 text-xs text-[#6350ef] dark:text-[#b3a3ff] hover:underline"
             >
               Use a different address
             </button>
@@ -191,9 +191,9 @@ export default function LoginPage() {
 
         <p className="text-center mt-6 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
           By continuing, you agree to our{" "}
-          <Link href="/terms" className="text-indigo-600 dark:text-indigo-400 hover:underline">Terms</Link>{" "}
+          <Link href="/terms" className="text-[#6350ef] dark:text-[#b3a3ff] hover:underline">Terms</Link>{" "}
           and{" "}
-          <Link href="/privacy" className="text-indigo-600 dark:text-indigo-400 hover:underline">Privacy Policy</Link>.
+          <Link href="/privacy" className="text-[#6350ef] dark:text-[#b3a3ff] hover:underline">Privacy Policy</Link>.
         </p>
 
         <p className="text-center mt-3 text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed">

@@ -69,7 +69,7 @@ export default function VideoPlayer({ src, poster, label }: Props) {
   return (
     <div
       ref={wrapRef}
-      className="relative mx-auto w-full max-w-[360px] sm:max-w-[400px] lg:max-w-[440px] rounded-[2rem] sm:rounded-[2.25rem] bg-slate-900 p-2 sm:p-2.5 shadow-2xl shadow-indigo-600/20 ring-1 ring-slate-900/5"
+      className="relative mx-auto w-full max-w-[360px] sm:max-w-[400px] lg:max-w-[440px] rounded-[2rem] sm:rounded-[2.25rem] bg-slate-900 p-2 sm:p-2.5 shadow-2xl shadow-violet-500/20 ring-1 ring-slate-900/5"
     >
       <div className="relative aspect-[964/1150] overflow-hidden rounded-[1.5rem] sm:rounded-[1.7rem] bg-slate-950">
         {/* phone notch */}

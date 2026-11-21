@@ -115,7 +115,7 @@ export default function PrintPreviewModal({
           <Field label="Chords">
             <button type="button"
               onClick={() => update({ showChords: !showChords })}
-              className={`relative w-10 h-6 rounded-full transition-colors ${showChords ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-600"}`}>
+              className={`relative w-10 h-6 rounded-full transition-colors ${showChords ? "bg-[#9d8bff] dark:bg-[#7d6cf5]" : "bg-slate-200 dark:bg-slate-600"}`}>
               <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${showChords ? "translate-x-4" : "translate-x-0"}`} />
             </button>
           </Field>
@@ -127,7 +127,7 @@ export default function PrintPreviewModal({
             <Field label="Diagrams">
               <button type="button" aria-pressed={printDiagrams}
                 onClick={() => { if (!printDiagrams) void preloadChordData(); update({ printChordDiagrams: !printDiagrams }); }}
-                className={`relative w-10 h-6 rounded-full transition-colors ${printDiagrams ? "bg-indigo-600" : "bg-slate-200 dark:bg-slate-600"}`}>
+                className={`relative w-10 h-6 rounded-full transition-colors ${printDiagrams ? "bg-[#9d8bff] dark:bg-[#7d6cf5]" : "bg-slate-200 dark:bg-slate-600"}`}>
                 <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${printDiagrams ? "translate-x-4" : "translate-x-0"}`} />
               </button>
             </Field>
@@ -135,7 +135,7 @@ export default function PrintPreviewModal({
         </div>
         <button type="button"
           onClick={() => { onClose(); setTimeout(onPrint, 80); }}
-          className="shrink-0 h-10 px-4 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 flex items-center justify-center gap-2 transition-colors shadow-sm shadow-indigo-600/30">
+          className="shrink-0 h-10 px-4 rounded-lg text-sm font-semibold bg-[#735fee] text-white hover:bg-[#6650e6] flex items-center justify-center gap-2 transition-colors shadow-sm shadow-violet-500/20">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="6 9 6 2 18 2 18 9"/>
             <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
@@ -309,7 +309,7 @@ function SegBtn<T extends string | number>({
               isDisabled
                 ? "bg-slate-50 dark:bg-slate-900 text-slate-300 dark:text-slate-600 cursor-not-allowed"
                 : active === o
-                  ? "bg-indigo-600 text-white"
+                  ? "bg-[#efe9fe] text-[#6350ef] ring-1 ring-inset ring-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:ring-[#3a3358]"
                   : "bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
             }`}>
             {label(o)}
