@@ -13,7 +13,9 @@ type Clip = {
   id: string;
   kicker: string;
   headline: string;
-  body: string;
+  // Either a short paragraph, or a compact list of punchy points.
+  body?: string;
+  points?: string[];
   src: string;
   poster: string;
   label: string;
@@ -23,8 +25,13 @@ const CLIPS: Clip[] = [
   {
     id: "edit-power",
     kicker: "Edit power",
-    headline: "Drag a chord. It locks to the\u00A0word.", // nbsp: "word." never wraps alone
-    body: "Drop a chord onto any word and it stays locked to it — perfectly aligned across 1, 2 or 3 columns, any screen size, any language. No more chords drifting out of place when you switch devices.",
+    headline: "Tap. Drag. Done.",
+    points: [
+      "Tap a chord to edit it",
+      "Drag it to align perfectly",
+      "Fix a lyric on the spot",
+      "Leave a note for your band",
+    ],
     src: "/videos/W-Video1-EditPower.mp4",
     poster: "/videos/W-Video1-EditPower-poster.jpg",
     label: "Editing a chart in Worship+ — chords stay locked to each word as lines are edited",
@@ -55,7 +62,22 @@ export default function VideoShowcase() {
               <figcaption className="mx-auto mt-5 max-w-sm text-center">
                 <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#6350ef]">{c.kicker}</span>
                 <span className="mt-1 block text-lg font-bold leading-snug text-slate-900">{c.headline}</span>
-                <span className="mt-1.5 block text-[15px] leading-relaxed text-slate-600">{c.body}</span>
+                {c.points ? (
+                  // Compact, scannable checklist. The list block is centred
+                  // under the heading, its lines left-aligned so the ticks align.
+                  <ul className="mx-auto mt-3 w-fit max-w-full space-y-1.5 text-left">
+                    {c.points.map((pt) => (
+                      <li key={pt} className="flex items-center gap-2.5 text-[15px] leading-snug text-slate-700">
+                        <span aria-hidden="true" className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#efe9fe] text-[#6350ef]">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                        </span>
+                        {pt}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <span className="mt-1.5 block text-[15px] leading-relaxed text-slate-600">{c.body}</span>
+                )}
               </figcaption>
             </figure>
           ))}
