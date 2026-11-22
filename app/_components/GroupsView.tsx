@@ -169,7 +169,7 @@ function TeamListView({ memberships, onSelect, onCreateGroup, showToast }: {
           </button>
         )}
       </div>
-      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 truncate">Share songs &amp; setlists with your worship team</p>
+      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 truncate">Bring your worship team together</p>
       <p className="text-sm text-slate-500 mt-0.5">{memberships.length} team{memberships.length!==1?"s":""}</p>
       </div>
       {creating && (
