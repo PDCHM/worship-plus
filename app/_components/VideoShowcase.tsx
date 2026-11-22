@@ -39,8 +39,12 @@ const CLIPS: Clip[] = [
   {
     id: "song-flow",
     kicker: "Song flow",
-    headline: "Jump any section, mid-song",
-    body: "Tap a verse, chorus or bridge to leap straight to it — then spread the chart across columns.",
+    headline: "Build your flow.",
+    points: [
+      "Drag sections to reorder — verse, chorus, bridge",
+      "Add, copy or delete any section",
+      "Switch between 1, 2 or 3 columns",
+    ],
     src: "/videos/W-Video2-FlowofSong.mp4",
     poster: "/videos/W-Video2-FlowofSong-poster.jpg",
     label: "Leaping between chorus and verses, then switching to 2 and 3 columns in Worship+",
@@ -67,8 +71,8 @@ export default function VideoShowcase() {
                   // under the heading, its lines left-aligned so the ticks align.
                   <ul className="mx-auto mt-3 w-fit max-w-full space-y-1.5 text-left">
                     {c.points.map((pt) => (
-                      <li key={pt} className="flex items-center gap-2.5 text-[15px] leading-snug text-slate-700">
-                        <span aria-hidden="true" className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#efe9fe] text-[#6350ef]">
+                      <li key={pt} className="flex items-start gap-2.5 text-[15px] leading-snug text-slate-700">
+                        <span aria-hidden="true" className="mt-px flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#efe9fe] text-[#6350ef]">
                           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
                         </span>
                         {pt}
