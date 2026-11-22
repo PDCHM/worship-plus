@@ -164,10 +164,12 @@ export function InstallLandingButton() {
   return (
     <div className="mt-3">
       <button type="button" onClick={() => void start()}
-        // Solid deep purple (white text ≥4.5:1) with a soft white ring, so it
-        // reads as the secondary action under the white "Get started" button.
-        className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#5a3fd6] hover:bg-[#4f35c9] px-6 py-3 text-base font-semibold text-white ring-1 ring-white/35 shadow-lg shadow-violet-900/20 transition-colors">
-        <span aria-hidden="true">📲</span> Add to Home Screen
+        // SECONDARY to the white "Get started" button: a small ghost pill —
+        // thin white ring + a faint 30% deep-violet tint (no solid fill). The
+        // tint is what keeps the white text legible on the light hero gradient
+        // (5.2:1 vs 3.5:1 with no tint). h-10 keeps a comfortable tap target.
+        className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full bg-[#2e1a85]/30 px-4 text-sm font-semibold text-white ring-1 ring-white/50 transition-colors hover:bg-[#2e1a85]/40 hover:ring-white/70">
+        <span aria-hidden="true" className="text-base leading-none">📲</span> Add to Home Screen
       </button>
       {sheet}
     </div>
