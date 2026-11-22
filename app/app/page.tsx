@@ -35,7 +35,7 @@ import SettingsView from "@/app/_components/SettingsView";
 import SongEditor from "@/app/_components/SongEditor";
 import { type SongLink } from "@/app/_components/SongReferences";
 import FoldersView, { AddSongsModal, type Folder, type FolderSong, type SetlistEvent } from "@/app/_components/FoldersView";
-import GroupsView, { type Group, type GroupMember, type GroupSong, type MemberRole } from "@/app/_components/GroupsView";
+import GroupsView, { TeamMembersSheet, type Group, type GroupMember, type GroupSong, type MemberRole } from "@/app/_components/GroupsView";
 import PrintLayout from "@/app/_components/PrintLayout";
 import SetlistPrintLayout from "@/app/_components/SetlistPrintLayout";
 import SetlistExportModal from "@/app/_components/SetlistExportModal";
@@ -618,6 +618,10 @@ export default function Home() {
   const printTitleRef = useRef<string>("Setlist");
   const [groups, setGroups] = useState<Group[]>([]);
   const [groupMembers, setGroupMembers] = useState<GroupMember[]>([]);
+  // Team whose members sheet is open over the current screen (setlist → team
+  // shortcut). Not part of `view`, so it never changes the page underneath.
+  const [teamSheetId, setTeamSheetId] = useState<string | null>(null);
+  const closeTeamSheet = useCallback(() => setTeamSheetId(null), []);
   const [groupSongs, setGroupSongs] = useState<GroupSong[]>([]);
   const [groupsLoaded, setGroupsLoaded] = useState(false);
   const [sectionStyles, setSectionStyles] = useState<SectionStyles>(DEFAULT_SECTION_STYLES);
@@ -3506,6 +3510,14 @@ export default function Home() {
               onUpgrade={() => setUpgradeModal({ reason: "Subscription" })}
             />
           )}
+          {/* Team members sheet, opened from a setlist's team chip. It overlays
+              the setlist (FoldersView stays mounted underneath), so closing it
+              returns to the same setlist at the same scroll position. */}
+          {teamSheetId && (
+            <TeamMembersSheet groupId={teamSheetId} onClose={closeTeamSheet} userId={user.id}
+              groups={groups} groupMembers={groupMembers} onAddMember={gatedAddMember}
+              onSetMemberRole={setMemberRole} onRemoveMember={removeGroupMember} showToast={showToast} />
+          )}
           {view.kind === "folders" && (
             <FoldersView
               loadError={foldersLoadError}
@@ -3520,6 +3532,7 @@ export default function Home() {
               teams={groups.filter(g => groupMembers.some(m => m.groupId === g.id && m.userId === user.id)).map(g => ({ id: g.id, name: g.name }))}
               currentUserId={user.id}
               onMoveToTeam={assignSetlistToTeam}
+              onOpenTeam={setTeamSheetId}
               onNavigate={(to) => navigateTo({ kind: "folders", subview: to, tab: view.kind === "folders" ? view.tab : undefined })}
               onCreate={createFolder}
               onRename={renameFolder}

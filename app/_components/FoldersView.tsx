@@ -65,6 +65,8 @@ export type FoldersViewProps = {
   teams: TeamOption[];
   currentUserId: string;
   onMoveToTeam: (setlistId: string, groupId: string | null) => void;
+  /** Open a team's members as a slide-up sheet over the current screen. */
+  onOpenTeam?: (groupId: string) => void;
   onNavigate: (to: "all" | string) => void;
   onCreate: (name: string, type: "folder" | "setlist", groupId: string | null) => Promise<Folder | null>;
   onRename: (id: string, name: string) => Promise<void>;
@@ -668,7 +670,7 @@ function FolderDetail({
 function SetlistDetail({
   folder, currentSongs, folderSongs, cachedSongIds, onNavigate, onRename, onDelete,
   onAddSongs, onRemoveSong, onCommitOrder, onOpenSong, onUpdateDate, onExportSetlist,
-  setlistEvents, onAddEvent, onUpdateEvent, onDeleteEvent, canUseCalendar, onRequireUpgrade, showToast, teams, currentUserId, onMoveToTeam, canEditFolder,
+  setlistEvents, onAddEvent, onUpdateEvent, onDeleteEvent, canUseCalendar, onRequireUpgrade, showToast, teams, currentUserId, onMoveToTeam, onOpenTeam, canEditFolder,
   songLinks, onAddLink, onUpdateLink, onDeleteLink, onReorderLinks, canEditSong, online, sharedSongsReady, privateVersionFor,
   myVersionsFor, presenterToggleReady, onMyVersion,
 }: { folder: Folder; currentSongs: Song[] } & FoldersViewProps) {
@@ -869,10 +871,10 @@ function SetlistDetail({
         {isOwner ? (
           <div className="flex flex-col items-start gap-1.5 sm:flex-row sm:items-center sm:gap-2">
             <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Share with team</span>
-            <TeamSelectChip currentGroupId={folder.groupId ?? null} teams={teams} onMoveToTeam={(gid) => onMoveToTeam(folder.id, gid)} />
+            <TeamSelectChip currentGroupId={folder.groupId ?? null} teams={teams} onMoveToTeam={(gid) => onMoveToTeam(folder.id, gid)} onOpenTeam={onOpenTeam} />
           </div>
         ) : (
-          <TeamStaticPill currentGroupId={folder.groupId ?? null} teams={teams} />
+          <TeamStaticPill currentGroupId={folder.groupId ?? null} teams={teams} onOpenTeam={onOpenTeam} />
         )}
       </div>
       <div className="flex items-center gap-2 mt-3 mb-1">
@@ -1723,10 +1725,11 @@ const TeamPeopleIcon = () => (
 
 // Purple pill chip showing the current assignment; tap opens the option menu.
 // Esc + click-outside close; arrow-key navigation across options.
-function TeamSelectChip({ currentGroupId, teams, onMoveToTeam }: {
+function TeamSelectChip({ currentGroupId, teams, onMoveToTeam, onOpenTeam }: {
   currentGroupId: string | null;
   teams: TeamOption[];
   onMoveToTeam: (groupId: string | null) => void;
+  onOpenTeam?: (groupId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -1758,8 +1761,20 @@ function TeamSelectChip({ currentGroupId, teams, onMoveToTeam }: {
     if ((groupId ?? null) !== (currentGroupId ?? null)) onMoveToTeam(groupId);
   };
 
+  // Shared with a team: the team chip opens that team's members (slide-up
+  // sheet) and a separate "Change" control switches/stops sharing.
+  const openable = !!currentGroupId && !!onOpenTeam && teams.some((t) => t.id === currentGroupId);
   return (
-    <div ref={ref} className="relative shrink-0">
+    <div ref={ref} className="relative shrink-0 flex items-center gap-1.5">
+      {openable && <TeamOpenChip name={currentName} onClick={() => onOpenTeam!(currentGroupId!)} />}
+      {openable ? (
+        <button type="button" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}
+          aria-label="Change which team this setlist is shared with"
+          className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+          Change
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+      ) : (
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -1772,6 +1787,7 @@ function TeamSelectChip({ currentGroupId, teams, onMoveToTeam }: {
         <span className="max-w-[10rem] truncate">{currentName}</span>
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polyline points="6 9 12 15 18 9"/></svg>
       </button>
+      )}
       {open && (
         <div className="absolute left-0 top-9 z-30 w-48 py-1 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl">
           <TeamOptionList currentGroupId={currentGroupId} teams={teams} onPick={pick} />
@@ -1781,9 +1797,25 @@ function TeamSelectChip({ currentGroupId, teams, onMoveToTeam }: {
   );
 }
 
-// Static (non-interactive) team pill — shown to non-owners.
-function TeamStaticPill({ currentGroupId, teams }: { currentGroupId: string | null; teams: TeamOption[] }) {
+/** Tappable team chip: "👥 <Team> ›" — opens the team's members sheet. */
+function TeamOpenChip({ name, onClick }: { name: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} aria-label={`${name} — view team members`} title="View team members"
+      className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-2 rounded-full text-xs font-semibold bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/60 transition-colors">
+      <TeamPeopleIcon />
+      <span className="max-w-[10rem] truncate">{name}</span>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polyline points="9 18 15 12 9 6"/></svg>
+    </button>
+  );
+}
+
+// Team pill shown to non-owners. Tappable (opens the members sheet) when the
+// setlist is shared with a team I belong to; otherwise static.
+function TeamStaticPill({ currentGroupId, teams, onOpenTeam }: { currentGroupId: string | null; teams: TeamOption[]; onOpenTeam?: (groupId: string) => void }) {
   const name = currentGroupId ? (teams.find((t) => t.id === currentGroupId)?.name ?? "Team") : "Personal only";
+  if (currentGroupId && onOpenTeam && teams.some((t) => t.id === currentGroupId)) {
+    return <TeamOpenChip name={name} onClick={() => onOpenTeam(currentGroupId)} />;
+  }
   return (
     <span className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-xs font-semibold bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-300">
       <TeamPeopleIcon />

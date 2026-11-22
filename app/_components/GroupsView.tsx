@@ -3,7 +3,8 @@ import { backdropDismiss } from "@/lib/backdropDismiss";
 import { PageTitleRow, ViewModeToggle, type ViewMode } from "@/app/_components/PageTitle";
 import { usePersistedState, oneOf } from "@/lib/usePersistedState";
 import { SELECTED } from "@/lib/selectedStyle";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Song } from "@/lib/song";
 import { initialsFrom, PersonGlyph } from "@/app/_components/Avatar";
 import type { Folder } from "@/app/_components/FoldersView";
@@ -241,29 +242,12 @@ function TeamTile({ name }: { name: string }) {
 
 function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, folders, onUpdateGroup, onAddMember, onSetMemberRole, onRemoveMember, onShareSong, onUnshareSong, onDeleteGroup, onOpenSong, onOpenSetlist, showToast }: { group: Group; onBack: () => void } & GroupsViewProps) {
   const [tab, setTab] = useState<"members"|"songs">("members");
-  const [addOpen, setAddOpen] = useState(false);
   const [addSongsOpen, setAddSongsOpen] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameVal, setNameVal] = useState(group.name);
   const [confirmDeleteTeam, setConfirmDeleteTeam] = useState(false);
-  const [removeMemberTarget, setRemoveMemberTarget] = useState<{ id: string; name: string } | null>(null);
   const members = groupMembers.filter(m => m.groupId === group.id);
-  // Members from the leader's other teams, de-duplicated by display name —
-  // used to autocomplete the Add Member form.
-  const memberSuggestions = (() => {
-    const seen = new Set<string>();
-    const out: GroupMember[] = [];
-    for (const m of groupMembers) {
-      if (m.groupId === group.id) continue;
-      const name = (m.displayName ?? "").trim();
-      if (!name) continue;
-      const key = name.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(m);
-    }
-    return out;
-  })();
+  const memberSuggestions = suggestionsFor(group.id, groupMembers);
   const saveName = async () => {
     const v = nameVal.trim();
     if (v && v !== group.name) await onUpdateGroup(group.id, v);
@@ -278,13 +262,6 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
   const sharedSongIds = new Set(groupSongs.filter(gs => gs.groupId === group.id).map(gs => gs.songId));
   const sharedSongs = songs.filter(s => sharedSongIds.has(s.id));
   const teamSetlists = folders.filter(f => f.type === "setlist" && f.groupId === group.id);
-  const inviteUrl = (memberId: string) => typeof window !== "undefined"
-    ? `${window.location.origin}/join/${group.inviteToken}?slot=${memberId}`
-    : `https://worshipplus.vercel.app/join/${group.inviteToken}?slot=${memberId}`;
-  const copyInvite = (memberId: string, name: string) => {
-    navigator.clipboard.writeText(inviteUrl(memberId));
-    showToast(`Invite link copied for ${name}`);
-  };
   return (
     <div className="max-w-3xl w-full mx-auto px-4 sm:px-6 py-6">
       <button type="button" onClick={onBack} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 mb-3 transition-colors">
@@ -319,79 +296,9 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
         ))}
       </div>
       {tab==="members" && (
-        <div>
-          <div className="flex justify-end mb-3">
-            <button type="button" onClick={() => setAddOpen(true)}
-              className="shrink-0 h-9 px-4 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] flex items-center gap-1.5">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add Member
-            </button>
-          </div>
-          {members.length === 0 ? (
-            <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-12 text-center text-sm text-slate-500">No members yet — add your musicians.</div>
-          ) : (
-            <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden">
-              {members.map((m, idx) => (
-                // One layout for every row. Phone: [avatar + text] on line 1, the
-                // controls on their own line below, right-aligned — so they can
-                // never overlap the name or the Joined/Pending badge. sm+: the
-                // controls sit beside the text, vertically centred.
-                <div key={m.id} data-member-row
-                  className={"flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-4 py-3 "+(idx<members.length-1?"border-b border-slate-100 dark:border-slate-800":"")}>
-                  <div className="flex items-center gap-3 min-w-0 flex-1">
-                    <div className="w-10 h-10 rounded-full bg-[#efe9fe] dark:bg-[#2a2440] flex items-center justify-center text-[#6350ef] dark:text-[#b3a3ff] text-sm font-semibold shrink-0">
-                      {initialsFrom(m.displayName, m.email) || <PersonGlyph />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{m.displayName ?? "Unknown"}</div>
-                      {m.email && <div className="text-xs text-slate-500 truncate">{m.email}</div>}
-                      {/* Own line: instrument/category + status. Wraps inside
-                          the text column instead of spilling under controls. */}
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 min-w-0">
-                        {insLabel(m) && <span className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-full">{insLabel(m)}</span>}
-                        <span className={"shrink-0 text-[11px] font-medium leading-none px-2 py-1 rounded-full "+(m.status==="joined"?"bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400":"bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400")}>
-                          {m.status==="joined"?"Joined":"Pending"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  {/* Controls column. Leaders show a static badge; a leader can
-                      toggle any other member between Editor and Member in place.
-                      No control on self or on fellow leaders (role is enforced by
-                      RLS). */}
-                  <div className="flex items-center justify-end gap-2 shrink-0 self-end sm:self-center">
-                    {m.role === "leader" ? (
-                      <span className="h-8 inline-flex items-center text-xs font-semibold px-3 rounded-lg bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff]">Leader</span>
-                    ) : m.userId === userId ? (
-                      <span className="h-8 inline-flex items-center text-xs font-medium px-3 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500">{ROLE_LABEL[m.role]}</span>
-                    ) : (
-                      <div className="flex h-8 rounded-lg border border-slate-200 dark:border-slate-700 seg-group" role="group" aria-label="Member role">
-                        {(["editor", "member"] as const).map((r) => (
-                          <button key={r} type="button" aria-pressed={m.role===r}
-                            onClick={() => { if (m.role !== r) { onSetMemberRole(m.id, r); showToast(`${m.displayName ?? "Member"} is now ${ROLE_LABEL[r]}`); } }}
-                            className={"px-2.5 text-xs font-medium transition-colors "+(m.role===r?SELECTED:"bg-white dark:bg-slate-900 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800")}>
-                            {ROLE_LABEL[r]}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {m.status==="pending" && m.userId !== userId && (
-                      <button type="button" onClick={() => copyInvite(m.id, m.displayName??"")}
-                        className="h-8 px-3 rounded-lg text-xs font-semibold bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#efe9fe] transition-colors">
-                        Invite
-                      </button>
-                    )}
-                    {m.userId !== userId && (
-                      <button type="button" aria-label={`Remove ${m.displayName ?? "member"}`} onClick={() => setRemoveMemberTarget({ id: m.id, name: m.displayName ?? "this member" })}
-                        className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <TeamMembersPanel group={group} members={members} userId={userId} canManage
+          suggestions={memberSuggestions} onAddMember={onAddMember} onSetMemberRole={onSetMemberRole}
+          onRemoveMember={onRemoveMember} showToast={showToast} />
       )}
       {tab==="songs" && (
         <div>
@@ -430,7 +337,6 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
           </button>
         </div>
       )}
-      {addOpen && <AddMemberModal groupId={group.id} suggestions={memberSuggestions} onAdd={onAddMember} onClose={() => setAddOpen(false)} showToast={showToast} />}
       {addSongsOpen && <AddSongsModal songs={songs.filter(s => s.userId === userId)} alreadyShared={sharedSongIds} groupId={group.id} onShare={onShareSong} onClose={() => setAddSongsOpen(false)} showToast={showToast} />}
       {confirmDeleteTeam && (
         <ConfirmDialog
@@ -441,20 +347,193 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
           onConfirm={() => { setConfirmDeleteTeam(false); void handleDelete(); }}
         />
       )}
-      {removeMemberTarget && (
-        <ConfirmDialog
-          title="Remove member?"
-          message={`Remove ${removeMemberTarget.name} from this team?`}
-          confirmLabel="Remove"
-          onCancel={() => setRemoveMemberTarget(null)}
-          onConfirm={() => {
-            const id = removeMemberTarget.id;
-            setRemoveMemberTarget(null);
-            void (async () => { const ok = await onRemoveMember(id); if (ok) showToast("Member removed"); })();
-          }}
-        />
-      )}
     </div>
+  );
+}
+
+/* Members of ONE team — the single source of truth for the member list,
+   used by the team page (Members tab) AND the slide-up team sheet opened from
+   a setlist. Members are always a team concept; nothing here is per-setlist.
+   canManage (leaders): Add member, Invite links, role toggle, remove.
+   Otherwise read-only rows with role badges (RLS enforces this anyway). */
+function suggestionsFor(groupId: string, groupMembers: GroupMember[]): GroupMember[] {
+  // Members from the leader's other teams, de-duplicated by display name —
+  // used to autocomplete the Add Member form.
+  const seen = new Set<string>();
+  const out: GroupMember[] = [];
+  for (const m of groupMembers) {
+    if (m.groupId === groupId) continue;
+    const name = (m.displayName ?? "").trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(m);
+  }
+  return out;
+}
+
+function TeamMembersPanel({ group, members, userId, canManage, suggestions, onAddMember, onSetMemberRole, onRemoveMember, showToast }: {
+  group: Group; members: GroupMember[]; userId: string; canManage: boolean; suggestions: GroupMember[];
+  onAddMember: GroupsViewProps["onAddMember"]; onSetMemberRole: GroupsViewProps["onSetMemberRole"];
+  onRemoveMember: GroupsViewProps["onRemoveMember"]; showToast: (m: string) => void;
+}) {
+  const [addOpen, setAddOpen] = useState(false);
+  const [removeMemberTarget, setRemoveMemberTarget] = useState<{ id: string; name: string } | null>(null);
+  const inviteUrl = (memberId: string) => typeof window !== "undefined"
+    ? `${window.location.origin}/join/${group.inviteToken}?slot=${memberId}`
+    : `https://worshipplus.vercel.app/join/${group.inviteToken}?slot=${memberId}`;
+  const copyInvite = (memberId: string, name: string) => {
+    navigator.clipboard.writeText(inviteUrl(memberId));
+    showToast(`Invite link copied for ${name}`);
+  };
+  return (
+      <div>
+        {canManage && (
+        <div className="flex justify-end mb-3">
+          <button type="button" onClick={() => setAddOpen(true)}
+            className="shrink-0 h-9 px-4 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] flex items-center gap-1.5">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add Member
+          </button>
+        </div>
+        )}
+        {members.length === 0 ? (
+          <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-12 text-center text-sm text-slate-500">No members yet — add your musicians.</div>
+        ) : (
+          <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden">
+            {members.map((m, idx) => (
+              // One layout for every row. Phone: [avatar + text] on line 1, the
+              // controls on their own line below, right-aligned — so they can
+              // never overlap the name or the Joined/Pending badge. sm+: the
+              // controls sit beside the text, vertically centred.
+              <div key={m.id} data-member-row
+                className={"flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-4 py-3 "+(idx<members.length-1?"border-b border-slate-100 dark:border-slate-800":"")}>
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="w-10 h-10 rounded-full bg-[#efe9fe] dark:bg-[#2a2440] flex items-center justify-center text-[#6350ef] dark:text-[#b3a3ff] text-sm font-semibold shrink-0">
+                    {initialsFrom(m.displayName, m.email) || <PersonGlyph />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{m.displayName ?? "Unknown"}</div>
+                    {m.email && <div className="text-xs text-slate-500 truncate">{m.email}</div>}
+                    {/* Own line: instrument/category + status. Wraps inside
+                        the text column instead of spilling under controls. */}
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 min-w-0">
+                      {insLabel(m) && <span className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-full">{insLabel(m)}</span>}
+                      <span className={"shrink-0 text-[11px] font-medium leading-none px-2 py-1 rounded-full "+(m.status==="joined"?"bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400":"bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400")}>
+                        {m.status==="joined"?"Joined":"Pending"}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                {/* Controls column. Leaders show a static badge; a leader can
+                    toggle any other member between Editor and Member in place.
+                    No control on self or on fellow leaders (role is enforced by
+                    RLS). */}
+                {canManage ? (
+                <div className="flex items-center justify-end gap-2 shrink-0 self-end sm:self-center">
+                  {m.role === "leader" ? (
+                    <span className="h-8 inline-flex items-center text-xs font-semibold px-3 rounded-lg bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff]">Leader</span>
+                  ) : m.userId === userId ? (
+                    <span className="h-8 inline-flex items-center text-xs font-medium px-3 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500">{ROLE_LABEL[m.role]}</span>
+                  ) : (
+                    <div className="flex h-8 rounded-lg border border-slate-200 dark:border-slate-700 seg-group" role="group" aria-label="Member role">
+                      {(["editor", "member"] as const).map((r) => (
+                        <button key={r} type="button" aria-pressed={m.role===r}
+                          onClick={() => { if (m.role !== r) { onSetMemberRole(m.id, r); showToast(`${m.displayName ?? "Member"} is now ${ROLE_LABEL[r]}`); } }}
+                          className={"px-2.5 text-xs font-medium transition-colors "+(m.role===r?SELECTED:"bg-white dark:bg-slate-900 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800")}>
+                          {ROLE_LABEL[r]}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {m.status==="pending" && m.userId !== userId && (
+                    <button type="button" onClick={() => copyInvite(m.id, m.displayName??"")}
+                      className="h-8 px-3 rounded-lg text-xs font-semibold bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#efe9fe] transition-colors">
+                      Invite
+                    </button>
+                  )}
+                  {m.userId !== userId && (
+                    <button type="button" aria-label={`Remove ${m.displayName ?? "member"}`} onClick={() => setRemoveMemberTarget({ id: m.id, name: m.displayName ?? "this member" })}
+                      className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  )}
+                </div>
+                ) : m.role === "leader" ? (
+                  <span className="h-8 inline-flex items-center self-end sm:self-center text-xs font-semibold px-3 rounded-lg bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff]">Leader</span>
+                ) : (
+                  <span className="h-8 inline-flex items-center self-end sm:self-center text-xs font-medium px-3 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500">{ROLE_LABEL[m.role]}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      {addOpen && <AddMemberModal groupId={group.id} suggestions={suggestions} onAdd={onAddMember} onClose={() => setAddOpen(false)} showToast={showToast} />}
+      {removeMemberTarget && (
+      <ConfirmDialog
+        title="Remove member?"
+        message={`Remove ${removeMemberTarget.name} from this team?`}
+        confirmLabel="Remove"
+        onCancel={() => setRemoveMemberTarget(null)}
+        onConfirm={() => {
+          const id = removeMemberTarget.id;
+          setRemoveMemberTarget(null);
+          void (async () => { const ok = await onRemoveMember(id); if (ok) showToast("Member removed"); })();
+        }}
+      />
+    )}
+      </div>
+  );
+}
+
+/* Slide-up sheet showing ONE team's members, opened from a setlist's team chip.
+   It's only a shortcut onto the team: same member list, same Add member /
+   Invite actions. It overlays the setlist (portal), so closing it — ✕, Esc,
+   backdrop — leaves the user exactly where they were on that setlist. */
+export function TeamMembersSheet({ groupId, onClose, userId, groups, groupMembers, onAddMember, onSetMemberRole, onRemoveMember, showToast }: {
+  groupId: string; onClose: () => void;
+} & Pick<GroupsViewProps, "userId" | "groups" | "groupMembers" | "onAddMember" | "onSetMemberRole" | "onRemoveMember" | "showToast">) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { // A confirm dialog open on top of the sheet takes Esc first.
+      if (e.key === "Escape" && document.querySelectorAll('[aria-modal="true"]').length <= 1) onClose(); };
+    // Capture phase: runs BEFORE a confirm dialog's own Esc handler removes it,
+    // so the "another modal is open" check below sees it and leaves the sheet.
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
+  const group = groups.find(g => g.id === groupId);
+  const members = groupMembers.filter(m => m.groupId === groupId);
+  const me = members.find(m => m.userId === userId);
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4 print:hidden" {...backdropDismiss(onClose)}>
+      <div role="dialog" aria-modal="true" aria-labelledby="team-sheet-title"
+        className="wp-sheet-up w-full sm:max-w-lg max-h-[85vh] flex flex-col bg-slate-50 dark:bg-slate-950 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl"
+        onClick={e => e.stopPropagation()}>
+        <div className="sm:hidden flex justify-center pt-2" aria-hidden="true"><span className="w-10 h-1 rounded-full bg-slate-300 dark:bg-slate-700" /></div>
+        <div className="flex items-start justify-between gap-3 px-5 pt-3 sm:pt-5 pb-3">
+          <div className="min-w-0">
+            <h2 id="team-sheet-title" className="text-lg font-bold truncate">{group?.name ?? "Team"}</h2>
+            <p className="text-sm text-slate-500 mt-0.5">
+              {members.length} member{members.length !== 1 ? "s" : ""}{me ? ` · You're ${ROLE_LABEL[me.role] === "Leader" ? "the leader" : "an " + ROLE_LABEL[me.role].toLowerCase()}` : ""}
+            </p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-200/60 dark:hover:bg-slate-800">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto overscroll-contain px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))]">
+          {group ? (
+            <TeamMembersPanel group={group} members={members} userId={userId} canManage={me?.role === "leader"}
+              suggestions={suggestionsFor(groupId, groupMembers)} onAddMember={onAddMember} onSetMemberRole={onSetMemberRole}
+              onRemoveMember={onRemoveMember} showToast={showToast} />
+          ) : (
+            <p className="py-10 text-center text-sm text-slate-500">This team is no longer available.</p>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
