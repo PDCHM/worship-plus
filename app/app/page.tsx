@@ -23,6 +23,7 @@ import { prepareImageFile, fileToBase64 } from "@/lib/image/prepare";
 import SongSearchSheet, { type SongSearchResult } from "@/app/_components/SongSearchSheet";
 import UpgradeModal from "@/app/_components/UpgradeModal";
 import SupportModal from "@/app/_components/SupportModal";
+import { InstallHeaderButton } from "@/app/_components/InstallApp";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { isPaidPlan, PLANS, type Plan } from "@/lib/plans";
@@ -3859,6 +3860,8 @@ function TopNav({
           </button>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {/* Add to Home Screen — hidden when installed / standalone. */}
+          <InstallHeaderButton />
           {/* Support Worship+ — optional Ko-fi tip jar. Plain purple icon (no
               circle or ring); the 36px button keeps a comfortable tap target.
               Opens SupportModal. */}

@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { KOFI_URL } from "@/lib/support";
+import { InstallLandingButton } from "@/app/_components/InstallApp";
 import type { ReactNode } from "react";
 
 /* ─── Landing page ───────────────────────────────────────────────────────────
@@ -134,6 +135,9 @@ export default function LandingPage() {
             style={{ color: "#6350ef" }}>
             Get started — it&apos;s free
           </Link>
+          {/* PWA install — auto-detects Android/Chrome (native prompt) vs iOS
+              (Share → Add to Home Screen sheet). Hidden when already installed. */}
+          <InstallLandingButton />
           <div className="mt-5">
             <span className="inline-flex items-center rounded-full bg-white/15 px-3.5 py-1.5 text-xs font-medium text-white ring-1 ring-white/25 backdrop-blur-sm">
               ✓ No plans · No paywalls · No card

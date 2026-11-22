@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
+// Side effect: start listening for `beforeinstallprompt` as early as possible
+// on every page (it can fire before any install button mounts).
+import "@/lib/installPrompt";
 
 /**
  * Registers the PWA service worker. Production-only so local dev (Turbopack) is
