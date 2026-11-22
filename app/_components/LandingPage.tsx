@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 
 /* ─── Landing page ───────────────────────────────────────────────────────────
    Tight, visual, mobile-first. Five blocks, top to bottom:
-     1. Hero (purple gradient)   2. Chord-chart mockup   2b. Real footage (videos)
+     1. Hero (purple gradient)   2. Real footage (two product clips)
      3. Feature grid             4. Free band            5. Footer
    No pricing tiers anywhere — Worship+ is free (see FREE_MODEL in lib/flags.ts).
    Everything is sized for an iPhone first and simply breathes wider on larger
@@ -67,48 +67,12 @@ const FEATURES: { label: string; icon: ReactNode }[] = [
   ) },
 ];
 
-/* Chord-chart mockup. Each word carries its chord directly above it — the same
-   word-anchored model the app uses — so lines wrap cleanly on narrow phones
-   instead of drifting like space-aligned text would. Lyrics are placeholder. */
-type Word = { w: string; c?: string };
-const CHART: Word[][] = [
-  [{ w: "All", c: "B" }, { w: "my" }, { w: "words" }, { w: "fall", c: "E" }, { w: "short" }],
-  [{ w: "I've", c: "G#m" }, { w: "got" }, { w: "nothing", c: "F#" }, { w: "new" }],
-  [{ w: "So", c: "E" }, { w: "I" }, { w: "will", c: "B" }, { w: "sing", c: "F#" }, { w: "Your" }, { w: "praise" }],
-];
-
-function ChartMockup() {
-  return (
-    <div className="mx-auto w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl shadow-violet-900/20 ring-1 ring-violet-100">
-      <div className="flex items-center justify-between">
-        <span className="text-lg font-bold tracking-tight text-slate-900">Gratitude</span>
-        <span className="rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold" style={{ color: BRAND }}>
-          Key B
-        </span>
-      </div>
-      <div className="mt-4 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">Chorus</div>
-      <div className="mt-2 space-y-2.5">
-        {CHART.map((line, i) => (
-          <div key={i} className="flex flex-wrap gap-x-1.5">
-            {line.map((word, j) => (
-              <span key={j} className="inline-flex flex-col">
-                <span className="h-5 text-sm font-bold leading-5" style={{ color: BRAND }}>{word.c ?? " "}</span>
-                <span className="text-base leading-6 text-slate-800">{word.w}</span>
-              </span>
-            ))}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 export default function LandingPage() {
   return (
     <div className="min-h-screen overflow-x-hidden bg-white text-slate-900">
       {/* ── 1. HERO ── */}
       <section
-        className="relative overflow-hidden px-5 pt-[calc(1.5rem+env(safe-area-inset-top,0px))] pb-36 text-center text-white sm:pb-44"
+        className="relative overflow-hidden px-5 pt-[calc(1.5rem+env(safe-area-inset-top,0px))] pb-16 text-center text-white sm:pb-20"
         style={{ background: "linear-gradient(165deg, #6f4cf0 0%, #8f71ff 48%, #b196ff 100%)" }}
       >
         {/* Soft white glow, top-right. */}
@@ -147,12 +111,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── 2. PRODUCT VISUAL — card overlaps the hero's bottom edge ── */}
-      <section className="relative -mt-28 px-5 sm:-mt-32">
-        <ChartMockup />
-      </section>
-
-      {/* ── 2b. SEE IT IN ACTION — real product footage (restored) ── */}
+      {/* ── 2. REAL FOOTAGE — the two product clips ── */}
       <VideoShowcase />
 
       {/* ── 3. FEATURES ── */}
