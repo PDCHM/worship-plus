@@ -103,6 +103,11 @@ export default function LandingPage() {
             className="h-10 w-auto object-contain brightness-0 invert drop-shadow-sm sm:h-12" />
           <Link href="/login" className="absolute right-0 top-1/2 -translate-y-1/2 text-sm font-semibold text-white/85 hover:text-white">Sign in</Link>
         </nav>
+        {/* Small domain line under the logo — plain text, not a link (the
+            domain isn't connected yet). Solid white: 4.9:1 on the gradient. */}
+        <p className="relative mt-1.5 text-center text-xs font-semibold tracking-[0.08em] text-white sm:text-sm" translate="no">
+          worshipplus.life
+        </p>
 
         <div className="relative mx-auto mt-14 max-w-xl sm:mt-20">
           <h1 className="text-[2.6rem] font-extrabold leading-[1.05] tracking-tight sm:text-6xl">
