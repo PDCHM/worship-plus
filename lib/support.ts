@@ -2,3 +2,7 @@
 // the in-app SupportModal and the landing page footer. Always opened in a new tab
 // with rel="noopener noreferrer". Donations unlock nothing — the app is free.
 export const KOFI_URL = "https://ko-fi.com/worshipplus";
+
+// PayNow QR (Singapore bank transfer, no fees) — the primary option in the
+// Support popup. The card only appears if this image exists and loads.
+export const PAYNOW_QR_SRC = "/paynow-qr.png";
