@@ -290,13 +290,16 @@ export default function Library({
   return (
     <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 md:py-8">
       <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
-        <div>
+        <div className="min-w-0 max-w-full">
           <div className="flex items-center gap-2">
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
               {heading}
             </h1>
             <button onClick={()=>setAddSheetOpen(true)} className="w-8 h-8 rounded-full bg-[#735fee] text-white flex items-center justify-center hover:bg-[#6650e6] transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
           </div>
+          {heading === "All Songs" && (
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 truncate">Your whole song library — search, import, or add</p>
+          )}
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             {filtered.length} {filtered.length === 1 ? "song" : "songs"}
           </p>

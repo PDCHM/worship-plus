@@ -156,18 +156,21 @@ function TeamListView({ memberships, onSelect, onCreateGroup, showToast }: {
   };
   return (
     <div className="max-w-3xl w-full mx-auto px-4 sm:px-6 py-6">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Your Teams</h1>
-          <p className="text-sm text-slate-500 mt-0.5">{memberships.length} team{memberships.length!==1?"s":""}</p>
-        </div>
+      {/* Heading + New Team share a row; the helper line and count sit on their
+          own full-width lines below, so the button never squeezes them. */}
+      <div className="mb-6">
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold min-w-0 truncate">Your Teams</h1>
         {!creating && (
           <button type="button" onClick={() => setCreating(true)}
-            className="h-9 px-4 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] flex items-center gap-1.5">
+            className="shrink-0 h-9 px-4 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] flex items-center gap-1.5">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             New Team
           </button>
         )}
+      </div>
+      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 truncate">Share songs &amp; setlists with your worship team</p>
+      <p className="text-sm text-slate-500 mt-0.5">{memberships.length} team{memberships.length!==1?"s":""}</p>
       </div>
       {creating && (
         <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 mb-4 space-y-3">
@@ -295,7 +298,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
         <div>
           <div className="flex justify-end mb-3">
             <button type="button" onClick={() => setAddOpen(true)}
-              className="h-9 px-4 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] flex items-center gap-1.5">
+              className="shrink-0 h-9 px-4 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] flex items-center gap-1.5">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add Member
             </button>
           </div>
@@ -370,7 +373,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
         <div>
           <div className="flex justify-end mb-3">
             <button type="button" onClick={() => setAddSongsOpen(true)}
-              className="h-9 px-4 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] flex items-center gap-1.5">
+              className="shrink-0 h-9 px-4 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] flex items-center gap-1.5">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add Songs
             </button>
           </div>
