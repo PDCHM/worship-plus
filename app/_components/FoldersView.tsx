@@ -5,6 +5,7 @@ import { backdropDismiss } from "@/lib/backdropDismiss";
 import { useEffect, useRef, useState } from "react";
 import type { Song } from "@/lib/song";
 import ConfirmDialog from "@/app/_components/ConfirmDialog";
+import FloatingMenu from "@/app/_components/FloatingMenu";
 import { SongRow } from "@/app/_components/Library";
 import SongReferences, { type SongLink } from "@/app/_components/SongReferences";
 import type { MyVersionItem } from "@/lib/privateVersions";
@@ -287,6 +288,7 @@ function Overview({
           <h2 className="font-semibold text-base">Folders</h2>
           <span className="w-5 h-5 rounded-full bg-[#efe9fe] dark:bg-[#2a2440]/60 text-[#6350ef] dark:text-[#b3a3ff] flex items-center justify-center text-sm font-bold group-hover:bg-[#735fee] group-hover:text-white transition-colors">+</span>
         </div>
+        <p className="-mt-3 mb-4 text-xs text-slate-500 dark:text-slate-400 truncate">Organise your songs into categories — e.g. Fast, Slow, Christmas</p>
         {showNewFolder && (
           <NewNameInput
             placeholder="Folder name"
@@ -351,6 +353,7 @@ function Overview({
           <h2 className="font-semibold text-base">Setlists</h2>
           <span className="w-5 h-5 rounded-full bg-[#efe9fe] dark:bg-[#2a2440]/60 text-[#6350ef] dark:text-[#b3a3ff] flex items-center justify-center text-sm font-bold group-hover:bg-[#735fee] group-hover:text-white transition-colors">+</span>
         </div>
+        <p className="-mt-3 mb-4 text-xs text-slate-500 dark:text-slate-400 truncate">Build a song list for each service or event</p>
         {showNewSetlist && (
           <div className="mb-4 flex flex-col sm:flex-row gap-2">
             <input
@@ -1352,18 +1355,12 @@ function ItemCard({
   const [renaming, setRenaming] = useState(false);
   const canMove = !!onMoveToTeam && item.type === "setlist";
   const [nameVal, setNameVal] = useState(item.name);
-  const rootRef = useRef<HTMLDivElement>(null);
 
-  // Close this card's menu on outside-click / Esc. Clicking another card's ⋯
-  // counts as outside, so only one menu is ever open (no stacking).
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDown = (e: MouseEvent) => { if (rootRef.current && !rootRef.current.contains(e.target as Node)) { setMenuOpen(false); setMoveOpen(false); } };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setMenuOpen(false); setMoveOpen(false); } };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
-  }, [menuOpen]);
+  // The menu floats in a portal (FloatingMenu) so no card/list boundary can
+  // clip it. Tapping another card's ⋯ counts as outside, so only one menu is
+  // ever open.
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
+  const closeMenu = () => { setMenuOpen(false); setMoveOpen(false); };
 
   const commit = () => {
     if (nameVal.trim() && nameVal.trim() !== item.name) onRename(nameVal.trim());
@@ -1371,7 +1368,7 @@ function ItemCard({
   };
 
   return (
-    <div ref={rootRef} className="relative group rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 hover:border-[#c9bdfb] dark:hover:border-[#5a46dc] transition-colors">
+    <div className="relative group rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 hover:border-[#c9bdfb] dark:hover:border-[#5a46dc] transition-colors">
       <div className="cursor-pointer" onClick={!renaming ? onClick : undefined}>
         <div className={`w-8 h-8 rounded-lg mb-3 flex items-center justify-center ${
           item.type === "setlist"
@@ -1412,15 +1409,19 @@ function ItemCard({
       </div>
       <button
         type="button"
+        ref={menuBtnRef}
+        aria-label={`More options for ${item.name}`}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
         onClick={(e) => { e.stopPropagation(); setMoveOpen(false); setMenuOpen((o) => !o); }}
-        className="absolute top-2 right-2 w-6 h-6 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 opacity-0 group-hover:opacity-100 transition-opacity"
+        className="absolute top-2 right-2 w-6 h-6 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
           <circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/>
         </svg>
       </button>
       {menuOpen && (
-        <div className="absolute top-8 right-2 z-20 w-44 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl text-sm">
+        <FloatingMenu anchorRef={menuBtnRef} onClose={closeMenu} label={`${item.name} options`}>
           {moveOpen && canMove ? (
             <TeamOptionList
               currentGroupId={item.groupId ?? null}
@@ -1455,7 +1456,7 @@ function ItemCard({
               </button>
             </>
           )}
-        </div>
+        </FloatingMenu>
       )}
     </div>
   );
@@ -1481,18 +1482,12 @@ function ItemRow({
   const [renaming, setRenaming] = useState(false);
   const [nameVal, setNameVal] = useState(item.name);
   const canMove = !!onMoveToTeam && item.type === "setlist";
-  const rootRef = useRef<HTMLDivElement>(null);
 
-  // Close this row's menu on outside-click / Esc. Clicking another row's ⋯
-  // counts as outside, so only one menu is ever open (no stacking).
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDown = (e: MouseEvent) => { if (rootRef.current && !rootRef.current.contains(e.target as Node)) { setMenuOpen(false); setMoveOpen(false); } };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { setMenuOpen(false); setMoveOpen(false); } };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
-  }, [menuOpen]);
+  // The menu floats in a portal (FloatingMenu) so no card/list boundary can
+  // clip it. Tapping another row's ⋯ counts as outside, so only one menu is
+  // ever open.
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
+  const closeMenu = () => { setMenuOpen(false); setMoveOpen(false); };
 
   const commit = () => {
     if (nameVal.trim() && nameVal.trim() !== item.name) onRename(nameVal.trim());
@@ -1500,7 +1495,7 @@ function ItemRow({
   };
 
   return (
-    <div ref={rootRef} className={"relative flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors " + (isLast ? "" : "border-b border-slate-100 dark:border-slate-800")}>
+    <div className={"relative flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors " + (isLast ? "" : "border-b border-slate-100 dark:border-slate-800")}>
       <div className={"w-8 h-8 rounded-lg flex items-center justify-center shrink-0 " + (item.type === "setlist" ? "bg-violet-50 dark:bg-violet-950/60 text-violet-500 dark:text-violet-400" : "bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff]")}>
         {item.type === "setlist" ? <ListIconSm /> : <FolderIconSm />}
       </div>
@@ -1540,6 +1535,10 @@ function ItemRow({
       </div>
       <button
         type="button"
+        ref={menuBtnRef}
+        aria-label={`More options for ${item.name}`}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
         onClick={(e) => { e.stopPropagation(); setMoveOpen(false); setMenuOpen((o) => !o); }}
         className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0"
       >
@@ -1548,7 +1547,7 @@ function ItemRow({
         </svg>
       </button>
       {menuOpen && (
-        <div className="absolute top-10 right-2 z-20 w-44 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl text-sm">
+        <FloatingMenu anchorRef={menuBtnRef} onClose={closeMenu} label={`${item.name} options`}>
           {moveOpen && canMove ? (
             <TeamOptionList
               currentGroupId={item.groupId ?? null}
@@ -1583,7 +1582,7 @@ function ItemRow({
               </button>
             </>
           )}
-        </div>
+        </FloatingMenu>
       )}
     </div>
   );
