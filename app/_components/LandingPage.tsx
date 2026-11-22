@@ -2,12 +2,13 @@ import Image from "next/image";
 import Link from "next/link";
 import { KOFI_URL } from "@/lib/support";
 import { InstallLandingButton } from "@/app/_components/InstallApp";
+import VideoShowcase from "@/app/_components/VideoShowcase";
 import type { ReactNode } from "react";
 
 /* ─── Landing page ───────────────────────────────────────────────────────────
    Tight, visual, mobile-first. Five blocks, top to bottom:
-     1. Hero (purple gradient)   2. Chord-chart mockup   3. Feature grid
-     4. Free band                5. Footer
+     1. Hero (purple gradient)   2. Chord-chart mockup   2b. Real footage (videos)
+     3. Feature grid             4. Free band            5. Footer
    No pricing tiers anywhere — Worship+ is free (see FREE_MODEL in lib/flags.ts).
    Everything is sized for an iPhone first and simply breathes wider on larger
    screens; nothing has a fixed width, so there is no horizontal scroll. */
@@ -151,8 +152,11 @@ export default function LandingPage() {
         <ChartMockup />
       </section>
 
+      {/* ── 2b. SEE IT IN ACTION — real product footage (restored) ── */}
+      <VideoShowcase />
+
       {/* ── 3. FEATURES ── */}
-      <section className="px-5 pt-16 pb-14 sm:pt-20">
+      <section className="px-5 pt-20 pb-14 sm:pt-24">
         <h2 className="text-center text-sm font-semibold text-slate-500">Everything your worship team needs</h2>
         <div className="mx-auto mt-5 grid max-w-3xl grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4">
           {FEATURES.map((f) => (

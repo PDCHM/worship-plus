@@ -1,12 +1,15 @@
-import Link from "next/link";
-import { FREE_MODEL } from "@/lib/flags";
 import VideoPlayer from "@/app/_components/VideoPlayer";
 
-// "See it in action" — two alternating feature rows with real product footage.
-// Reuses the landing page's section spacing, container width, type scale, and
-// CTA styles so it reads as native to the page.
+// "See it in action" — real product footage on the landing page, placed just
+// below the chart-preview card. Compact to match the redesigned page: a small
+// muted heading like the features section, then the two clips (stacked on
+// phones, side by side from sm up), each with a short caption. No extra CTAs —
+// the hero and the free band already carry them.
+//
+// Clips live in /public/videos (portrait 964×1150 screen recordings). The
+// player never autoplays and only loads the poster until play is pressed.
 
-type Row = {
+type Clip = {
   id: string;
   kicker: string;
   headline: string;
@@ -14,76 +17,48 @@ type Row = {
   src: string;
   poster: string;
   label: string;
-  videoSide: "left" | "right";
-  cta: { text: string; href: string; variant: "primary" | "secondary" };
 };
 
-const ROWS: Row[] = [
+const CLIPS: Clip[] = [
   {
     id: "edit-power",
-    kicker: "EDIT POWER",
+    kicker: "Edit power",
     headline: "Chords that lock to every word",
     body: "Drop a chord on a word and it stays there — across 1, 2 or 3 columns, on any screen, in any language.",
     src: "/videos/W-Video1-EditPower.mp4",
     poster: "/videos/W-Video1-EditPower-poster.jpg",
-    label: "Editing a chart in Worship+ — chords stay locked to each word across columns",
-    videoSide: "left",
-    cta: { text: "Start free", href: "/login", variant: "primary" },
+    label: "Editing a chart in Worship+ — chords stay locked to each word as lines are edited",
   },
   {
     id: "song-flow",
-    kicker: "SONG FLOW",
+    kicker: "Song flow",
     headline: "Jump any section, mid-song",
-    body: "Tap a verse, chorus or bridge to leap straight to it — reorder the flow live while you lead.",
+    body: "Tap a verse, chorus or bridge to leap straight to it — then spread the chart across columns.",
     src: "/videos/W-Video2-FlowofSong.mp4",
     poster: "/videos/W-Video2-FlowofSong-poster.jpg",
-    label: "Leaping between verse, chorus and bridge live in Worship+",
-    videoSide: "right",
-    cta: FREE_MODEL
-      ? { text: "Free for every team", href: "#pricing", variant: "secondary" }
-      : { text: "See plans", href: "#pricing", variant: "secondary" },
+    label: "Leaping between chorus and verses, then switching to 2 and 3 columns in Worship+",
   },
 ];
 
-// CTA classes lifted verbatim from the hero / pricing buttons.
-const CTA: Record<Row["cta"]["variant"], string> = {
-  primary:
-    "inline-flex h-12 px-7 items-center justify-center rounded-xl text-sm font-semibold bg-[#735fee] text-white hover:bg-[#6650e6] shadow-lg shadow-violet-500/20 transition-colors",
-  secondary:
-    "inline-flex h-12 px-7 items-center justify-center rounded-xl text-sm font-semibold bg-white text-slate-700 border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-colors",
-};
-
 export default function VideoShowcase() {
   return (
-    <section className="py-20 sm:py-24">
-      <div className="max-w-6xl mx-auto px-5 sm:px-8">
-        <div className="text-center max-w-2xl mx-auto mb-14 sm:mb-16">
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-[#735fee] mb-3">See it in action</div>
-          <h2 className="text-3xl sm:text-4xl font-bold tracking-tight text-slate-900">Real footage. No mockups.</h2>
-        </div>
-
-        <div className="space-y-16 sm:space-y-24">
-          {ROWS.map((row) => {
-            const videoLeft = row.videoSide === "left";
-            return (
-              <div key={row.id} className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center">
-                {/* Video — first in the DOM so it stacks on top on mobile */}
-                <div className={videoLeft ? "lg:order-1" : "lg:order-2"}>
-                  <VideoPlayer src={row.src} poster={row.poster} label={row.label} />
-                </div>
-
-                {/* Copy */}
-                <div className={"text-center lg:text-left " + (videoLeft ? "lg:order-2" : "lg:order-1")}>
-                  <div className="text-[11px] font-semibold uppercase tracking-wider text-[#735fee] mb-3">{row.kicker}</div>
-                  <h3 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">{row.headline}</h3>
-                  <p className="mt-4 text-lg text-slate-500 leading-relaxed max-w-md mx-auto lg:mx-0">{row.body}</p>
-                  <div className="mt-7 flex justify-center lg:justify-start">
-                    <Link href={row.cta.href} className={CTA[row.cta.variant]}>{row.cta.text}</Link>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+    <section aria-labelledby="see-it-title" className="px-5 pt-16 sm:pt-20">
+      <div className="mx-auto max-w-4xl">
+        <p className="text-center text-sm font-semibold text-slate-500">See it in action</p>
+        <h2 id="see-it-title" className="mt-1 text-center text-2xl font-extrabold tracking-tight text-slate-900 sm:text-3xl">
+          Real footage. No mockups.
+        </h2>
+        <div className="mt-8 grid grid-cols-1 gap-12 sm:grid-cols-2 sm:gap-6">
+          {CLIPS.map((c) => (
+            <figure key={c.id} className="min-w-0">
+              <VideoPlayer src={c.src} poster={c.poster} label={c.label} />
+              <figcaption className="mx-auto mt-5 max-w-sm text-center">
+                <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#6350ef]">{c.kicker}</span>
+                <span className="mt-1 block text-lg font-bold leading-snug text-slate-900">{c.headline}</span>
+                <span className="mt-1.5 block text-[15px] leading-relaxed text-slate-600">{c.body}</span>
+              </figcaption>
+            </figure>
+          ))}
         </div>
       </div>
     </section>
