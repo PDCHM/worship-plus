@@ -867,6 +867,9 @@ function SetlistDetail({
         onExport={() => onExportSetlist(folder.id)}
         canEdit={canEdit}
       />
+      {/* Service date — prominent pill right under the title. */}
+      <SetlistDatePill date={folder.date ?? null} canEdit={canEdit}
+        onChange={(d) => onUpdateDate(folder.id, d)} />
       <div className="mt-3">
         {isOwner ? (
           <div className="flex flex-col items-start gap-1.5 sm:flex-row sm:items-center sm:gap-2">
@@ -876,16 +879,6 @@ function SetlistDetail({
         ) : (
           <TeamStaticPill currentGroupId={folder.groupId ?? null} teams={teams} onOpenTeam={onOpenTeam} />
         )}
-      </div>
-      <div className="flex items-center gap-2 mt-3 mb-1">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-500 shrink-0"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-        <input
-          type="date"
-          value={folder.date ?? ""}
-          onChange={(e) => onUpdateDate(folder.id, e.target.value || null)}
-          disabled={!canEdit}
-          className="text-sm text-slate-600 dark:text-slate-300 bg-transparent border-none outline-none cursor-pointer hover:text-[#6350ef] dark:hover:text-[#b3a3ff] transition-colors disabled:cursor-default disabled:hover:text-slate-600"
-        />
       </div>
 
       {/* ── Schedule ── */}
@@ -1671,6 +1664,71 @@ function ItemRow({
 }
 
 /* ─── DetailHeader ────────────────────────────────────────────────────────── */
+
+/* ─── Setlist date pill ───────────────────────────────────────────────────── */
+
+const CalendarIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+);
+
+/** Whole days from today (local) to an ISO yyyy-mm-dd date. */
+function daysUntil(iso: string): number {
+  const [y, m, d] = iso.split("-").map(Number);
+  const target = Date.UTC(y, m - 1, d);
+  const now = new Date();
+  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((target - today) / 86_400_000);
+}
+
+/* The setlist's service date as a tappable soft-purple pill:
+   "📅 Fri, 2 Oct 2026" (+ "in 3 days" for future dates, "Today", or a muted
+   "Past"). "Set date" when empty. Tapping opens the native date picker: an
+   invisible <input type="date"> covers the pill, so on iOS/Android the tap
+   lands on the input itself (most reliable way to open the picker); desktop
+   browsers also get showPicker(). Viewers who can't edit see a static pill
+   (and nothing at all when no date is set). */
+function SetlistDatePill({ date, canEdit, onChange }: {
+  date: string | null; canEdit: boolean; onChange: (date: string | null) => void;
+}) {
+  if (!date && !canEdit) return null;
+  const label = date
+    ? new Date(date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" })
+    : "Set date";
+  const diff = date ? daysUntil(date) : null;
+  const countdown = diff === null ? null
+    : diff > 1 ? `in ${diff} days`
+    : diff === 1 ? "Tomorrow"
+    : diff === 0 ? "Today"
+    : null;
+  const pill = "relative inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full border text-sm font-semibold transition-colors " +
+    (date
+      ? "bg-[#efe9fe] border-[#e0d6fb] text-[#6350ef] dark:bg-[#2a2440] dark:border-[#3a3358] dark:text-[#b3a3ff]"
+      : "bg-white border-dashed border-[#c9bdfb] text-[#6350ef] dark:bg-slate-900 dark:border-[#3a3358] dark:text-[#b3a3ff]");
+  return (
+    <div className="mt-3 flex items-center gap-2 flex-wrap">
+      {canEdit ? (
+        <label className={pill + " cursor-pointer hover:bg-[#e6dcfd] dark:hover:bg-[#332c4f] focus-within:ring-2 focus-within:ring-[#735fee]/40"}>
+          <CalendarIcon />
+          <span>{label}</span>
+          <input type="date" value={date ?? ""} aria-label={date ? `Setlist date: ${label}. Change date` : "Set setlist date"}
+            onChange={(e) => onChange(e.target.value || null)}
+            onClick={(e) => { try { (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.(); } catch { /* not allowed here; native tap still opens it */ } }}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer appearance-none" />
+        </label>
+      ) : (
+        <span className={pill}><CalendarIcon /><span>{label}</span></span>
+      )}
+      {countdown && (
+        <span className="inline-flex items-center h-6 px-2.5 rounded-full text-xs font-semibold bg-white dark:bg-slate-900 text-[#6350ef] dark:text-[#b3a3ff] ring-1 ring-inset ring-[#e0d6fb] dark:ring-[#3a3358]">
+          {countdown}
+        </span>
+      )}
+      {diff !== null && diff < 0 && (
+        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Past</span>
+      )}
+    </div>
+  );
+}
 
 /* ─── Team selector (share setlist with a team) ──────────────────────────── */
 
