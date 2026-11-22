@@ -160,7 +160,10 @@ export default function LandingPage() {
 
       {/* ── 5. FOOTER ── */}
       <footer className="px-5 pb-10 text-center">
-        <p className="text-sm font-medium text-slate-500">Just a tool to serve your worship. 🙏</p>
+        {/* Brand domain — plain text on purpose, NOT a link: worshipplus.life
+            isn't connected yet. Make it an <a> once the domain points here. */}
+        <p className="text-base font-bold tracking-tight text-[#6350ef]" translate="no">worshipplus.life</p>
+        <p className="mt-1 text-sm font-medium text-slate-500">Just a tool to serve your worship. 🙏</p>
         <div className="mt-2 text-sm text-slate-500">
           <Link href="/terms" className="hover:text-slate-600">Terms</Link>
           <span className="mx-2">·</span>
