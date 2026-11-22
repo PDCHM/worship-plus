@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import type { Song } from "@/lib/song";
 import ConfirmDialog from "@/app/_components/ConfirmDialog";
 import FloatingMenu from "@/app/_components/FloatingMenu";
+import { PageTitleRow } from "@/app/_components/PageTitle";
 import { SongRow } from "@/app/_components/Library";
 import SongReferences, { type SongLink } from "@/app/_components/SongReferences";
 import type { MyVersionItem } from "@/lib/privateVersions";
@@ -258,12 +259,8 @@ function Overview({
     }
   };
 
-  return (
-    <div className="max-w-5xl w-full mx-auto px-4 sm:px-6 py-8 space-y-10">
-      {loadError && (folderList.length > 0 || setlistList.length > 0) && (
-        <LoadErrorHint compact what={tab === "setlists" ? "setlists" : "folders"} onRetry={onRetryLoad} retrying={retryingLoad} />
-      )}
-      <div className="flex justify-end -mb-6">
+  // Grid/list toggle: sits at the right of the first visible title row.
+  const viewToggle = (
         <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 seg-group" role="group" aria-label="Folders view mode">
           <button type="button" onClick={() => setViewMode("grid")} aria-pressed={viewMode === "grid"} aria-label="Grid view" title="Grid view"
             className={"w-9 h-9 flex items-center justify-center transition-colors " + (viewMode === "grid" ? "bg-[#efe9fe] text-[#6350ef] ring-1 ring-inset ring-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:ring-[#3a3358]" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")}>
@@ -280,15 +277,19 @@ function Overview({
             </svg>
           </button>
         </div>
-      </div>
+  );
+
+  return (
+    <div className="max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 md:py-8 space-y-10">
+      {loadError && (folderList.length > 0 || setlistList.length > 0) && (
+        <LoadErrorHint compact what={tab === "setlists" ? "setlists" : "folders"} onRetry={onRetryLoad} retrying={retryingLoad} />
+      )}
       {/* Folders */}
       {showFolders && (
       <section>
-        <div className="flex items-center gap-2 mb-4 cursor-pointer group" onClick={() => setShowNewFolder(true)}>
-          <h2 className="font-semibold text-base">Folders</h2>
-          <span className="w-5 h-5 rounded-full bg-[#efe9fe] dark:bg-[#2a2440]/60 text-[#6350ef] dark:text-[#b3a3ff] flex items-center justify-center text-sm font-bold group-hover:bg-[#735fee] group-hover:text-white transition-colors">+</span>
-        </div>
-        <p className="-mt-3 mb-4 text-xs text-slate-500 dark:text-slate-400 truncate">Organise your songs into categories — e.g. Fast, Slow, Christmas</p>
+        <PageTitleRow title="Folders" as={showSetlists ? "h2" : "h1"} addLabel="New folder"
+          onAdd={() => setShowNewFolder(true)} right={viewToggle} />
+        <p className="mt-0.5 mb-5 text-xs text-slate-500 dark:text-slate-400 truncate">Organise your songs into categories — e.g. Fast, Slow, Christmas</p>
         {showNewFolder && (
           <NewNameInput
             placeholder="Folder name"
@@ -346,14 +347,10 @@ function Overview({
       {/* Setlists */}
       {showSetlists && (
       <section>
-        <div
-          className="flex items-center gap-2 mb-4 cursor-pointer group"
-          onClick={() => (canUseSetlists ? setShowNewSetlist(true) : onRequireUpgrade())}
-        >
-          <h2 className="font-semibold text-base">Setlists</h2>
-          <span className="w-5 h-5 rounded-full bg-[#efe9fe] dark:bg-[#2a2440]/60 text-[#6350ef] dark:text-[#b3a3ff] flex items-center justify-center text-sm font-bold group-hover:bg-[#735fee] group-hover:text-white transition-colors">+</span>
-        </div>
-        <p className="-mt-3 mb-4 text-xs text-slate-500 dark:text-slate-400 truncate">Build a song list for each service or event</p>
+        <PageTitleRow title="Setlists" as={showFolders ? "h2" : "h1"} addLabel="New setlist"
+          onAdd={() => (canUseSetlists ? setShowNewSetlist(true) : onRequireUpgrade())}
+          right={showFolders ? undefined : viewToggle} />
+        <p className="mt-0.5 mb-5 text-xs text-slate-500 dark:text-slate-400 truncate">Build a song list for each service or event</p>
         {showNewSetlist && (
           <div className="mb-4 flex flex-col sm:flex-row gap-2">
             <input

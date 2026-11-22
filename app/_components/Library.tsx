@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { KEYS, readSongOpened, type Song } from "@/lib/song";
 import AddSongSheet from "@/app/_components/AddSongSheet";
 import ConfirmDialog from "@/app/_components/ConfirmDialog";
+import { PAGE_TITLE_CLASS, TitleAddButton } from "@/app/_components/PageTitle";
 
 type LibraryFilter = "all" | "favorites" | "recent";
 type LibraryView = "grid" | "list";
@@ -292,10 +293,10 @@ export default function Library({
       <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
         <div className="min-w-0 max-w-full">
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">
+            <h1 className={PAGE_TITLE_CLASS}>
               {heading}
             </h1>
-            <button onClick={()=>setAddSheetOpen(true)} className="w-8 h-8 rounded-full bg-[#735fee] text-white flex items-center justify-center hover:bg-[#6650e6] transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+            <TitleAddButton onClick={() => setAddSheetOpen(true)} label="Add song" />
           </div>
           {heading === "All Songs" && (
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 truncate">Your whole worship library — ready to play</p>

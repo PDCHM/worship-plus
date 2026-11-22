@@ -1,5 +1,6 @@
 "use client";
 import { backdropDismiss } from "@/lib/backdropDismiss";
+import { PageTitleRow } from "@/app/_components/PageTitle";
 import { SELECTED } from "@/lib/selectedStyle";
 import { useState } from "react";
 import type { Song } from "@/lib/song";
@@ -155,20 +156,9 @@ function TeamListView({ memberships, onSelect, onCreateGroup, showToast }: {
     if (result) { showToast("Team created!"); setName(""); setCreating(false); }
   };
   return (
-    <div className="max-w-3xl w-full mx-auto px-4 sm:px-6 py-6">
-      {/* Heading + New Team share a row; the helper line and count sit on their
-          own full-width lines below, so the button never squeezes them. */}
+    <div className="max-w-3xl w-full mx-auto px-4 sm:px-6 py-6 md:py-8">
       <div className="mb-6">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold min-w-0 truncate">Your Teams</h1>
-        {!creating && (
-          <button type="button" onClick={() => setCreating(true)}
-            className="shrink-0 h-9 px-4 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] flex items-center gap-1.5">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            New Team
-          </button>
-        )}
-      </div>
+      <PageTitleRow title="Your Teams" addLabel="New team" onAdd={() => setCreating(true)} />
       <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 truncate">Bring your worship team together</p>
       <p className="text-sm text-slate-500 mt-0.5">{memberships.length} team{memberships.length!==1?"s":""}</p>
       </div>
