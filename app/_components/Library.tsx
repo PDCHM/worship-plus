@@ -4,7 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { KEYS, readSongOpened, type Song } from "@/lib/song";
 import AddSongSheet from "@/app/_components/AddSongSheet";
 import ConfirmDialog from "@/app/_components/ConfirmDialog";
-import { PAGE_TITLE_CLASS, TitleAddButton } from "@/app/_components/PageTitle";
+import { PageTitleRow, ViewModeToggle } from "@/app/_components/PageTitle";
+import { usePersistedState, oneOf } from "@/lib/usePersistedState";
 
 type LibraryFilter = "all" | "favorites" | "recent";
 type LibraryView = "grid" | "list";
@@ -86,13 +87,20 @@ export default function Library({
   } | null>(null);
   // "Save as…" title prompt before creating a copy.
   const [saveAsTarget, setSaveAsTarget] = useState<{ songId: string; title: string } | null>(null);
-  const [sortCol, setSortCol] = useState<"title"|"artist"|"key"|null>("title");
-  const [sortDir, setSortDir] = useState<"asc"|"desc">("asc");
+  // Sort + filters are remembered per device (localStorage) — they survive
+  // leaving the Songs screen and an app restart.
+  const [sortCol, setSortCol] = usePersistedState<"title"|"artist"|"key"|null>(
+    "wp-view-songs-sortCol", "title",
+    (v): v is "title"|"artist"|"key"|null => v === null || v === "title" || v === "artist" || v === "key");
+  const [sortDir, setSortDir] = usePersistedState<"asc"|"desc">("wp-view-songs-sortDir", "asc", oneOf("asc", "desc"));
   // Sort A–Z (default, via sortCol="title") vs Recently used. Filters: by key +
   // favourites (both compose with sort and with each other).
-  const [sortRecent, setSortRecent] = useState(false);
-  const [keyFilter, setKeyFilter] = useState<string | null>(null);
-  const [favFilter, setFavFilter] = useState(false);
+  const [sortRecent, setSortRecent] = usePersistedState<boolean>("wp-view-songs-sortRecent", false,
+    (v): v is boolean => typeof v === "boolean");
+  const [keyFilter, setKeyFilter] = usePersistedState<string | null>("wp-view-songs-keyFilter", null,
+    (v): v is string | null => v === null || typeof v === "string");
+  const [favFilter, setFavFilter] = usePersistedState<boolean>("wp-view-songs-favFilter", false,
+    (v): v is boolean => typeof v === "boolean");
   // Which top-of-list dropdown is open ("sort" | "filter" | null).
   const [panel, setPanel] = useState<"sort" | "filter" | null>(null);
   // Per-device "last opened" map, read once on mount. The library unmounts when a
@@ -107,11 +115,17 @@ export default function Library({
     else { setSortCol(col); setSortDir("asc"); }
   };
 
+  // Switching between All / Favourites / Recent resets the sort to that view's
+  // natural order — but NOT on mount, or the remembered sort would be wiped
+  // every time the Songs screen is opened.
+  const prevFilterRef = useRef(filter);
   useEffect(() => {
+    if (prevFilterRef.current === filter) return;
+    prevFilterRef.current = filter;
     setSortRecent(false);
     if (filter === "recent") { setSortCol(null); setSortDir("asc"); }
     else { setSortCol("title"); setSortDir("asc"); }
-  }, [filter]);
+  }, [filter, setSortRecent, setSortCol, setSortDir]);
 
   // Available keys for the key filter — musical order (KEYS), any non-standard
   // keys appended alphabetically. Drawn only from the songs actually present.
@@ -290,14 +304,11 @@ export default function Library({
 
   return (
     <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 md:py-8">
-      <div className="flex items-center justify-between gap-4 mb-6 flex-wrap">
+      <div className="mb-6">
+      <PageTitleRow title={heading} addLabel="Add song" onAdd={() => setAddSheetOpen(true)}
+        right={<ViewModeToggle value={libraryView} onChange={onLibraryViewChange} label="Library view mode" />} />
+      <div className="flex items-end justify-between gap-x-4 gap-y-3 flex-wrap">
         <div className="min-w-0 max-w-full">
-          <div className="flex items-center gap-2">
-            <h1 className={PAGE_TITLE_CLASS}>
-              {heading}
-            </h1>
-            <TitleAddButton onClick={() => setAddSheetOpen(true)} label="Add song" />
-          </div>
           {heading === "All Songs" && (
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 truncate">Your whole worship library — ready to play</p>
           )}
@@ -423,41 +434,8 @@ export default function Library({
               </div>
             </div>
           )}
-          <div
-            className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 seg-group"
-            role="group"
-            aria-label="Library view mode"
-          >
-            <ViewBtn
-              active={libraryView === "grid"}
-              onClick={() => onLibraryViewChange("grid")}
-              label="Grid view"
-              icon={
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="3" width="7" height="7" rx="1.5" />
-                  <rect x="14" y="3" width="7" height="7" rx="1.5" />
-                  <rect x="3" y="14" width="7" height="7" rx="1.5" />
-                  <rect x="14" y="14" width="7" height="7" rx="1.5" />
-                </svg>
-              }
-            />
-            <ViewBtn
-              active={libraryView === "list"}
-              onClick={() => onLibraryViewChange("list")}
-              label="List view"
-              icon={
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="8" y1="6" x2="21" y2="6" />
-                  <line x1="8" y1="12" x2="21" y2="12" />
-                  <line x1="8" y1="18" x2="21" y2="18" />
-                  <line x1="3" y1="6" x2="3.01" y2="6" />
-                  <line x1="3" y1="12" x2="3.01" y2="12" />
-                  <line x1="3" y1="18" x2="3.01" y2="18" />
-                </svg>
-              }
-            />
-          </div>
         </div>
+      </div>
       </div>
 
       <div className="mb-6 relative">
@@ -1036,35 +1014,6 @@ function CheckMark() {
 function ChipX() {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" className="opacity-70"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-  );
-}
-
-function ViewBtn({
-  active,
-  onClick,
-  label,
-  icon,
-}: {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  icon: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={label}
-      aria-label={label}
-      aria-pressed={active}
-      className={`w-10 h-10 flex items-center justify-center transition-colors ${
-        active
-          ? "bg-[#efe9fe] text-[#6350ef] ring-1 ring-inset ring-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:ring-[#3a3358]"
-          : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-      }`}
-    >
-      {icon}
-    </button>
   );
 }
 

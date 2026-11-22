@@ -50,13 +50,17 @@ html, body {
    so expanded areas would steal each other's taps. [data-tap-expand] opts a
    control inside the chart back in. */
 @layer base {
+  /* Containers that hold their own controls (song/folder/setlist cards are
+     role="button" with ⋮ / star buttons inside) are excluded: they're already
+     far bigger than 44px, and their full-size ::after would sit on top of the
+     inner buttons and swallow their taps. */
   @media (pointer: coarse) {
-    :is(button, [role="button"], select, summary, a[href]:is(.flex, .inline-flex, .block, .grid)):not([data-chord-id], [data-line-id] *, [data-chord-id] *),
+    :is(button, [role="button"], select, summary, a[href]:is(.flex, .inline-flex, .block, .grid)):not([data-chord-id], [data-line-id] *, [data-chord-id] *, :has(button, [role="button"], a[href], input, select, textarea)),
     [data-tap-expand],
     [data-chip-id] {
       position: relative;
     }
-    :is(button, [role="button"], select, summary, a[href]:is(.flex, .inline-flex, .block, .grid)):not([data-chord-id], [data-line-id] *, [data-chord-id] *)::after,
+    :is(button, [role="button"], select, summary, a[href]:is(.flex, .inline-flex, .block, .grid)):not([data-chord-id], [data-line-id] *, [data-chord-id] *, :has(button, [role="button"], a[href], input, select, textarea))::after,
     [data-tap-expand]::after,
     [data-chip-id]::after {
       content: "";

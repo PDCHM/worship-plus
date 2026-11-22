@@ -1,6 +1,7 @@
 "use client";
 import { backdropDismiss } from "@/lib/backdropDismiss";
-import { PageTitleRow } from "@/app/_components/PageTitle";
+import { PageTitleRow, ViewModeToggle, type ViewMode } from "@/app/_components/PageTitle";
+import { usePersistedState, oneOf } from "@/lib/usePersistedState";
 import { SELECTED } from "@/lib/selectedStyle";
 import { useState } from "react";
 import type { Song } from "@/lib/song";
@@ -146,6 +147,8 @@ function TeamListView({ memberships, onSelect, onCreateGroup, showToast }: {
   showToast: GroupsViewProps["showToast"];
 }) {
   const [creating, setCreating] = useState(false);
+  // Grid/list remembered per device (survives navigation + app restart).
+  const [viewMode, setViewMode] = usePersistedState<ViewMode>("wp-view-teams-mode", "list", oneOf("grid", "list"));
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const handleCreate = async () => {
@@ -158,7 +161,8 @@ function TeamListView({ memberships, onSelect, onCreateGroup, showToast }: {
   return (
     <div className="max-w-3xl w-full mx-auto px-4 sm:px-6 py-6 md:py-8">
       <div className="mb-6">
-      <PageTitleRow title="Your Teams" addLabel="New team" onAdd={() => setCreating(true)} />
+      <PageTitleRow title="Your Teams" addLabel="New team" onAdd={() => setCreating(true)}
+        right={memberships.length > 0 ? <ViewModeToggle value={viewMode} onChange={setViewMode} label="Teams view mode" /> : undefined} />
       <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 truncate">Bring your worship team together</p>
       <p className="text-sm text-slate-500 mt-0.5">{memberships.length} team{memberships.length!==1?"s":""}</p>
       </div>
@@ -178,17 +182,35 @@ function TeamListView({ memberships, onSelect, onCreateGroup, showToast }: {
           </div>
         </div>
       )}
+      {viewMode === "grid" ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {memberships.map(({ group, role, memberCount }) => {
+            const isLeader = role === "leader";
+            return (
+              <button key={group.id} type="button" onClick={() => onSelect(group.id)}
+                className="flex flex-col items-start gap-3 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-[#c9bdfb] transition-colors text-left min-w-0">
+                <div className="w-full flex items-start justify-between gap-2">
+                  <TeamTile name={group.name} />
+                  <span className={"text-[11px] font-semibold px-2 py-0.5 rounded-lg shrink-0 "+(isLeader?"bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff]":"bg-slate-100 dark:bg-slate-800 text-slate-500")}>
+                    {ROLE_LABEL[role]}
+                  </span>
+                </div>
+                <div className="w-full min-w-0">
+                  <div className="text-sm font-semibold truncate">{group.name}</div>
+                  <div className="text-xs text-slate-500 mt-0.5">{memberCount} member{memberCount!==1?"s":""}</div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
       <div className="space-y-2">
         {memberships.map(({ group, role, memberCount }) => {
           const isLeader = role === "leader";
           return (
             <button key={group.id} type="button" onClick={() => onSelect(group.id)}
               className="w-full flex items-center gap-3 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-[#c9bdfb] transition-colors text-left">
-              <div className="w-11 h-11 rounded-xl bg-[#efe9fe] dark:bg-[#2a2440] flex items-center justify-center text-[#6350ef] dark:text-[#b3a3ff] font-semibold shrink-0">
-                {/^[0-9]/.test(group.name.trim()) ? (
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                ) : group.name.charAt(0).toUpperCase()}
-              </div>
+              <TeamTile name={group.name} />
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-semibold truncate">{group.name}</div>
                 <div className="text-xs text-slate-500 mt-0.5">{memberCount} member{memberCount!==1?"s":""}</div>
@@ -201,6 +223,18 @@ function TeamListView({ memberships, onSelect, onCreateGroup, showToast }: {
           );
         })}
       </div>
+      )}
+    </div>
+  );
+}
+
+/** Team initial tile (people icon when the name starts with a digit). */
+function TeamTile({ name }: { name: string }) {
+  return (
+    <div className="w-11 h-11 rounded-xl bg-[#efe9fe] dark:bg-[#2a2440] flex items-center justify-center text-[#6350ef] dark:text-[#b3a3ff] font-semibold shrink-0">
+      {/^[0-9]/.test(name.trim()) ? (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      ) : name.charAt(0).toUpperCase()}
     </div>
   );
 }

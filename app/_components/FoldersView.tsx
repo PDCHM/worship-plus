@@ -6,7 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import type { Song } from "@/lib/song";
 import ConfirmDialog from "@/app/_components/ConfirmDialog";
 import FloatingMenu from "@/app/_components/FloatingMenu";
-import { PageTitleRow } from "@/app/_components/PageTitle";
+import { PageTitleRow, ViewModeToggle, type ViewMode } from "@/app/_components/PageTitle";
+import { usePersistedState, oneOf } from "@/lib/usePersistedState";
 import { SongRow } from "@/app/_components/Library";
 import SongReferences, { type SongLink } from "@/app/_components/SongReferences";
 import type { MyVersionItem } from "@/lib/privateVersions";
@@ -198,6 +199,34 @@ export default function FoldersView(props: FoldersViewProps) {
 
 /* ─── Overview ────────────────────────────────────────────────────────────── */
 
+type SetlistSort = "date-asc" | "date-desc" | "team";
+const SETLIST_SORT_LABEL: Record<SetlistSort, string> = {
+  "date-asc": "Date — oldest first",
+  "date-desc": "Date — newest first",
+  team: "Team",
+};
+
+/** Search input — same look as the Songs screen's search bar. */
+function SearchField({ value, onChange, placeholder, label }: {
+  value: string; onChange: (v: string) => void; placeholder: string; label: string;
+}) {
+  return (
+    <div className="relative flex-1 min-w-0">
+      <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+      </svg>
+      <input type="search" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={label}
+        className="w-full h-11 pl-10 pr-9 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-sm" />
+      {value && (
+        <button type="button" onClick={() => onChange("")} aria-label="Clear search"
+          className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full text-slate-500 hover:text-slate-600 dark:hover:text-slate-200 flex items-center justify-center">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
 function Overview({
   folders, folderSongs, teams, onNavigate, onCreate, onRename, onDelete, showToast, currentUserId, onMoveToTeam,
   canUseSetlists, onRequireUpgrade, tab, loadError, onRetryLoad, retryingLoad,
@@ -211,7 +240,23 @@ function Overview({
   const [newSetlistTeam, setNewSetlistTeam] = useState<string>("");
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [showNewSetlist, setShowNewSetlist] = useState(false);
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  // Grid/list is remembered per screen (Folders and Setlists separately) and
+  // survives navigation + app restart. Setlist sort is remembered too.
+  const [viewMode, setViewMode] = usePersistedState<ViewMode>(
+    `wp-view-${tab ?? "folders-setlists"}-mode`, "grid", oneOf("grid", "list"));
+  const [setlistSort, setSetlistSort] = usePersistedState<SetlistSort>(
+    "wp-view-setlists-sort", "date-asc", oneOf<SetlistSort>("date-asc", "date-desc", "team"));
+  const [setlistQuery, setSetlistQuery] = useState("");
+  const [sortOpen, setSortOpen] = useState(false);
+  const sortRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!sortOpen) return;
+    const onDown = (e: PointerEvent) => { if (sortRef.current && !sortRef.current.contains(e.target as Node)) setSortOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setSortOpen(false); };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("pointerdown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [sortOpen]);
   const [confirmDel, setConfirmDel] = useState<DeleteConfirm>(null);
 
   const askDeleteFolder = (f: Folder) => setConfirmDel({
@@ -228,18 +273,32 @@ function Overview({
   const folderList = folders
     .filter((f) => f.type === "folder")
     .sort((a, b) => a.name.localeCompare(b.name));
-  const setlistList = folders
-    // Personal setlists PLUS the ones I own and have shared with a team (sharing
-    // doesn't move a setlist out of my list — it gets a "Team: …" badge).
-    // Teammates' team setlists stay under Teams → team → Setlists only.
-    .filter((f) => f.type === "setlist" && (!f.groupId || f.ownerId === currentUserId))
-    .sort((a, b) => {
-      const ad = a.date ?? "";
-      const bd = b.date ?? "";
-      if (ad && !bd) return -1;
-      if (!ad && bd) return 1;
-      return ad.localeCompare(bd);
-    });
+  // Date order: dated setlists first (asc or desc), undated last, then name.
+  const byDate = (dir: 1 | -1) => (a: Folder, b: Folder) => {
+    const ad = a.date ?? "";
+    const bd = b.date ?? "";
+    if (ad && !bd) return -1;
+    if (!ad && bd) return 1;
+    return (ad.localeCompare(bd) * dir) || a.name.localeCompare(b.name);
+  };
+  const teamName = (f: Folder) => (f.groupId ? teams.find((t) => t.id === f.groupId)?.name ?? "" : "");
+  // Personal setlists PLUS the ones I own and have shared with a team (sharing
+  // doesn't move a setlist out of my list — it gets a "Team: …" badge).
+  // Teammates' team setlists stay under Teams → team → Setlists only.
+  const mySetlists = folders.filter((f) => f.type === "setlist" && (!f.groupId || f.ownerId === currentUserId));
+  const q = setlistQuery.trim().toLowerCase();
+  const setlistList = mySetlists
+    .filter((f) => !q || f.name.toLowerCase().includes(q))
+    .sort(
+      setlistSort === "team"
+        // Personal first, then teams A–Z; each group in date order.
+        ? (a, b) => {
+            const at = teamName(a), bt = teamName(b);
+            if (!at !== !bt) return at ? 1 : -1;
+            return at.localeCompare(bt) || byDate(1)(a, b);
+          }
+        : byDate(setlistSort === "date-desc" ? -1 : 1),
+    );
   const countSongs = (id: string) => folderSongs.filter((fs) => fs.folderId === id).length;
   // Orange "Updated" flag: the setlist's songs changed since the user last
   // opened it (last-seen fingerprint stored in localStorage).
@@ -261,27 +320,13 @@ function Overview({
 
   // Grid/list toggle: sits at the right of the first visible title row.
   const viewToggle = (
-        <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 seg-group" role="group" aria-label="Folders view mode">
-          <button type="button" onClick={() => setViewMode("grid")} aria-pressed={viewMode === "grid"} aria-label="Grid view" title="Grid view"
-            className={"w-9 h-9 flex items-center justify-center transition-colors " + (viewMode === "grid" ? "bg-[#efe9fe] text-[#6350ef] ring-1 ring-inset ring-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:ring-[#3a3358]" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>
-              <rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>
-            </svg>
-          </button>
-          <button type="button" onClick={() => setViewMode("list")} aria-pressed={viewMode === "list"} aria-label="List view" title="List view"
-            className={"w-9 h-9 flex items-center justify-center transition-colors " + (viewMode === "list" ? "bg-[#efe9fe] text-[#6350ef] ring-1 ring-inset ring-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:ring-[#3a3358]" : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
-              <line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
-            </svg>
-          </button>
-        </div>
+    <ViewModeToggle value={viewMode} onChange={setViewMode}
+      label={tab === "setlists" ? "Setlists view mode" : "Folders view mode"} />
   );
 
   return (
     <div className="max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 md:py-8 space-y-10">
-      {loadError && (folderList.length > 0 || setlistList.length > 0) && (
+      {loadError && (folderList.length > 0 || mySetlists.length > 0) && (
         <LoadErrorHint compact what={tab === "setlists" ? "setlists" : "folders"} onRetry={onRetryLoad} retrying={retryingLoad} />
       )}
       {/* Folders */}
@@ -351,6 +396,32 @@ function Overview({
           onAdd={() => (canUseSetlists ? setShowNewSetlist(true) : onRequireUpgrade())}
           right={showFolders ? undefined : viewToggle} />
         <p className="mt-0.5 mb-5 text-xs text-slate-500 dark:text-slate-400 truncate">Build a song list for each service or event</p>
+        {mySetlists.length > 0 && (
+          <div className="mb-5 flex items-center gap-2">
+            <SearchField value={setlistQuery} onChange={setSetlistQuery} placeholder="Search setlists…" label="Search setlists" />
+            {/* Sort — same button + popover as the Songs screen. */}
+            <div ref={sortRef} className="relative shrink-0">
+              <button type="button" onClick={() => setSortOpen((o) => !o)}
+                aria-haspopup="menu" aria-expanded={sortOpen} aria-label={`Sort setlists — ${SETLIST_SORT_LABEL[setlistSort]}`}
+                className="h-10 px-3 rounded-lg text-sm font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M11 5h9M11 9h6M11 13h3"/><path d="M4 17l3 3 3-3M7 4v16"/></svg>
+                <span className="hidden sm:inline">Sort</span>
+              </button>
+              {sortOpen && (
+                <div role="menu" className="fixed inset-x-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom,0px))] z-50 py-1 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xl shadow-slate-900/20 sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-full sm:mt-1 sm:w-56 sm:rounded-lg sm:shadow-xl sm:z-40">
+                  {(Object.keys(SETLIST_SORT_LABEL) as SetlistSort[]).map((k) => (
+                    <button key={k} type="button" role="menuitemradio" aria-checked={setlistSort === k}
+                      onClick={() => { setSetlistSort(k); setSortOpen(false); }}
+                      className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
+                      {SETLIST_SORT_LABEL[k]}
+                      {setlistSort === k && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#6350ef] dark:text-[#b3a3ff]" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {showNewSetlist && (
           <div className="mb-4 flex flex-col sm:flex-row gap-2">
             <input
@@ -428,7 +499,10 @@ function Overview({
             </div>
           )
         )}
-        {setlistList.length === 0 && !showNewSetlist && (
+        {setlistList.length === 0 && mySetlists.length > 0 && (
+          <p className="text-center py-10 text-sm text-slate-500 dark:text-slate-400">No setlists match &ldquo;{setlistQuery.trim()}&rdquo;</p>
+        )}
+        {mySetlists.length === 0 && !showNewSetlist && (
           loadError ? (
             <LoadErrorHint what="setlists" onRetry={onRetryLoad} retrying={retryingLoad} />
           ) : canUseSetlists || FREE_MODEL ? (
@@ -1365,8 +1439,13 @@ function ItemCard({
   };
 
   return (
-    <div className="relative group rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 hover:border-[#c9bdfb] dark:hover:border-[#5a46dc] transition-colors">
-      <div className="cursor-pointer" onClick={!renaming ? onClick : undefined}>
+    // The WHOLE card opens the item (not just the text). ⋮, the rename input and
+    // the floating menu all stop propagation, so they never trigger it.
+    <div role="button" tabIndex={0} aria-label={`Open ${item.name}`}
+      onClick={!renaming ? onClick : undefined}
+      onKeyDown={(e) => { if (!renaming && e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onClick(); } }}
+      className="relative group rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 hover:border-[#c9bdfb] dark:hover:border-[#5a46dc] transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#735fee]">
+      <div>
         <div className={`w-8 h-8 rounded-lg mb-3 flex items-center justify-center ${
           item.type === "setlist"
             ? "bg-violet-50 dark:bg-violet-950/60 text-violet-500 dark:text-violet-400"
@@ -1492,11 +1571,15 @@ function ItemRow({
   };
 
   return (
-    <div className={"relative flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors " + (isLast ? "" : "border-b border-slate-100 dark:border-slate-800")}>
+    // Whole row opens the item; ⋮ / rename / menu stop propagation.
+    <div role="button" tabIndex={0} aria-label={`Open ${item.name}`}
+      onClick={!renaming ? onClick : undefined}
+      onKeyDown={(e) => { if (!renaming && e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onClick(); } }}
+      className={"relative flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#735fee] " + (isLast ? "" : "border-b border-slate-100 dark:border-slate-800")}>
       <div className={"w-8 h-8 rounded-lg flex items-center justify-center shrink-0 " + (item.type === "setlist" ? "bg-violet-50 dark:bg-violet-950/60 text-violet-500 dark:text-violet-400" : "bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff]")}>
         {item.type === "setlist" ? <ListIconSm /> : <FolderIconSm />}
       </div>
-      <div className="flex-1 min-w-0 cursor-pointer" onClick={!renaming ? onClick : undefined}>
+      <div className="flex-1 min-w-0">
         {renaming ? (
           <input
             autoFocus
