@@ -201,10 +201,12 @@ export default function FoldersView(props: FoldersViewProps) {
 
 /* ─── Overview ────────────────────────────────────────────────────────────── */
 
-type SetlistSort = "date-asc" | "date-desc" | "team";
+type SetlistSort = "created-desc" | "date-asc" | "date-desc" | "team";
+// Default: most recently CREATED first, so a new setlist lands at the top.
 const SETLIST_SORT_LABEL: Record<SetlistSort, string> = {
-  "date-asc": "Date — oldest first",
-  "date-desc": "Date — newest first",
+  "created-desc": "Newest first",
+  "date-asc": "Service date — earliest first",
+  "date-desc": "Service date — latest first",
   team: "Team",
 };
 
@@ -247,7 +249,17 @@ function Overview({
   const [viewMode, setViewMode] = usePersistedState<ViewMode>(
     `wp-view-${tab ?? "folders-setlists"}-mode`, "grid", oneOf("grid", "list"));
   const [setlistSort, setSetlistSort] = usePersistedState<SetlistSort>(
-    "wp-view-setlists-sort", "date-asc", oneOf<SetlistSort>("date-asc", "date-desc", "team"));
+    "wp-view-setlists-sort", "created-desc", oneOf<SetlistSort>("created-desc", "date-asc", "date-desc", "team"));
+  // Just-created item: scrolled into view and briefly highlighted.
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!highlightId) return;
+    const raf = requestAnimationFrame(() => {
+      document.querySelector(`[data-item-id="${highlightId}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
+    const t = setTimeout(() => setHighlightId(null), 2600);
+    return () => { cancelAnimationFrame(raf); clearTimeout(t); };
+  }, [highlightId]);
   const [setlistQuery, setSetlistQuery] = useState("");
   const [sortOpen, setSortOpen] = useState(false);
   const sortRef = useRef<HTMLDivElement>(null);
@@ -292,7 +304,9 @@ function Overview({
   const setlistList = mySetlists
     .filter((f) => !q || f.name.toLowerCase().includes(q))
     .sort(
-      setlistSort === "team"
+      setlistSort === "created-desc"
+        ? (a, b) => (b.createdAt - a.createdAt) || a.name.localeCompare(b.name)
+        : setlistSort === "team"
         // Personal first, then teams A–Z; each group in date order.
         ? (a, b) => {
             const at = teamName(a), bt = teamName(b);
@@ -316,7 +330,8 @@ function Overview({
     if (r) {
       showToast(type === "folder" ? "Folder created" : "Setlist created");
       if (type === "folder") { setNewFolderName(""); setShowNewFolder(false); }
-      else { setNewSetlistName(""); setNewSetlistTeam(""); setShowNewSetlist(false); }
+      else { setNewSetlistName(""); setNewSetlistTeam(""); setShowNewSetlist(false); setSetlistQuery(""); }
+      setHighlightId(r.id);
     }
   };
 
@@ -355,6 +370,7 @@ function Overview({
                   item={f}
                   count={countSongs(f.id)}
                   onClick={() => onNavigate(f.id)}
+                  highlighted={highlightId === f.id}
                   onRename={(name) => onRename(f.id, name).then(() => showToast("Renamed"))}
                   onDelete={() => askDeleteFolder(f)}
                 />
@@ -369,6 +385,7 @@ function Overview({
                   count={countSongs(f.id)}
                   isLast={idx === folderList.length - 1}
                   onClick={() => onNavigate(f.id)}
+                  highlighted={highlightId === f.id}
                   onRename={(name) => onRename(f.id, name).then(() => showToast("Renamed"))}
                   onDelete={() => askDeleteFolder(f)}
                 />
@@ -475,6 +492,7 @@ function Overview({
                   count={countSongs(f.id)}
                   updated={isUpdated(f.id)}
                   onClick={() => onNavigate(f.id)}
+                  highlighted={highlightId === f.id}
                   onRename={(name) => onRename(f.id, name).then(() => showToast("Renamed"))}
                   onDelete={() => askDeleteSetlist(f)}
                   teams={teams}
@@ -492,6 +510,7 @@ function Overview({
                   updated={isUpdated(f.id)}
                   isLast={idx === setlistList.length - 1}
                   onClick={() => onNavigate(f.id)}
+                  highlighted={highlightId === f.id}
                   onRename={(name) => onRename(f.id, name).then(() => showToast("Renamed"))}
                   onDelete={() => askDeleteSetlist(f)}
                   teams={teams}
@@ -1405,8 +1424,9 @@ export function AddSongsModal({
 /* ─── ItemCard ────────────────────────────────────────────────────────────── */
 
 function ItemCard({
-  item, count, updated, onClick, onRename, onDelete, teams, onMoveToTeam,
+  item, count, updated, onClick, onRename, onDelete, teams, onMoveToTeam, highlighted,
 }: {
+  highlighted?: boolean;
   item: Folder;
   count: number;
   updated?: boolean;
@@ -1439,7 +1459,9 @@ function ItemCard({
     <div role="button" tabIndex={0} aria-label={`Open ${item.name}`}
       onClick={!renaming ? onClick : undefined}
       onKeyDown={(e) => { if (!renaming && e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onClick(); } }}
-      className="relative group rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 hover:border-[#c9bdfb] dark:hover:border-[#5a46dc] transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#735fee]">
+      data-item-id={item.id}
+      className={"relative group rounded-xl border bg-white dark:bg-slate-900 p-4 hover:border-[#c9bdfb] dark:hover:border-[#5a46dc] transition-all duration-500 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[#735fee] " +
+        (highlighted ? "border-[#9d8bff] ring-4 ring-[#9d8bff]/30 bg-[#f8f6ff] dark:bg-[#2a2440]/40" : "border-slate-200 dark:border-slate-800")}>
       <div>
         <div className={`w-8 h-8 rounded-lg mb-3 flex items-center justify-center ${
           item.type === "setlist"
@@ -1536,8 +1558,9 @@ function ItemCard({
 /* ─── ItemRow ─────────────────────────────────────────────────────────────── */
 
 function ItemRow({
-  item, count, updated, isLast, onClick, onRename, onDelete, teams, onMoveToTeam,
+  item, count, updated, isLast, onClick, onRename, onDelete, teams, onMoveToTeam, highlighted,
 }: {
+  highlighted?: boolean;
   item: Folder;
   count: number;
   updated?: boolean;
@@ -1570,7 +1593,8 @@ function ItemRow({
     <div role="button" tabIndex={0} aria-label={`Open ${item.name}`}
       onClick={!renaming ? onClick : undefined}
       onKeyDown={(e) => { if (!renaming && e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onClick(); } }}
-      className={"relative flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#735fee] " + (isLast ? "" : "border-b border-slate-100 dark:border-slate-800")}>
+      data-item-id={item.id}
+      className={"relative flex items-center gap-3 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors duration-500 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#735fee] " + (highlighted ? "bg-[#efe9fe] dark:bg-[#2a2440] " : "") + (isLast ? "" : "border-b border-slate-100 dark:border-slate-800")}>
       <div className={"w-8 h-8 rounded-lg flex items-center justify-center shrink-0 " + (item.type === "setlist" ? "bg-violet-50 dark:bg-violet-950/60 text-violet-500 dark:text-violet-400" : "bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff]")}>
         {item.type === "setlist" ? <ListIconSm /> : <FolderIconSm />}
       </div>
