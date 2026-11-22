@@ -28,6 +28,7 @@ function Icon({ children }: { children: ReactNode }) {
 }
 
 const FEATURES: { label: string; icon: ReactNode }[] = [
+  // Strengths first, general advantages last.
   // Lucide "user-plus" — distinct from the two-person icon on "Musicians free".
   { label: "Build your team", icon: (
     <Icon>
@@ -42,22 +43,11 @@ const FEATURES: { label: string; icon: ReactNode }[] = [
       <path d="M3 10h18" /><path d="m9 16 2 2 4-4" />
     </Icon>
   ) },
-  { label: "Musicians free", icon: (
+  // Lucide "file-down" — imports cover photos, files and paste, not just photos.
+  { label: "Hassle-free imports", icon: (
     <Icon>
-      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
-      <path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </Icon>
-  ) },
-  { label: "Any device", icon: (
-    <Icon>
-      <rect width="10" height="14" x="3" y="8" rx="2" /><path d="M5 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2h-2.4" />
-      <path d="M8 18h.01" />
-    </Icon>
-  ) },
-  { label: "Snap a photo → song", icon: (
-    <Icon>
-      <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" />
-      <circle cx="12" cy="13" r="3" />
+      <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" />
+      <path d="M12 18v-6" /><path d="m9 15 3 3 3-3" />
     </Icon>
   ) },
   { label: "Built for Chinese worship", icon: (
@@ -77,6 +67,18 @@ const FEATURES: { label: string; icon: ReactNode }[] = [
       <path d="M12 20h.01" /><path d="M8.5 16.43a5 5 0 0 1 7 0" /><path d="M5 12.86a10 10 0 0 1 5.17-2.69" />
       <path d="M19 12.86a10 10 0 0 0-2.01-1.53" /><path d="M2 8.82a15 15 0 0 1 4.18-2.65" />
       <path d="M22 8.82a15 15 0 0 0-11.29-3.76" /><path d="m2 2 20 20" />
+    </Icon>
+  ) },
+  { label: "Musicians free", icon: (
+    <Icon>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </Icon>
+  ) },
+  { label: "Any device", icon: (
+    <Icon>
+      <rect width="10" height="14" x="3" y="8" rx="2" /><path d="M5 4a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2h-2.4" />
+      <path d="M8 18h.01" />
     </Icon>
   ) },
 ];
