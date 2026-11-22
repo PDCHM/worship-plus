@@ -2857,17 +2857,17 @@ export default function Home() {
     void (async () => {
       const { error } = await supabase.from("folders").update({ group_id: newGroupId }).eq("id", setlistId);
       if (error) {
-        logErr("move setlist to team", error);
-        showToast("Couldn't move setlist: " + error.message);
+        logErr("share setlist with team", error);
+        showToast("Couldn't share setlist: " + error.message);
         setFolders(prev);
         return;
       }
       if (newGroupId) {
         const teamName = groups.find((g) => g.id === newGroupId)?.name ?? "team";
         const count = groupMembers.filter((m) => m.groupId === newGroupId).length;
-        showToast(`Moved to ${teamName} · ${count} ${count === 1 ? "member" : "members"} can now see it`);
+        showToast(`Shared with ${teamName} · ${count} ${count === 1 ? "member" : "members"} can now see it`);
       } else {
-        showToast("Moved to Personal");
+        showToast("Stopped sharing — Personal only");
       }
     })();
   };
@@ -3388,6 +3388,7 @@ export default function Home() {
           onNavigate={navigateTo}
           folders={folders}
           groups={groups}
+          currentUserId={user.id}
           songsCount={librarySongs.filter((s) => s.userId === user.id).length}
           sidebarOpen={sidebarOpen}
           desktopCollapsed={navCollapsed}
@@ -3422,7 +3423,7 @@ export default function Home() {
               filter={view.filter}
               libraryView={libraryView}
               onLibraryViewChange={setLibraryView}
-              setlists={folders.filter((f) => f.type === "setlist" && !f.groupId).map((f) => ({ id: f.id, name: f.name }))}
+              setlists={folders.filter((f) => f.type === "setlist" && (!f.groupId || f.ownerId === user.id)).map((f) => ({ id: f.id, name: f.name }))}
               folders={folders.filter((f) => f.type === "folder" && !f.groupId).map((f) => ({ id: f.id, name: f.name }))}
               onBulkDelete={bulkDeleteSongs}
               onBulkAddToSetlist={bulkAddSongsToSetlist}
@@ -3938,8 +3939,9 @@ const FOLDER_ICON = <svg width="13" height="13" viewBox="0 0 24 24" fill="none" 
 
 function Sidebar({
   view, onNavigate, folders, groups, songsCount, sidebarOpen, desktopCollapsed, onClose,
-  onAddSong, onCreateFolder, onCreateSetlist, onCreateTeam,
+  onAddSong, onCreateFolder, onCreateSetlist, onCreateTeam, currentUserId,
 }: {
+  currentUserId: string;
   view: View;
   onNavigate: (v: View) => void;
   folders: Folder[];
@@ -3965,7 +3967,8 @@ function Sidebar({
   const go = (v: View) => { onNavigate(v); onClose(); };
 
   const folderList = folders.filter((f) => f.type === "folder");
-  const setlistList = folders.filter((f) => f.type === "setlist" && !f.groupId);
+  // My setlists, including ones I've shared with a team (sharing ≠ moving).
+  const setlistList = folders.filter((f) => f.type === "setlist" && (!f.groupId || f.ownerId === currentUserId));
 
   // Collapsed-section state, persisted to localStorage so it survives reloads.
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>(() => loadNavCollapsed());

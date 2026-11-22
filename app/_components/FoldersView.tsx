@@ -227,7 +227,10 @@ function Overview({
     .filter((f) => f.type === "folder")
     .sort((a, b) => a.name.localeCompare(b.name));
   const setlistList = folders
-    .filter((f) => f.type === "setlist" && !f.groupId)
+    // Personal setlists PLUS the ones I own and have shared with a team (sharing
+    // doesn't move a setlist out of my list — it gets a "Team: …" badge).
+    // Teammates' team setlists stay under Teams → team → Setlists only.
+    .filter((f) => f.type === "setlist" && (!f.groupId || f.ownerId === currentUserId))
     .sort((a, b) => {
       const ad = a.date ?? "";
       const bd = b.date ?? "";
@@ -367,9 +370,9 @@ function Overview({
               onChange={(e) => setNewSetlistTeam(e.target.value)}
               className="h-10 px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff]"
             >
-              <option value="">Personal</option>
+              <option value="">Personal only</option>
               {teams.map((t) => (
-                <option key={t.id} value={t.id}>{t.name}</option>
+                <option key={t.id} value={t.id}>Share with {t.name}</option>
               ))}
             </select>
             <button
@@ -791,7 +794,7 @@ function SetlistDetail({
       <div className="mt-3">
         {isOwner ? (
           <div className="flex flex-col items-start gap-1.5 sm:flex-row sm:items-center sm:gap-2">
-            <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Assign Team</span>
+            <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Share with team</span>
             <TeamSelectChip currentGroupId={folder.groupId ?? null} teams={teams} onMoveToTeam={(gid) => onMoveToTeam(folder.id, gid)} />
           </div>
         ) : (
@@ -1400,6 +1403,7 @@ function ItemCard({
             <span className="px-1.5 py-0.5 rounded-full bg-orange-100 dark:bg-orange-950/60 text-orange-600 dark:text-orange-400 text-[10px] font-semibold uppercase tracking-wide">Updated</span>
           )}
         </div>
+        <SharedTeamBadge item={item} teams={teams} className="mt-1.5" />
         {item.type === "setlist" && item.date && (
           <div style={{fontSize:"11px"}} className="text-[#6350ef] dark:text-[#b3a3ff] mt-0.5">
             {new Date(item.date + "T00:00:00").toLocaleDateString("en-GB", { weekday:"short", day:"numeric", month:"short", year:"numeric" })}
@@ -1439,7 +1443,7 @@ function ItemCard({
                   onClick={(e) => { e.stopPropagation(); setMoveOpen(true); }}
                   className="w-full flex items-center justify-between px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
                 >
-                  Move to team <span aria-hidden>›</span>
+                  Share with team <span aria-hidden>›</span>
                 </button>
               )}
               <button
@@ -1531,6 +1535,7 @@ function ItemRow({
               </span>
             </>
           )}
+          <SharedTeamBadge item={item} teams={teams} />
         </div>
       </div>
       <button
@@ -1566,7 +1571,7 @@ function ItemRow({
                   onClick={(e) => { e.stopPropagation(); setMoveOpen(true); }}
                   className="w-full flex items-center justify-between px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
                 >
-                  Move to team <span aria-hidden>›</span>
+                  Share with team <span aria-hidden>›</span>
                 </button>
               )}
               <button
@@ -1586,17 +1591,17 @@ function ItemRow({
 
 /* ─── DetailHeader ────────────────────────────────────────────────────────── */
 
-/* ─── Team selector (move setlist to team) ───────────────────────────────── */
+/* ─── Team selector (share setlist with a team) ──────────────────────────── */
 
-// Shared option list: "Personal" + each team, current selection checked.
+// Option list: "Personal only" (not shared) + each team, current selection checked.
 function TeamOptionList({ currentGroupId, teams, onPick }: {
   currentGroupId: string | null;
   teams: TeamOption[];
   onPick: (groupId: string | null) => void;
 }) {
-  const opts: { id: string | null; name: string }[] = [{ id: null, name: "Personal" }, ...teams.map((t) => ({ id: t.id, name: t.name }))];
+  const opts: { id: string | null; name: string }[] = [{ id: null, name: "Personal only" }, ...teams.map((t) => ({ id: t.id, name: t.name }))];
   return (
-    <div role="menu" aria-label="Move setlist to team">
+    <div role="menu" aria-label="Share setlist with team">
       {opts.map((o) => {
         const selected = (o.id ?? null) === (currentGroupId ?? null);
         return (
@@ -1619,6 +1624,20 @@ function TeamOptionList({ currentGroupId, teams, onPick }: {
   );
 }
 
+// "Team: <name>" — marks a setlist I own that is shared with a team. Same single
+// setlist (no copy); it also appears under Teams → that team → Setlists.
+function SharedTeamBadge({ item, teams, className = "" }: { item: Folder; teams?: TeamOption[]; className?: string }) {
+  if (item.type !== "setlist" || !item.groupId) return null;
+  const name = teams?.find((t) => t.id === item.groupId)?.name ?? "team";
+  return (
+    <span title={`Shared with ${name}`}
+      className={"inline-flex items-center gap-1 max-w-full px-1.5 py-0.5 rounded-full bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff] text-[11px] font-semibold " + className}>
+      <TeamPeopleIcon />
+      <span className="truncate">Team: {name}</span>
+    </span>
+  );
+}
+
 const TeamPeopleIcon = () => (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
 );
@@ -1632,7 +1651,7 @@ function TeamSelectChip({ currentGroupId, teams, onMoveToTeam }: {
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const currentName = currentGroupId ? (teams.find((t) => t.id === currentGroupId)?.name ?? "Team") : "Personal";
+  const currentName = currentGroupId ? (teams.find((t) => t.id === currentGroupId)?.name ?? "Team") : "Personal only";
 
   useEffect(() => {
     if (!open) return;
@@ -1667,7 +1686,7 @@ function TeamSelectChip({ currentGroupId, teams, onMoveToTeam }: {
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`Move to team — currently ${currentName}`}
+        aria-label={`Share with team — currently ${currentGroupId ? `shared with ${currentName}` : "not shared"}`}
         className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-xs font-semibold bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/60 transition-colors"
       >
         <TeamPeopleIcon />
@@ -1685,7 +1704,7 @@ function TeamSelectChip({ currentGroupId, teams, onMoveToTeam }: {
 
 // Static (non-interactive) team pill — shown to non-owners.
 function TeamStaticPill({ currentGroupId, teams }: { currentGroupId: string | null; teams: TeamOption[] }) {
-  const name = currentGroupId ? (teams.find((t) => t.id === currentGroupId)?.name ?? "Team") : "Personal";
+  const name = currentGroupId ? (teams.find((t) => t.id === currentGroupId)?.name ?? "Team") : "Personal only";
   return (
     <span className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-xs font-semibold bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-300">
       <TeamPeopleIcon />
