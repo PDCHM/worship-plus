@@ -41,7 +41,10 @@ export type SetlistEvent = {
   eventType: "rehearsal" | "event";
 };
 
-export type TeamOption = { id: string; name: string };
+// canPost: the user is a leader/editor of that team, so they may share setlists
+// with it (enforced by the database too). Teams where they're a plain member
+// still appear for names/badges but aren't offered as share targets.
+export type TeamOption = { id: string; name: string; canPost?: boolean };
 
 // "My Versions" box items — shape defined with the display logic.
 export type { MyVersionItem } from "@/lib/privateVersions";
@@ -461,7 +464,7 @@ function Overview({
               className="h-10 px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff]"
             >
               <option value="">Personal only</option>
-              {teams.map((t) => (
+              {teams.filter((t) => t.canPost !== false).map((t) => (
                 <option key={t.id} value={t.id}>Share with {t.name}</option>
               ))}
             </select>
@@ -1762,7 +1765,10 @@ function TeamOptionList({ currentGroupId, teams, onPick }: {
   teams: TeamOption[];
   onPick: (groupId: string | null) => void;
 }) {
-  const opts: { id: string | null; name: string }[] = [{ id: null, name: "Personal only" }, ...teams.map((t) => ({ id: t.id, name: t.name }))];
+  const opts: { id: string | null; name: string }[] = [
+    { id: null, name: "Personal only" },
+    ...teams.filter((t) => t.canPost !== false || t.id === currentGroupId).map((t) => ({ id: t.id, name: t.name })),
+  ];
   return (
     <div role="menu" aria-label="Share setlist with team">
       {opts.map((o) => {

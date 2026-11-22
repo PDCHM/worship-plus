@@ -31,6 +31,25 @@ export function youtubeId(url: string): string | null {
   }
 }
 
+// Reference links must be plain web links. Accepts what people paste — adds
+// https:// when the scheme is missing ("youtu.be/abc", "www.site.com/x") — and
+// rejects every other scheme (javascript:, data:, file:, …). Returns the
+// normalised URL, or null if it isn't a valid http(s) link. The database
+// enforces the same rule (song_links_url_http).
+export function safeLinkUrl(raw: string): string | null {
+  const v = raw.trim();
+  if (!v) return null;
+  const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(v) ? v : `https://${v}`;
+  try {
+    const u = new URL(withScheme);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    if (!u.hostname.includes(".") && u.hostname !== "localhost") return null;
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
 // Human label for a link with no explicit title: host + trimmed path.
 function urlLabel(url: string): string {
   try {
@@ -129,14 +148,19 @@ export default function SongReferences({
       if (!online) { showToast("Playback needs a connection"); return; }
       setPlaying({ videoId: vid, title: link.title?.trim() || urlLabel(link.url) });
     } else {
-      window.open(link.url, "_blank", "noopener,noreferrer");
+      // Never open anything but an http(s) link (covers links saved before
+      // validation existed).
+      const safe = safeLinkUrl(link.url);
+      if (!safe) { showToast("This link can't be opened — only web links (http/https) are allowed"); return; }
+      window.open(safe, "_blank", "noopener,noreferrer");
     }
   };
 
   const submit = async () => {
     if (!editing || saving) return;
-    const url = editing.url.trim();
-    if (!url) return;
+    if (!editing.url.trim()) return;
+    const url = safeLinkUrl(editing.url);
+    if (!url) { showToast("Please paste a web link starting with http:// or https://"); return; }
     setSaving(true);
     if (editing.id) await onUpdate(editing.id, { url, title: editing.title.trim() });
     else await onAdd(songId, url, editing.title.trim());

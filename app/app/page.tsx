@@ -826,9 +826,11 @@ export default function Home() {
     };
   }, [sidebarOpen]);
 
-  // Reflect the Stripe Checkout return. Beta: rather than wait for the Stripe
-  // webhook, apply the plan from the success URL directly — the signed-in user
-  // can update their own profiles row via RLS (profiles_self_update).
+  // Reflect the Stripe Checkout return. The plan itself is written ONLY by the
+  // Stripe webhook (service role) — users can no longer change profiles.plan /
+  // stripe_customer_id (security hardening #2), so nothing from the URL is
+  // trusted here. We just re-read the profile so a webhook update that already
+  // landed shows up, and say thanks.
   useEffect(() => {
     if (!user) return;
     const params = new URLSearchParams(window.location.search);
@@ -838,44 +840,15 @@ export default function Home() {
       const planParam = params.get("plan");
       if (planParam && isPaidPlan(planParam)) {
         const plan = planParam as Plan;
-        const sessionId = params.get("session_id");
         void (async () => {
-          // Beta (no webhook): resolve the Stripe customer id from the checkout
-          // session and persist it alongside the plan, so the billing portal can
-          // find this user later. Non-fatal if it fails — the plan still applies.
-          let customerId: string | null = null;
-          if (sessionId) {
-            try {
-              const res = await fetch(`/api/stripe/session?session_id=${encodeURIComponent(sessionId)}`);
-              const data = await res.json().catch(() => ({}));
-              if (res.ok && typeof data?.customerId === "string") customerId = data.customerId;
-            } catch { /* ignore — plan write below still proceeds */ }
-          }
-          const { error } = await supabase
-            .from("profiles")
-            .update({ plan, ...(customerId ? { stripe_customer_id: customerId } : {}) })
-            .eq("id", user.id);
-          if (error) {
-            logErr("apply plan from success url", error);
-            showToast("Payment succeeded, but updating your plan failed: " + error.message);
-            return;
-          }
-          // Re-read after the write so local state is authoritative: the initial
-          // profile load may have read the pre-checkout "free" and could resolve
-          // after this handler, clobbering an optimistic update. Building plan in
-          // unconditionally (not `prev ? … : prev`) also covers the case where the
-          // profile hasn't loaded yet.
           let { data: fresh, error: readErr } = await supabase
             .from("profiles").select(PROFILE_COLS).eq("id", user.id).maybeSingle();
           if (readErr && /plan|stripe_customer_id|trial_ends_at|plan_expires_at|column|42703/i.test(readErr.message || "")) {
             ({ data: fresh } = await supabase.from("profiles").select(PROFILE_COLS_BASE).eq("id", user.id).maybeSingle());
           }
           const freshRow = fresh as Profile | null;
-          setProfile((prev) => {
-            const base = freshRow ?? prev;
-            return base ? { ...base, plan: (freshRow?.plan as Plan | undefined) ?? plan } : prev;
-          });
-          showToast(`Welcome to Worship+ ${PLANS[plan].name}! Your 14-day trial has started.`);
+          if (freshRow) setProfile((prev) => ({ ...(prev ?? freshRow), ...freshRow }));
+          showToast(`Thanks! Your Worship+ ${PLANS[plan].name} plan will be active in a moment.`);
         })();
       } else {
         showToast("Subscription started — welcome aboard!");
@@ -3530,7 +3503,7 @@ export default function Home() {
               folderSongs={folderSongs}
               songs={songs}
               cachedSongIds={cachedSongIds}
-              teams={groups.filter(g => groupMembers.some(m => m.groupId === g.id && m.userId === user.id)).map(g => ({ id: g.id, name: g.name }))}
+              teams={groups.flatMap(g => { const me = groupMembers.find(m => m.groupId === g.id && m.userId === user.id); return me ? [{ id: g.id, name: g.name, canPost: me.role === "leader" || me.role === "editor" }] : []; })}
               currentUserId={user.id}
               onMoveToTeam={assignSetlistToTeam}
               onOpenTeam={setTeamSheetId}

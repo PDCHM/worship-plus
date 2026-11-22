@@ -2,17 +2,18 @@ import { NextResponse } from "next/server";
 import * as Sentry from "@sentry/nextjs";
 import { getStripe } from "@/lib/stripe";
 import { isPaidPlan } from "@/lib/plans";
+import { createClient } from "@/lib/supabase/server";
 
 // Creates a Stripe Checkout session for a subscription and returns its hosted
-// URL. The client posts the target plan; the Stripe Price ID is resolved
-// server-side from env (price IDs are not exposed to the browser).
+// URL. The client posts only the target plan. Everything else is decided
+// server-side: the user (id + email) comes from the signed-in session — never
+// from the request body — and the Stripe Price ID is mapped from the plan via
+// env, so a caller can't pair a cheap price with an expensive plan name, or
+// start a checkout on someone else's account.
 
 type Body = {
   plan?: unknown;
   planName?: unknown;
-  priceId?: unknown;
-  userId?: unknown;
-  userEmail?: unknown;
 };
 
 function priceIdForPlan(plan: string): string | undefined {
@@ -23,6 +24,12 @@ function priceIdForPlan(plan: string): string | undefined {
 }
 
 export async function POST(request: Request) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Not signed in." }, { status: 401 });
+  }
+
   const stripe = getStripe();
   if (!stripe) {
     return NextResponse.json({ error: "Billing is not configured (missing STRIPE_SECRET_KEY)." }, { status: 503 });
@@ -37,18 +44,14 @@ export async function POST(request: Request) {
 
   // Accept `plan` (preferred) or `planName`; resolve the price server-side.
   const plan = typeof body.plan === "string" ? body.plan : typeof body.planName === "string" ? body.planName : "";
-  const userId = typeof body.userId === "string" ? body.userId : "";
-  const userEmail = typeof body.userEmail === "string" ? body.userEmail : undefined;
+  const userId = user.id;
+  const userEmail = user.email ?? undefined;
 
   if (!isPaidPlan(plan)) {
     return NextResponse.json({ error: "Unknown or non-purchasable plan." }, { status: 400 });
   }
-  if (!userId) {
-    return NextResponse.json({ error: "Missing user." }, { status: 400 });
-  }
-
-  // Prefer an explicit priceId if the caller provided one; otherwise map plan→env.
-  const priceId = (typeof body.priceId === "string" && body.priceId) || priceIdForPlan(plan);
+  // Price is always resolved from the plan server-side (any client priceId is ignored).
+  const priceId = priceIdForPlan(plan);
   if (!priceId) {
     return NextResponse.json({ error: `No Stripe price configured for the ${plan} plan.` }, { status: 503 });
   }
