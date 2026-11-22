@@ -987,7 +987,7 @@ function LineToolButton({
           (active
             ? "text-[#735fee] bg-[#efe9fe] dark:bg-[#2a2440]"
             : destructive
-              ? "text-rose-500 dark:text-rose-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+              ? "text-rose-600 dark:text-rose-400 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40"
               : "text-slate-500 dark:text-slate-500 hover:text-[#735fee] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/60")
         }
       >

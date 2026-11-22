@@ -197,7 +197,7 @@ export function LineBubbles({
                   <button type="button" onClick={() => api.toggleResolve(b)} title={b.resolved ? "Reopen" : "Resolve"} aria-label={b.resolved ? "Reopen" : "Resolve"} className="text-emerald-600 hover:text-emerald-700">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                   </button>
-                  <button type="button" onClick={() => api.remove(b)} title="Delete" aria-label="Delete note" className="text-rose-500 hover:text-rose-600">
+                  <button type="button" onClick={() => api.remove(b)} title="Delete" aria-label="Delete note" className="text-rose-600 hover:text-rose-700 dark:text-rose-400">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                   </button>
                 </span>
