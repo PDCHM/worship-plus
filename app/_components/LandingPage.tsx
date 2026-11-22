@@ -158,7 +158,7 @@ export default function LandingPage() {
 
       {/* ── 5. FOOTER ── */}
       <footer className="px-5 pb-10 text-center">
-        <p className="text-sm font-medium text-slate-500">Built to serve the local church. 🙏</p>
+        <p className="text-sm font-medium text-slate-500">Just a tool to serve your worship. 🙏</p>
         <div className="mt-2 text-sm text-slate-500">
           <Link href="/terms" className="hover:text-slate-600">Terms</Link>
           <span className="mx-2">·</span>
