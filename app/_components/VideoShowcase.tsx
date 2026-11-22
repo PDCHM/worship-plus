@@ -23,8 +23,8 @@ const CLIPS: Clip[] = [
   {
     id: "edit-power",
     kicker: "Edit power",
-    headline: "Chords that lock to every word",
-    body: "Drop a chord on a word and it stays there — across 1, 2 or 3 columns, on any screen, in any language.",
+    headline: "Drag a chord. It locks to the\u00A0word.", // nbsp: "word." never wraps alone
+    body: "Drop a chord onto any word and it stays locked to it — perfectly aligned across 1, 2 or 3 columns, any screen size, any language. No more chords drifting out of place when you switch devices.",
     src: "/videos/W-Video1-EditPower.mp4",
     poster: "/videos/W-Video1-EditPower-poster.jpg",
     label: "Editing a chart in Worship+ — chords stay locked to each word as lines are edited",
