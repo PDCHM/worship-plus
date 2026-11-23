@@ -178,10 +178,10 @@ const GROUPS: Group[] = [
   {
     title: "Chords",
     rows: [
-      { icon: chip("↔"), text: "Drag a chord to move it onto another word." },
       { icon: chip("Tap"), text: "Tap a chord to edit or delete it." },
-      { icon: chip("Click"), text: "On a computer: click a chord to edit it, or right-click it for Edit / Delete." },
-      { icon: chip("＋"), text: "Tap the space above a word to add a chord there." },
+      { icon: chip("＋"), text: "Tap a word — or the space above it — to add a chord there." },
+      { icon: chip("↔"), text: "Drag a chord to move it onto another word." },
+      { icon: chip("Hold"), text: "Long-press a chord for more: Edit, Delete, Duplicate." },
     ],
   },
 ];

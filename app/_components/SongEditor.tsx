@@ -230,6 +230,9 @@ type Props = {
   onSectionStylesChange: (s: SectionStyles) => void;
   onSectionStylesSave: (s: SectionStyles) => void | Promise<void>;
   showToast: (msg: string) => void;
+  // Shows "<message> — Undo"; calling `restore` puts the content back. Used so
+  // a stray tap can never silently wipe a section.
+  onUndoableDelete?: (message: string, restore: () => void) => void;
   bubbleAuthors: Record<string, string>;
   // Reference links (YouTube etc.) for this song + their CRUD, owned by the page
   // so they mirror to the offline cache. Edit gating reuses `canEdit`.
@@ -1051,6 +1054,7 @@ export default function SongEditor({
   onSectionStylesChange,
   onSectionStylesSave,
   showToast,
+  onUndoableDelete,
   bubbleAuthors,
   songLinks,
   onAddLink,
@@ -1127,6 +1131,9 @@ export default function SongEditor({
     chordId: string;
     x: number;
     y: number;
+    // Long-press / right-click menu also offers Duplicate; the single-tap menu
+    // stays Edit · Delete.
+    full?: boolean;
   } | null>(null);
   // Seeded from this song's saved view prefs (SongEditor is keyed by song id, so
   // this runs per song). Defaults when none saved.
@@ -2507,6 +2514,21 @@ export default function SongEditor({
       // A finger jitters a few px on a tap — don't treat that as a drag.
       const pointerType = e.pointerType;
       const dragThreshold = pointerType === "mouse" ? 4 : 10;
+      // Touch feedback: the chord lights up the moment it's pressed (attribute
+      // on the element itself — no React re-render).
+      const chordEl = e.currentTarget as HTMLElement;
+      chordEl.setAttribute("data-pressed", "");
+      // Long-press (touch/pen, held still) → full chord menu; the press then
+      // neither drags nor counts as a tap.
+      let longPressed = false;
+      const pressAt = e.timeStamp;
+      const longPressTimer = pointerType === "mouse" ? 0 : window.setTimeout(() => {
+        if (moved) return;
+        longPressed = true;
+        chordEl.removeAttribute("data-pressed");
+        openChordMenu(chordId, true, pressAt + LONG_PRESS_MS);
+        try { navigator.vibrate?.(12); } catch { /* not supported (iOS) */ }
+      }, LONG_PRESS_MS);
       // Capture IMMEDIATELY on the STABLE sections container (not the glyph, whose
       // DOM node remounts on re-anchor) so finger/S-Pen catch + hold the gesture
       // every time; hold touch-action so a leftward drag isn't claimed by scroll
@@ -2565,8 +2587,11 @@ export default function SongEditor({
       const onMove = (ev: PointerEvent) => {
         if (ev.pointerId !== pointerId) return;
         lastX = ev.clientX; lastY = ev.clientY;
+        if (longPressed) return;
         if (!moved && Math.hypot(lastX - startX, lastY - startY) > dragThreshold) {
           moved = true;
+          clearTimeout(longPressTimer);
+          chordEl.removeAttribute("data-pressed");
           chordDraggedRef.current = true;
           setDraggingId(chordId);
           // Mount the ghost once, already at the pointer — moves are by ref.
@@ -2598,7 +2623,9 @@ export default function SongEditor({
         setDraggingId(null);
         setDragGhost(null);
         // pointerup without a drag = a TAP → edit (a pointercancel never is).
-        if (!moved && ev?.type === "pointerup") openChordFromTap(chordId, pointerType, ev.timeStamp);
+        clearTimeout(longPressTimer);
+        chordEl.removeAttribute("data-pressed");
+        if (!moved && !longPressed && ev?.type === "pointerup") openChordFromTap(chordId, pointerType, ev.timeStamp);
       };
       document.addEventListener("pointermove", onMove, { passive: false });
       document.addEventListener("pointerup", finishDrag);
@@ -2609,6 +2636,17 @@ export default function SongEditor({
   // Edit / Delete menu (what desktop gets from right-click); choosing Edit there
   // is a real tap on a button, which reliably raises the iOS keyboard. Mouse →
   // the inline chord editor (what a click was meant to do).
+  const openChordMenu = (chordId: string, full: boolean, at: number) => {
+    const el = document.querySelector<HTMLElement>(`[data-chord-id="${chordId}"]`);
+    const r = el?.getBoundingClientRect();
+    menuOpenedAtRef.current = at;
+    setContextMenu({
+      chordId,
+      full,
+      x: Math.max(8, Math.min((r?.left ?? 0) - 4, window.innerWidth - 160)),
+      y: Math.max(8, Math.min((r?.bottom ?? 0) + 6, window.innerHeight - (full ? 132 : 96))),
+    });
+  };
   const openChordFromTap = (chordId: string, pointerType: string, at: number) => {
     tapHandledAtRef.current = at;
     if (pointerType === "mouse") {
@@ -2616,14 +2654,32 @@ export default function SongEditor({
       setEditingChord(chordId);
       return;
     }
-    const el = document.querySelector<HTMLElement>(`[data-chord-id="${chordId}"]`);
-    const r = el?.getBoundingClientRect();
-    menuOpenedAtRef.current = at;
-    setContextMenu({
-      chordId,
-      x: Math.max(8, Math.min((r?.left ?? 0) - 4, window.innerWidth - 160)),
-      y: Math.max(8, Math.min((r?.bottom ?? 0) + 6, window.innerHeight - 96)),
-    });
+    openChordMenu(chordId, false, at);
+  };
+  // Long-press (touch/pen) on a chord → the full menu (Edit · Delete · Duplicate).
+  const LONG_PRESS_MS = 450;
+  // Copy a chord: onto the NEXT word (offset 0) when there is one, otherwise
+  // just after it on the same word; on chord-only lines, right after it.
+  const duplicateChord = (lineId: string, chordId: string) => {
+    update((s) =>
+      mapLine(s, lineId, (line) => {
+        const src = line.chords.find((c) => c.id === chordId);
+        if (!src) return line;
+        const words = tokenizeWords(line.lyric).length;
+        if (words === 0) {
+          const sorted = [...line.chords].sort((a, b) => a.pos - b.pos);
+          const at = sorted.findIndex((c) => c.id === chordId);
+          sorted.splice(at + 1, 0, { ...src, id: uid() });
+          return { ...line, chords: sorted.map((c, i) => ({ ...c, pos: i, wordIndex: i })) };
+        }
+        const wi = src.wordIndex ?? 0;
+        const nextWord = wi + 1 < words;
+        const wordIndex = nextWord ? wi + 1 : wi;
+        const offset = nextWord ? 0 : (src.offset ?? 0) + 1;
+        const copy = { ...src, id: uid(), wordIndex, offset, pos: wordStartOffset(line.lyric, wordIndex) + offset };
+        return { ...line, chords: sortChords([...line.chords, copy]) };
+      }),
+    );
   };
 
   // ── WebKit / iOS: the PRE-FIX chord drag (from 68b8712) + tap-to-edit. ──
@@ -2641,6 +2697,21 @@ export default function SongEditor({
       // A finger jitters a few px on a tap — don't treat that as a drag.
       const pointerType = e.pointerType;
       const dragThreshold = pointerType === "mouse" ? 4 : 10;
+      // Touch feedback: the chord lights up the moment it's pressed (attribute
+      // on the element itself — no React re-render).
+      const chordEl = e.currentTarget as HTMLElement;
+      chordEl.setAttribute("data-pressed", "");
+      // Long-press (touch/pen, held still) → full chord menu; the press then
+      // neither drags nor counts as a tap.
+      let longPressed = false;
+      const pressAt = e.timeStamp;
+      const longPressTimer = pointerType === "mouse" ? 0 : window.setTimeout(() => {
+        if (moved) return;
+        longPressed = true;
+        chordEl.removeAttribute("data-pressed");
+        openChordMenu(chordId, true, pressAt + LONG_PRESS_MS);
+        try { navigator.vibrate?.(12); } catch { /* not supported (iOS) */ }
+      }, LONG_PRESS_MS);
       // Capture IMMEDIATELY on the STABLE sections container (not the glyph, whose
       // DOM node remounts on re-anchor) so finger/S-Pen catch + hold the gesture
       // every time; hold touch-action so a leftward drag isn't claimed by scroll
@@ -2651,8 +2722,11 @@ export default function SongEditor({
       dragLastRef.current = null;
 
       const onMove = (ev: PointerEvent) => {
+        if (longPressed) return;
         if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) > dragThreshold) {
           moved = true;
+          clearTimeout(longPressTimer);
+          chordEl.removeAttribute("data-pressed");
           chordDraggedRef.current = true;
           setDraggingId(chordId);
         }
@@ -2710,7 +2784,9 @@ export default function SongEditor({
         setDragGhost(null);
         setDragCaret(null);
         // pointerup without a drag = a TAP → edit (a pointercancel never is).
-        if (!moved && ev?.type === "pointerup") openChordFromTap(chordId, pointerType, ev.timeStamp);
+        clearTimeout(longPressTimer);
+        chordEl.removeAttribute("data-pressed");
+        if (!moved && !longPressed && ev?.type === "pointerup") openChordFromTap(chordId, pointerType, ev.timeStamp);
       };
       document.addEventListener("pointermove", onMove, { passive: false });
       document.addEventListener("pointerup", finishDrag);
@@ -3024,6 +3100,11 @@ export default function SongEditor({
   };
 
   const deleteSection = (sectionId: string) => {
+    // Snapshot first so the delete can be undone (a stray tap on a section's
+    // delete control once cost a user their sections).
+    const index = song.sections.findIndex((sec) => sec.id === sectionId);
+    const removed = index === -1 ? null : song.sections[index];
+    if (!removed || song.sections.length <= 1) return;
     update((s) => {
       if (s.sections.length <= 1) return s;
       return {
@@ -3031,6 +3112,16 @@ export default function SongEditor({
         sections: s.sections.filter((sec) => sec.id !== sectionId),
       };
     });
+    const restore = () =>
+      update((s) => {
+        if (s.sections.some((sec) => sec.id === removed.id)) return s;
+        const next = [...s.sections];
+        next.splice(Math.min(index, next.length), 0, removed);
+        return { ...s, sections: next };
+      });
+    const name = removed.label.trim() || "Section";
+    if (onUndoableDelete) onUndoableDelete(`${name} deleted`, restore);
+    else showToast(`${name} deleted`);
   };
 
   // Deep-copy a section (cloneSection gives fresh ids for the section, lines, and
@@ -4170,10 +4261,15 @@ export default function SongEditor({
                             ? undefined
                             : (e) => {
                                 e.preventDefault();
+                                // Android fires contextmenu on long-press too —
+                                // our long-press timer already opened the menu.
+                                if (e.timeStamp - menuOpenedAtRef.current < 1500 && contextMenu?.chordId === ch.id) return;
+                                menuOpenedAtRef.current = e.timeStamp;
                                 setContextMenu({
                                   chordId: ch.id,
+                                  full: true,
                                   x: Math.min(e.clientX, window.innerWidth - 160),
-                                  y: Math.min(e.clientY, window.innerHeight - 96),
+                                  y: Math.min(e.clientY, window.innerHeight - 132),
                                 });
                               }
                         }
@@ -4199,12 +4295,16 @@ export default function SongEditor({
                               (draggingId === ch.id
                                 // Dim the original in place while its ghost rides the pointer.
                                 ? "cursor-grabbing opacity-30"
-                                : "cursor-grab hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/60")
+                                : "cursor-grab hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/60 data-[pressed]:bg-[#efe9fe] data-[pressed]:shadow-md data-[pressed]:shadow-violet-500/20 data-[pressed]:ring-2 data-[pressed]:ring-[#9d8bff] dark:data-[pressed]:bg-[#2a2440]")
                         }`}
                         style={{
                           fontSize: chordFontSize,
                           color: chordColor,
                           touchAction: readOnly ? "auto" : "none",
+                          // No iOS "copy / look up" callout or text selection
+                          // on long-press — the long-press opens our menu.
+                          WebkitTouchCallout: readOnly ? undefined : "none",
+                          WebkitUserSelect: readOnly ? undefined : "none",
                           fontVariantEmoji: "text",
                           // Follow the chart font picker (prefs.chartFont) — all
                           // options are monospace, so chord alignment holds.
@@ -4304,7 +4404,22 @@ export default function SongEditor({
                                       // (wordWidth / wordLen) char step, so a dragged
                                       // chord lands and stays where it's dropped.
                                       <span
-                                        className="relative block leading-none"
+                                        // Tapping the EMPTY space above a word adds a
+                                        // chord there, anchored to the word and to the
+                                        // horizontal spot tapped (same maths as a drag).
+                                        // Only the bare slot reacts — never a chord or
+                                        // an open chord input inside it.
+                                        onClick={
+                                          readOnly || !u.tappable
+                                            ? undefined
+                                            : (e) => {
+                                                if (e.target !== e.currentTarget) return;
+                                                const wordEl = e.currentTarget.parentElement?.querySelector<HTMLElement>("[data-word-text]");
+                                                startAddChord(line.id, u.dragIndex, wordEl ? offsetWithinWord(e.clientX, wordEl, u.text.length) : 0);
+                                              }
+                                        }
+                                        title={readOnly || !u.tappable ? undefined : "Tap to add a chord here"}
+                                        className={"relative block leading-none" + (readOnly || !u.tappable ? "" : " cursor-pointer")}
                                         style={{ minHeight: lineChordSlot, width: "100%" }}
                                       >
                                         {u.chords.map((ch, idx) => (
@@ -4655,32 +4770,12 @@ export default function SongEditor({
             button to edit.
           </p>
         ) : (
-          <>
-          {/* Touch screens: tap opens the chord's Edit / Delete menu (no
-              double-click or right-click on a touchscreen). */}
-          <p className="hidden pointer-coarse:block">
-            <span className="font-semibold text-slate-700 dark:text-slate-300">Drag</span>{" "}
-            a chord to reposition ·{" "}
-            <span className="font-semibold text-slate-700 dark:text-slate-300">Tap</span>{" "}
-            a chord to edit or delete it
+          <p>
+            <span className="font-semibold text-slate-700 dark:text-slate-300">Tap</span> a chord to edit ·{" "}
+            <span className="font-semibold text-slate-700 dark:text-slate-300">Tap</span> a word to add a chord ·{" "}
+            <span className="font-semibold text-slate-700 dark:text-slate-300">Drag</span> a chord to move it ·{" "}
+            <span className="font-semibold text-slate-700 dark:text-slate-300">Long-press</span> a chord for more
           </p>
-          <p className="pointer-coarse:hidden">
-            <span className="font-semibold text-slate-700 dark:text-slate-300">Drag</span>{" "}
-            a chord to reposition ·{" "}
-            <span className="font-semibold text-slate-700 dark:text-slate-300">
-              Click
-            </span>{" "}
-            to edit ·{" "}
-            <span className="font-semibold text-slate-700 dark:text-slate-300">
-              Right-click
-            </span>{" "}
-            a chord for Edit/Delete · clear & press{" "}
-            <kbd className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-[11px] text-slate-600 dark:text-slate-300">
-              Enter
-            </kbd>{" "}
-            to delete
-          </p>
-          </>
         )}
       </div>
 
@@ -4723,6 +4818,23 @@ export default function SongEditor({
             </svg>
             Delete
           </button>
+          {contextMenu.full && (
+            <button
+              type="button"
+              onClick={() => {
+                const line = song.sections.flatMap((sec) => sec.lines).find((l) => l.chords.some((c) => c.id === contextMenu.chordId));
+                if (line) duplicateChord(line.id, contextMenu.chordId);
+                setContextMenu(null);
+              }}
+              className="w-full text-left px-3 py-1.5 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-2"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+              Duplicate
+            </button>
+          )}
         </div>
       )}
 

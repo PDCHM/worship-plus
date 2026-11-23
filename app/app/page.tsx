@@ -3468,6 +3468,7 @@ export default function Home() {
                 else showToast("Styles saved");
               }}
               showToast={showToast}
+              onUndoableDelete={(message, restore) => showUndoToast(message, restore, () => {})}
             />
             </ErrorBoundary>
           )}
