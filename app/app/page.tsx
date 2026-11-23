@@ -601,13 +601,16 @@ export default function Home() {
     const t = setTimeout(() => {
       setSplash("off");
       document.documentElement.classList.remove("wp-launch");
-      // Back to the in-app brand purple status bar (see viewport in layout.tsx).
-      document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute("content", "#735fee"));
+      // Back to the in-app brand purple status bar (see themeScript in layout.tsx).
+      document.getElementById("wp-launch-theme")?.remove();
     }, 220);
     return () => clearTimeout(t);
   }, [splash]);
   // Leaving /app (e.g. signed-out redirect) must not keep the launch colours.
-  useEffect(() => () => document.documentElement.classList.remove("wp-launch"), []);
+  useEffect(() => () => {
+    document.documentElement.classList.remove("wp-launch");
+    document.getElementById("wp-launch-theme")?.remove();
+  }, []);
   // True once the team-shared songs load has SUCCEEDED. Lets the setlist view
   // tell "song hidden (owner's draft)" apart from "still loading / failed".
   const [sharedSongsReady, setSharedSongsReady] = useState(false);
@@ -3819,18 +3822,19 @@ function LoadingScreen() {
 }
 
 // Full-screen launch splash that continues Android's PWA splash: same colour
-// (manifest background_color, via .wp-splash in globals.css) and the maskable
-// icon drawn the way the OS splash draws it — a 240px icon clipped to a 160px
-// circle, centred. Rendered identically by LoadingScreen (auth phase, also the
+// (manifest background_color, via .wp-splash in globals.css) and the icon drawn
+// the way Samsung One UI draws it (measured from a Galaxy Tab launch video):
+// icon-512 at ~274px, clipped to a ~236px rounded-square (squircle-ish) mask,
+// centred. Rendered identically by LoadingScreen (auth phase, also the
 // server-rendered first paint) and over the app until the library loads, so
 // the handoff between the two never moves or resizes the logo.
 function LaunchSplash({ fading = false }: { fading?: boolean }) {
   return (
     <div role="status" aria-label="Loading Worship+" aria-hidden={fading || undefined}
       className={"wp-splash fixed inset-0 z-[90] flex items-center justify-center transition-opacity duration-200 ease-out print:hidden " + (fading ? "opacity-0 pointer-events-none" : "opacity-100")}>
-      <div className="relative w-40 h-40 rounded-full overflow-hidden">
-        <Image src="/icon-maskable-512.png" alt="" width={240} height={240} priority unoptimized
-          className="absolute max-w-none w-60 h-60 -left-10 -top-10" />
+      <div className="relative w-[236px] h-[236px] rounded-[40%] overflow-hidden">
+        <Image src="/icon-512.png" alt="" width={274} height={274} priority unoptimized
+          className="absolute max-w-none w-[274px] h-[274px] -left-[19px] -top-[19px]" />
       </div>
     </div>
   );
