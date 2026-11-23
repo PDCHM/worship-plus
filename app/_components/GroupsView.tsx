@@ -2,7 +2,6 @@
 import { backdropDismiss } from "@/lib/backdropDismiss";
 import { PageTitleRow, ViewModeToggle, type ViewMode } from "@/app/_components/PageTitle";
 import { usePersistedState, oneOf } from "@/lib/usePersistedState";
-import { SELECTED } from "@/lib/selectedStyle";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Song } from "@/lib/song";
@@ -547,6 +546,15 @@ function EditInstrumentSheet({ member, onSave, onClose, showToast }: {
   );
 }
 
+/* Compact member-row pills (role picker, Invite, static role badges):
+   rounded-full, ~5px × 11px, 12px regular weight. Active / management-role
+   pills are lavender with purple text; inactive ones white with the app's
+   light line colour (slate-200) and muted text. */
+const PILL = "inline-flex items-center rounded-full border px-[10px] py-[5px] text-xs font-normal leading-none whitespace-nowrap transition-colors";
+const PILL_ACTIVE = "bg-[#efe9fe] text-[#8574f0] border-[#c3b4f3] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:border-[#4b3f80]";
+const PILL_IDLE = "bg-white text-slate-500 border-slate-200 hover:border-[#c3b4f3] dark:bg-slate-900 dark:text-slate-400 dark:border-slate-700";
+const PILL_INVITE = "bg-[#735fee] text-white border-[#735fee] hover:bg-[#6650e6] hover:border-[#6650e6]";
+
 /* ── Member list: search + sort + Custom (drag) order ─────────────────────── */
 type MemberSort = "custom" | "role" | "name" | "instrument" | "status";
 const MEMBER_SORT_LABEL: Record<MemberSort, string> = {
@@ -794,28 +802,27 @@ function TeamMembersPanel({ group, members, userId, viewerRole, suggestions, onA
                   const options = assignableRoles(viewerRole);
                   if (!manageable) {
                     return (
-                      <span className={"h-8 inline-flex items-center self-start ml-[52px] sm:ml-0 sm:self-center text-xs font-semibold px-3 rounded-lg "+roleBadgeClass(m.role)}>{ROLE_LABEL[m.role]}</span>
+                      <span className={PILL+" self-start ml-[52px] sm:ml-0 sm:self-center "+(isManagerRole(m.role)?PILL_ACTIVE:"bg-white text-slate-500 border-slate-200 dark:bg-slate-900 dark:text-slate-400 dark:border-slate-700")}>{ROLE_LABEL[m.role]}</span>
                     );
                   }
                   return (
-                    <div className="flex flex-wrap items-center gap-2 min-w-0 pl-[52px] sm:pl-0 sm:flex-nowrap sm:shrink-0 sm:self-center">
-                      <div className="flex h-8 rounded-lg border border-slate-200 dark:border-slate-700 seg-group" role="group" aria-label="Member role">
+                    <div className="flex flex-wrap items-center gap-1.5 min-w-0 pl-[52px] sm:pl-0 sm:flex-nowrap sm:shrink-0 sm:self-center">
+                      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Member role">
                         {options.map((r) => (
                           <button key={r} type="button" aria-pressed={m.role===r}
                             onClick={() => { if (m.role !== r) { onSetMemberRole(m.id, r); showToast(`${m.displayName ?? "Member"} is now ${ROLE_LABEL[r]}`); } }}
-                            className={"px-2.5 text-xs font-medium whitespace-nowrap transition-colors "+(m.role===r?SELECTED:"bg-white dark:bg-slate-900 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800")}>
+                            className={PILL+" "+(m.role===r?PILL_ACTIVE:PILL_IDLE)}>
                             {ROLE_LABEL[r]}
                           </button>
                         ))}
                       </div>
                       {m.status==="pending" && (
-                        <button type="button" onClick={() => copyInvite(m.id, m.displayName??"")}
-                          className="h-8 px-3 rounded-lg text-xs font-semibold bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#efe9fe] transition-colors">
+                        <button type="button" onClick={() => copyInvite(m.id, m.displayName??"")} className={PILL+" "+PILL_INVITE}>
                           Invite
                         </button>
                       )}
                       <button type="button" aria-label={`Remove ${m.displayName ?? "member"}`} onClick={() => setRemoveMemberTarget({ id: m.id, name: m.displayName ?? "this member" })}
-                        className="ml-auto sm:ml-0 w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors">
+                        className="ml-auto sm:ml-1 w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-slate-300 dark:text-slate-600 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                       </button>
                     </div>
