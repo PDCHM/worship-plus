@@ -158,7 +158,7 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-const themeScript = `(function(){try{var s=localStorage.getItem('wp-theme');var d=s?s==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;if(d)document.documentElement.classList.add('dark');if(location.pathname.indexOf('/app')===0&&(window.matchMedia('(display-mode: standalone)').matches||navigator.standalone)){document.documentElement.classList.add('wp-launch');var m=document.createElement('meta');m.name='theme-color';m.content='#020617';m.id='wp-launch-theme';document.head.prepend(m);}}catch(e){}})();`;
+const themeScript = `(function(){try{var s=localStorage.getItem('wp-theme');var d=s?s==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;if(d)document.documentElement.classList.add('dark');var p=location.pathname;if((p==='/app'||p.indexOf('/app/')===0||p==='/login')&&(window.matchMedia('(display-mode: standalone)').matches||navigator.standalone)){document.documentElement.classList.add('wp-launch');var m=document.createElement('meta');m.name='theme-color';m.content='#020617';m.id='wp-launch-theme';document.head.prepend(m);}}catch(e){}})();`;
 
 export default function RootLayout({
   children,

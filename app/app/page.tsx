@@ -374,23 +374,39 @@ async function fetchFolderBundle(supabase: SupabaseClient): Promise<FolderBundle
   }
 }
 
+// Resolve to `fallback` if `p` hasn't settled within `ms`. Boot must never wait
+// forever on a request (supabase-js auth can stall behind its storage lock or a
+// half-dead network; IndexedDB can stall behind a blocked open) — a stalled
+// launch left the installed app stuck on the splash.
+function withTimeout<T, F>(p: Promise<T>, ms: number, fallback: F): Promise<T | F> {
+  return new Promise((resolve) => {
+    const t = setTimeout(() => resolve(fallback), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, () => { clearTimeout(t); resolve(fallback); });
+  });
+}
+const TIMED_OUT = Symbol("timed-out");
+
 async function resolveUser(supabase: SupabaseClient): Promise<ResolvedAuth> {
   const online = typeof navigator === "undefined" ? true : navigator.onLine;
 
   if (online) {
-    const { data, error } = await supabase.auth.getUser();
-    if (data?.user) return { user: data.user, offline: false };
-    // A definite "no session" answer from a reachable server → sign-in needed.
-    if (!isAuthNetworkError(error)) return { user: null, offline: false };
-    // Otherwise the browser claimed to be online but the request never landed.
+    const res = await withTimeout(supabase.auth.getUser(), 4000, TIMED_OUT);
+    if (res !== TIMED_OUT) {
+      const { data, error } = res;
+      if (data?.user) return { user: data.user, offline: false };
+      // A definite "no session" answer from a reachable server → sign-in needed.
+      if (!isAuthNetworkError(error)) return { user: null, offline: false };
+    }
+    // Otherwise the browser claimed to be online but the request never landed
+    // (or never answered) — fall through to the local session / cached identity.
   }
 
   // ── No usable network from here on ──
-  const { data: sessionData } = await supabase.auth.getSession().catch(() => ({ data: { session: null } }));
-  const sessionUser = sessionData?.session?.user ?? null;
+  const sessionRes = await withTimeout(supabase.auth.getSession(), 2000, TIMED_OUT);
+  const sessionUser = sessionRes === TIMED_OUT ? null : sessionRes.data?.session?.user ?? null;
   if (sessionUser) return { user: sessionUser, offline: true };
 
-  const cached = await cacheGetIdentity().catch(() => undefined);
+  const cached = await withTimeout(cacheGetIdentity(), 2000, undefined);
   if (!cached) return { user: null, offline: true };
   // Minimal stand-in built from the cached identity. Only id / email /
   // user_metadata are ever read from this object; it authorises nothing on its
@@ -589,13 +605,33 @@ export default function Home() {
   const [songsLoaded, setSongsLoaded] = useState(false);
   // Launch splash: held over the app until the first library query resolves
   // (capped so a hung request can't trap it), then faded out over ~200ms.
+  // (getSession queues behind a hung getUser on supabase-js's storage lock, so
+  // resolveUser's worst case is the sum of its timeouts: ~8s.)
   const [splash, setSplash] = useState<"on" | "fading" | "off">("on");
+  // Boot failsafes. bootError: start-up threw. bootStalled: auth still hasn't
+  // finished after BOOT_FAILSAFE_MS (every auth await is time-boxed, so this is
+  // a last line of defence). libraryStalled: the splash timed out before the
+  // first library query resolved — the library shows a retry instead of an
+  // endless "Loading library…".
+  const [bootError, setBootError] = useState<string | null>(null);
+  const [bootStalled, setBootStalled] = useState(false);
+  const [libraryStalled, setLibraryStalled] = useState(false);
+  // `appMounted` = auth done and user known; the 8s library timer only starts
+  // then. While auth is still running the
+  // splash is held by the auth-phase return, bounded by resolveUser's timeouts
+  // and the 15s boot failsafe — starting the 8s timer at page mount let it fire
+  // mid-auth and drop the launch colours under a still-visible splash (white).
+  const [appMounted, setAppMounted] = useState(false);
   useEffect(() => {
-    if (splash !== "on") return;
+    if (splash !== "on" || !appMounted) return;
     // Small delay once loaded so the song list has painted under the splash.
-    const t = setTimeout(() => setSplash("fading"), songsLoaded ? 60 : 8000);
+    // The 8s cap always fires (a failed / hung query must never trap the user).
+    const t = setTimeout(() => {
+      if (!songsLoaded) setLibraryStalled(true);
+      setSplash("fading");
+    }, songsLoaded ? 60 : 8000);
     return () => clearTimeout(t);
-  }, [songsLoaded, splash]);
+  }, [songsLoaded, splash, appMounted]);
   useEffect(() => {
     if (splash !== "fading") return;
     const t = setTimeout(() => {
@@ -606,6 +642,13 @@ export default function Home() {
     }, 220);
     return () => clearTimeout(t);
   }, [splash]);
+  // Last-resort boot failsafe: if auth still hasn't finished after 15s, swap the
+  // splash for a retry screen. (Every auth await is time-boxed well under this.)
+  useEffect(() => {
+    if (authChecked) return;
+    const t = setTimeout(() => setBootStalled(true), 15000);
+    return () => clearTimeout(t);
+  }, [authChecked]);
   // Leaving /app (e.g. signed-out redirect) must not keep the launch colours.
   useEffect(() => () => {
     document.documentElement.classList.remove("wp-launch");
@@ -1024,6 +1067,7 @@ export default function Home() {
         }
         setUser(u);
         setAuthChecked(true);
+        setAppMounted(true);
         // Refresh the offline identity on every successful ONLINE boot, so the
         // no-network path always has a current answer to "who is signed in".
         if (!authOffline) void cacheSetIdentity(u.id, u.email ?? null, u.user_metadata ?? {});
@@ -1035,9 +1079,11 @@ export default function Home() {
         // cached row is read. When offline we stop here and rely on the cache;
         // when online the network loads below overwrite state (and the mirror
         // effects refresh the cache).
-        await cacheEnsureUser(u.id);
+        // Bounded: a stalled IndexedDB must not hold up the network load below.
+        // If the account check can't complete, the cache is NOT read (privacy).
+        const cacheOk = await withTimeout(cacheEnsureUser(u.id).then(() => true), 3000, false);
         if (cancelled) return;
-        const [cSongs, cFolders, cFolderSongs, cEvents, cLinks, cGroups, cMembers, cGroupSongs, cProfile, cStyles] = await Promise.all([
+        const seed = !cacheOk ? null : await withTimeout(Promise.all([
           cacheGetAll<Song>("songs"),
           cacheGetAll<Folder>("folders"),
           cacheGetAll<FolderSong>("folderSongs"),
@@ -1048,8 +1094,10 @@ export default function Home() {
           cacheGetAll<GroupSong>("groupSongs"),
           cacheGetMeta<Profile>("profile"),
           cacheGetMeta<SectionStyles>("sectionStyles"),
-        ]);
+        ]), 3000, null);
         if (cancelled) return;
+        const [cSongs, cFolders, cFolderSongs, cEvents, cLinks, cGroups, cMembers, cGroupSongs, cProfile, cStyles] =
+          seed ?? [[], [], [], [], [], [], [], [], undefined, undefined];
         if (cSongs.length) { setSongs(cSongs); for (const s of cSongs) lastSavedRef.current.set(s.id, s); }
         if (cFolders.length) setFolders(cFolders);
         if (cFolderSongs.length) setFolderSongs(cFolderSongs);
@@ -1295,6 +1343,11 @@ export default function Home() {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         showToast("Init error: " + err.message);
+        // Never strand the user on the splash: if auth itself blew up, show the
+        // retry screen; if it got past auth, let the library render what it has.
+        setBootError(err?.message || "Couldn't start Worship+");
+        setSongsLoaded(true);
+        setGroupsLoaded(true);
       }
     })();
 
@@ -3249,6 +3302,9 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presentActive, presentSongId]);
 
+  if (!user && (bootError || (bootStalled && !authChecked))) {
+    return <>{<BootFailScreen message={bootError} />}{null}</>;
+  }
   if (!authChecked || !user) return <>{<LaunchSplash />}{null}</>;
   const authedUser = user;
 
@@ -3438,7 +3494,15 @@ export default function Home() {
         <main className={"w-full overflow-x-hidden pb-[calc(5rem+env(safe-area-inset-bottom,0px))] md:pb-0 transition-[padding] duration-200 " + (navCollapsed ? "lg:pl-0" : "lg:pl-[240px]")}>
           {view.kind === "library" && !songsLoaded && (
             <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 py-12 text-sm text-slate-500 dark:text-slate-500">
-              Loading library…
+              {libraryStalled ? (
+                <div className="flex flex-col items-start gap-3">
+                  <p>Your library is taking longer than usual to load. Check your connection, then try again.</p>
+                  <button type="button" onClick={() => window.location.reload()}
+                    className="px-4 py-2 rounded-lg bg-[#6350ef] text-white text-sm font-semibold hover:bg-[#5b3be0]">
+                    Retry
+                  </button>
+                </div>
+              ) : "Loading library…"}
             </div>
           )}
           {view.kind === "library" && songsLoaded && (
@@ -3838,6 +3902,34 @@ function LaunchSplash({ fading = false }: { fading?: boolean }) {
       className={"wp-splash fixed inset-0 z-[90] flex items-center justify-center transition-opacity duration-200 ease-out print:hidden " + (fading ? "opacity-0 pointer-events-none" : "opacity-100")}>
       <Image src="/icon-512.png" alt="" width={512} height={512} priority unoptimized draggable={false}
         className="w-40 h-40 md:w-56 md:h-56 select-none" />
+    </div>
+  );
+}
+
+// Shown instead of the splash when start-up failed or stalled, so the app can
+// never sit on an endless splash. Same dark background + static icon.
+function BootFailScreen({ message }: { message: string | null }) {
+  useEffect(() => {
+    document.documentElement.classList.remove("wp-launch");
+    document.getElementById("wp-launch-theme")?.remove();
+  }, []);
+  return (
+    <div className="fixed inset-0 z-[90] flex flex-col items-center justify-center gap-6 px-6 text-center bg-[#020617] print:hidden">
+      <Image src="/icon-512.png" alt="Worship+" width={512} height={512} priority unoptimized draggable={false}
+        className="w-24 h-24 select-none" />
+      <div className="max-w-sm space-y-2">
+        <p className="text-base font-semibold text-white">Worship+ is having trouble starting</p>
+        <p className="text-sm text-slate-400">{message ? message : "It couldn't reach the server. Check your connection and try again."}</p>
+      </div>
+      <div className="flex gap-3">
+        <button type="button" onClick={() => window.location.reload()}
+          className="px-5 py-2.5 rounded-xl bg-[#6350ef] text-white text-sm font-semibold hover:bg-[#5b3be0]">
+          Retry
+        </button>
+        <a href="/login" className="px-5 py-2.5 rounded-xl ring-1 ring-white/20 text-white text-sm font-semibold hover:bg-white/10">
+          Sign in again
+        </a>
+      </div>
     </div>
   );
 }

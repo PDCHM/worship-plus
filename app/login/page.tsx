@@ -48,7 +48,13 @@ export default function LoginPage() {
         setCheckingAuth(false);
         return;
       }
-      const { data: { user } } = await supabase.auth.getUser();
+      // Time-boxed: a getUser() that never settles (auth storage lock, half-dead
+      // network) used to leave this page on an endless spinner. After 6s show
+      // the sign-in form; a later answer still redirects if they're signed in.
+      const failsafe = setTimeout(() => { if (!cancelled) setCheckingAuth(false); }, 6000);
+      const { data: { user } } = await supabase.auth.getUser()
+        .catch(() => ({ data: { user: null } }))
+        .finally(() => clearTimeout(failsafe));
       if (cancelled) return;
       if (user) {
         // Already authed (e.g. a logged-in user hit a pricing CTA): honour the
@@ -78,33 +84,20 @@ export default function LoginPage() {
     }
   }, []);
 
+  // Leaving the checking state: drop the installed-app launch colours (set by
+  // the head script in app/layout.tsx) so the form renders on its own theme.
+  useEffect(() => {
+    if (checkingAuth) return;
+    document.documentElement.classList.remove("wp-launch");
+    document.getElementById("wp-launch-theme")?.remove();
+  }, [checkingAuth]);
+
   if (checkingAuth) {
+    // Same static splash as /app (no spinner): dark in the installed app.
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
-        <div className="flex flex-col items-center gap-3">
-          <Image src="/worship-plus-icon.png" alt="Worship+" width={512} height={512} className="w-11 h-11 object-contain" priority />
-          <svg
-            className="animate-spin h-4 w-4 text-slate-500"
-            viewBox="0 0 24 24"
-            fill="none"
-            aria-label="Loading"
-          >
-            <circle
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              strokeWidth="3"
-              opacity="0.25"
-            />
-            <path
-              d="M4 12a8 8 0 0 1 8-8"
-              stroke="currentColor"
-              strokeWidth="3"
-              strokeLinecap="round"
-            />
-          </svg>
-        </div>
+      <div role="status" aria-label="Loading Worship+" className="wp-splash fixed inset-0 flex items-center justify-center">
+        <Image src="/icon-512.png" alt="" width={512} height={512} priority unoptimized draggable={false}
+          className="w-40 h-40 md:w-56 md:h-56 select-none" />
       </div>
     );
   }

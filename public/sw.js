@@ -21,8 +21,17 @@
 //   • the client's controllerchange handler reloads once → fresh code.
 // Falls back to "static" for legacy registrations without the query param.
 const VERSION = new URL(self.location.href).searchParams.get("v") || "static";
-const STATIC_CACHE = `wp-static-${VERSION}`;
-const PAGES_CACHE = `wp-pages-${VERSION}`;
+// Bump REVISION whenever the worker's caching behaviour changes. Any byte change
+// to this file makes the browser install the new worker on its own navigation-
+// time update check — even when an old page is too broken to boot and run
+// ServiceWorkerRegister — and the new cache names make activate purge every
+// cache the old worker filled (a stale shell can't survive an update).
+const REVISION = 2;
+const STATIC_CACHE = `wp-static-${VERSION}-r${REVISION}`;
+const PAGES_CACHE = `wp-pages-${VERSION}-r${REVISION}`;
+// A navigation that hasn't answered in this long is served from the cached
+// shell (when there is one) instead of leaving the launch splash up.
+const NAV_TIMEOUT_MS = 6000;
 
 // Minimal precache: the manifest + icons. The HTML shell is cached at runtime
 // (it is an authenticated SSR page, so we don't precache it at install time).
@@ -39,7 +48,9 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(STATIC_CACHE)
-      .then((cache) => cache.addAll(PRECACHE_URLS))
+      // Best-effort precache: one failed URL must not abort the install (that
+      // would pin the device to the old worker indefinitely).
+      .then((cache) => Promise.all(PRECACHE_URLS.map((u) => cache.add(u).catch(() => {}))))
       .then(() => self.skipWaiting())
   );
 });
@@ -82,7 +93,22 @@ async function cacheFirst(request, cacheName) {
 
 async function networkFirst(request, cacheName, { store = true } = {}) {
   try {
-    const response = await fetch(request);
+    const network = fetch(request);
+    network.catch(() => {}); // a late failure after the timeout fallback is fine
+    let response;
+    if (request.mode === "navigate") {
+      // Slow network: fall back to the cached page/shell after NAV_TIMEOUT_MS,
+      // but only if one exists — otherwise keep waiting for the network.
+      const timedOut = new Promise((resolve) => setTimeout(() => resolve(null), NAV_TIMEOUT_MS));
+      response = await Promise.race([network, timedOut]);
+      if (!response) {
+        const fallback = (await caches.match(request)) || (await caches.match("/app"));
+        if (fallback) return fallback;
+        response = await network;
+      }
+    } else {
+      response = await network;
+    }
     if (store && response && response.ok && response.type === "basic") {
       const cache = await caches.open(cacheName);
       cache.put(request, response.clone());
