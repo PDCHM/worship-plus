@@ -79,10 +79,12 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "Worship+",
     // iOS ignores manifest background_color, so without these the installed
-    // app launches on white. Dark splash + the real icon, sized/centred like
-    // the in-app LaunchSplash. Regenerate with scripts/gen-ios-splash.py.
+    // app launches on white/gray. PLAIN #020617, no logo — the in-app
+    // LaunchSplash is the only place the W+ icon is drawn, so it appears once.
+    // Regenerate with scripts/gen-ios-splash.py.
     startupImage: [
     { url: "/splash/splash-440x956@3x.png", media: "(device-width: 440px) and (device-height: 956px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" },
+    { url: "/splash/splash-420x912@3x.png", media: "(device-width: 420px) and (device-height: 912px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" },
     { url: "/splash/splash-402x874@3x.png", media: "(device-width: 402px) and (device-height: 874px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" },
     { url: "/splash/splash-430x932@3x.png", media: "(device-width: 430px) and (device-height: 932px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" },
     { url: "/splash/splash-393x852@3x.png", media: "(device-width: 393px) and (device-height: 852px) and (-webkit-device-pixel-ratio: 3) and (orientation: portrait)" },

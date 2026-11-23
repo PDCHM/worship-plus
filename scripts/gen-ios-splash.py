@@ -1,10 +1,10 @@
 """Generate iOS PWA startup images (apple-touch-startup-image) into public/splash.
 
 iOS ignores the manifest's background_color, so without these an installed
-Worship+ launches on a white screen. Each image is the app's dark splash
-(#020617) with the REAL public/icon-512.png composited, unmodified, at the same
-size and centre as the in-app LaunchSplash (160pt below 768pt wide, 224pt
-from 768pt up), so the OS → app handoff doesn't move or resize the logo.
+Worship+ launches on a white/gray screen. Each image is PLAIN #020617 (the
+in-app splash colour) with NO logo: the in-app LaunchSplash is the only thing
+that draws the W+ icon, so it appears exactly once (a logo baked into the
+launch image could never be pixel-aligned with the in-app one and showed twice).
 
 Run:  python3 scripts/gen-ios-splash.py   (needs Pillow)
 Also prints the startupImage list used in app/layout.tsx.
@@ -13,13 +13,13 @@ from pathlib import Path
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
-ICON = Image.open(ROOT / "public/icon-512.png").convert("RGBA")
 OUT = ROOT / "public/splash"
 BG = (2, 6, 23, 255)  # #020617 — manifest background_color / .wp-splash
 
 # (css width, css height, device pixel ratio, has landscape)
 DEVICES = [
-    (440, 956, 3, False),  # iPhone 16 Pro Max
+    (440, 956, 3, False),  # iPhone 16/17 Pro Max
+    (420, 912, 3, False),  # iPhone Air
     (402, 874, 3, False),  # iPhone 16 Pro
     (430, 932, 3, False),  # iPhone 14 Pro Max, 15 Plus / Pro Max, 16 Plus
     (393, 852, 3, False),  # iPhone 14 Pro, 15, 15 Pro, 16
@@ -44,12 +44,7 @@ DEVICES = [
 
 
 def render(w, h, dpr):
-    size_pt = 224 if w >= 768 else 160
-    px = size_pt * dpr
-    icon = ICON if px == ICON.width else ICON.resize((px, px), Image.LANCZOS)
-    canvas = Image.new("RGBA", (w * dpr, h * dpr), BG)
-    canvas.alpha_composite(icon, ((w * dpr - px) // 2, (h * dpr - px) // 2))
-    return canvas.convert("RGB")
+    return Image.new("RGB", (w * dpr, h * dpr), BG[:3])
 
 
 entries = []
