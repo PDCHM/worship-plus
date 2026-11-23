@@ -4379,7 +4379,7 @@ function BottomTab({ active, onClick, label, icon }: {
         active ? "text-[#6a4cf0] dark:text-violet-300" : "text-[#7364a3] dark:text-[#ada3d3] hover:text-[#5d4f8f] dark:hover:text-violet-200"
       }`}>
       <span className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-full transition-colors ${
-        active ? "bg-violet-100 dark:bg-violet-500/20" : ""
+        active ? "bg-[#dbd9ea] dark:bg-violet-500/20" : ""
       }`}>
         {icon}
         <span className={`text-[10px] leading-none ${active ? "font-semibold" : "font-medium"}`}>{label}</span>
