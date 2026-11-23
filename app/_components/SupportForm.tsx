@@ -112,7 +112,7 @@ export default function SupportForm({ onSubmitted }: { onSubmitted?: () => void 
 
   // Soft-purple focus ring to match the app's lavender system.
   const field =
-    "w-full mt-1 rounded-xl text-sm bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#735fee]/30 focus:border-[#735fee] dark:focus:border-[#b3a3ff]";
+    "w-full mt-1 rounded-xl text-base sm:text-sm bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-[#735fee]/30 focus:border-[#735fee] dark:focus:border-[#b3a3ff]";
   const inputClass = field + " h-10 px-3";
   const labelClass = "text-xs font-medium text-slate-600 dark:text-slate-400";
 

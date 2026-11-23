@@ -157,7 +157,7 @@ export default function PasteSongModal({ open, onClose, aiIntent = false, onImpo
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Song title"
-                className="w-full h-10 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-sm"
+                className="w-full h-10 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-base sm:text-sm"
               />
             </div>
             <div>
@@ -168,7 +168,7 @@ export default function PasteSongModal({ open, onClose, aiIntent = false, onImpo
                 value={artist}
                 onChange={(e) => setArtist(e.target.value)}
                 placeholder="Artist"
-                className="w-full h-10 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-sm"
+                className="w-full h-10 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-base sm:text-sm"
               />
             </div>
           </div>
@@ -190,7 +190,7 @@ export default function PasteSongModal({ open, onClose, aiIntent = false, onImpo
               }
               rows={14}
               spellCheck={false}
-              className="w-full p-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-sm font-mono"
+              className="w-full p-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-base sm:text-sm font-mono"
               style={{ minHeight: "16rem", whiteSpace: "pre" }}
             />
           </div>

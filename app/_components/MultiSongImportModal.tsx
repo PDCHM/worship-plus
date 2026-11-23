@@ -51,7 +51,7 @@ export default function MultiSongImportModal({
                 <div className="min-w-0 flex-1">
                   <input type="text" value={r.title} aria-label={`Title of song ${i + 1}`}
                     onChange={(e) => setRows((prev) => prev.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))}
-                    className="w-full h-9 px-2 -mx-2 rounded-md bg-transparent text-sm font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 focus:bg-slate-50 dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-[#735fee]" />
+                    className="w-full h-9 px-2 -mx-2 rounded-md bg-transparent text-base sm:text-sm font-semibold text-slate-900 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-slate-800 focus:bg-slate-50 dark:focus:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-[#735fee]" />
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     Key {r.song.key} · {r.song.sections.length} section{r.song.sections.length === 1 ? "" : "s"}
                   </p>

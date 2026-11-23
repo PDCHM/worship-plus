@@ -83,7 +83,7 @@ export default function EmailSignIn({
           required
           placeholder="you@example.com"
           autoComplete="email"
-          className="w-full h-11 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-sm"
+          className="w-full h-11 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-base sm:text-sm"
         />
       </div>
       <button

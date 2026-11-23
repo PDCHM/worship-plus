@@ -116,7 +116,7 @@ function NoGroupView({ onCreateGroup, showToast }: GroupsViewProps) {
           <input autoFocus type="text" placeholder="e.g. PDCHM Worship Team" value={name}
             onChange={e => setName(e.target.value)}
             onKeyDown={e => { if(e.key==="Enter") handleCreate(); if(e.key==="Escape") setCreating(false); }}
-            className="w-full h-10 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff]" />
+            className="w-full h-10 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none text-base sm:text-sm focus:border-[#9d8bff]" />
           <div className="flex gap-2">
             <button type="button" onClick={handleCreate} disabled={loading||!name.trim()}
               className="flex-1 h-10 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] disabled:opacity-50">
@@ -172,7 +172,7 @@ function TeamListView({ memberships, onSelect, onCreateGroup, showToast }: {
           <input autoFocus type="text" placeholder="e.g. PDCHM Worship Team" value={name}
             onChange={e => setName(e.target.value)}
             onKeyDown={e => { if(e.key==="Enter") handleCreate(); if(e.key==="Escape") { setCreating(false); setName(""); } }}
-            className="w-full h-10 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff]" />
+            className="w-full h-10 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none text-base sm:text-sm focus:border-[#9d8bff]" />
           <div className="flex gap-2">
             <button type="button" onClick={handleCreate} disabled={loading||!name.trim()}
               className="flex-1 h-10 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] disabled:opacity-50">
@@ -639,7 +639,7 @@ function AddMemberModal({ groupId, suggestions, onAdd, onClose, showToast }: { g
               onFocus={() => setShowSuggest(true)}
               onBlur={() => setTimeout(() => setShowSuggest(false), 150)}
               onKeyDown={e => e.key==="Enter" && handleAdd()}
-              className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff] bg-white dark:bg-slate-800" />
+              className="w-full h-10 px-3 rounded-xl border border-slate-200 dark:border-slate-700 outline-none text-base sm:text-sm focus:border-[#9d8bff] bg-white dark:bg-slate-800" />
             {showSuggest && matches.length > 0 && (
               <div className="absolute left-0 right-0 top-full mt-1 z-20 max-h-52 overflow-y-auto rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl">
                 {matches.map(s => (
@@ -680,7 +680,7 @@ function AddMemberModal({ groupId, suggestions, onAdd, onClose, showToast }: { g
             </div>
             {instrument==="sound_team" && (
               <input autoFocus type="text" placeholder="e.g. FOH, Monitor" value={detail} onChange={e => setDetail(e.target.value)}
-                className="mt-2 w-full h-9 px-3 rounded-lg border border-[#9d8bff] outline-none text-sm bg-white dark:bg-slate-800" />
+                className="mt-2 w-full h-9 px-3 rounded-lg border border-[#9d8bff] outline-none text-base sm:text-sm bg-white dark:bg-slate-800" />
             )}
           </div>
         </div>
@@ -709,7 +709,7 @@ function AddSongsModal({ songs, alreadyShared, groupId, onShare, onClose, showTo
           <button type="button" onClick={onClose} className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
         </div>
         <div className="px-4 py-2 border-b border-slate-100 dark:border-slate-800">
-          <input autoFocus type="text" placeholder="Search songs…" value={search} onChange={e => setSearch(e.target.value)} className="w-full h-8 px-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff]" />
+          <input autoFocus type="text" placeholder="Search songs…" value={search} onChange={e => setSearch(e.target.value)} className="w-full h-8 px-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-base sm:text-sm focus:border-[#9d8bff]" />
         </div>
         <div className="overflow-y-auto flex-1">
           {available.length===0 ? <p className="text-center py-8 text-sm text-slate-500">No matching songs.</p>

@@ -223,7 +223,7 @@ function SearchField({ value, onChange, placeholder, label }: {
         <circle cx="11" cy="11" r="7" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
       </svg>
       <input type="search" value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} aria-label={label}
-        className="w-full h-11 pl-10 pr-9 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-sm" />
+        className="w-full h-11 pl-10 pr-9 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-base sm:text-sm" />
       {value && (
         <button type="button" onClick={() => onChange("")} aria-label="Clear search"
           className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full text-slate-500 hover:text-slate-600 dark:hover:text-slate-200 flex items-center justify-center">
@@ -456,12 +456,12 @@ function Overview({
                 if (e.key === "Enter") submit(newSetlistName, "setlist", newSetlistTeam || null);
                 if (e.key === "Escape") { setShowNewSetlist(false); setNewSetlistName(""); setNewSetlistTeam(""); }
               }}
-              className="flex-1 h-10 px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff]"
+              className="flex-1 h-10 px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none text-base sm:text-sm focus:border-[#9d8bff] min-w-0"
             />
             <select
               value={newSetlistTeam}
               onChange={(e) => setNewSetlistTeam(e.target.value)}
-              className="h-10 px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff]"
+              className="h-10 px-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none text-base sm:text-sm focus:border-[#9d8bff]"
             >
               <option value="">Personal only</option>
               {teams.filter((t) => t.canPost !== false).map((t) => (
@@ -1253,18 +1253,18 @@ function AddEventModal({ type, defaultLabel, defaultDate, edit, onSave, onClose 
           <label className="block">
             <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Label</span>
             <input type="text" value={label} onChange={(e) => setLabel(e.target.value)}
-              className="mt-1 w-full h-10 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff]" />
+              className="mt-1 w-full h-10 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-base sm:text-sm focus:border-[#9d8bff]" />
           </label>
           <div className="grid grid-cols-2 gap-2">
             <label className="block">
               <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Date</span>
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
-                className="mt-1 w-full h-10 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff]" />
+                className="mt-1 w-full h-10 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-base sm:text-sm focus:border-[#9d8bff]" />
             </label>
             <label className="block">
               <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Time</span>
               <input type="time" value={time} onChange={(e) => setTime(e.target.value)}
-                className="mt-1 w-full h-10 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff]" />
+                className="mt-1 w-full h-10 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-base sm:text-sm focus:border-[#9d8bff]" />
             </label>
           </div>
         </div>
@@ -1354,7 +1354,7 @@ export function AddSongsModal({
             placeholder="Search songs…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 min-w-0 h-8 px-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff]"
+            className="flex-1 min-w-0 h-8 px-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-base sm:text-sm focus:border-[#9d8bff]"
           />
           {selectable.length > 0 && (
             <button
@@ -1485,7 +1485,7 @@ function ItemCard({
               if (e.key === "Escape") { setRenaming(false); setNameVal(item.name); }
             }}
             onClick={(e) => e.stopPropagation()}
-            className="w-full text-sm font-semibold bg-transparent border-b border-[#9d8bff] outline-none pb-0.5"
+            className="w-full text-base sm:text-sm font-semibold bg-transparent border-b border-[#9d8bff] outline-none pb-0.5"
           />
         ) : (
           <div className="text-sm font-semibold truncate mb-1">{item.name}</div>
@@ -1614,7 +1614,7 @@ function ItemRow({
               if (e.key === "Escape") { setRenaming(false); setNameVal(item.name); }
             }}
             onClick={(e) => e.stopPropagation()}
-            className="w-full text-sm font-semibold bg-transparent border-b border-[#9d8bff] outline-none pb-0.5"
+            className="w-full text-base sm:text-sm font-semibold bg-transparent border-b border-[#9d8bff] outline-none pb-0.5"
           />
         ) : (
           <div className="text-sm font-semibold truncate">{item.name}</div>
@@ -1959,7 +1959,7 @@ function DetailHeader({
             if (e.key === "Enter") commit();
             if (e.key === "Escape") { setRenaming(false); setNameVal(folder.name); }
           }}
-          className="text-lg font-bold bg-transparent border-b-2 border-[#9d8bff] outline-none flex-1"
+          className="text-lg font-bold bg-transparent border-b-2 border-[#9d8bff] outline-none flex-1 min-w-0"
         />
       ) : canEdit ? (
         <h1
@@ -2101,7 +2101,7 @@ function NewNameInput({ placeholder, value, onChange, onSubmit, onCancel }: {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter") onSubmit(); if (e.key === "Escape") onCancel(); }}
-        className="flex-1 h-9 px-3 rounded-lg bg-white dark:bg-slate-800 border border-[#9d8bff] outline-none text-sm"
+        className="flex-1 h-9 px-3 rounded-lg bg-white dark:bg-slate-800 border border-[#9d8bff] outline-none text-base sm:text-sm min-w-0"
       />
       <button type="button" onClick={onSubmit}
         className="h-9 px-3 rounded-lg text-sm font-medium bg-[#735fee] text-white hover:bg-[#6650e6]">

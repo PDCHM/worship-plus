@@ -283,7 +283,7 @@ function LinkForm({
         value={editing.url}
         onChange={(e) => setEditing({ ...editing, url: e.target.value })}
         onKeyDown={(e) => { if (e.key === "Enter") onSubmit(); if (e.key === "Escape") setEditing(null); }}
-        className="w-full h-10 px-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff]"
+        className="w-full h-10 px-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-base sm:text-sm focus:border-[#9d8bff]"
       />
       <input
         type="text"
@@ -291,7 +291,7 @@ function LinkForm({
         value={editing.title}
         onChange={(e) => setEditing({ ...editing, title: e.target.value })}
         onKeyDown={(e) => { if (e.key === "Enter") onSubmit(); if (e.key === "Escape") setEditing(null); }}
-        className="w-full h-10 px-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff]"
+        className="w-full h-10 px-3 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-base sm:text-sm focus:border-[#9d8bff]"
       />
       <div className="flex justify-end gap-2 pt-0.5">
         <button type="button" onClick={() => setEditing(null)}

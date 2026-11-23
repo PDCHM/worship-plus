@@ -299,7 +299,7 @@ function AccountSection() {
             onChange={(e) => setConfirm(e.target.value)}
             placeholder="DELETE"
             aria-label="Type DELETE to confirm account deletion"
-            className="h-10 px-3 rounded-xl text-sm bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-rose-500/40 focus:border-rose-500"
+            className="h-10 px-3 rounded-xl text-base sm:text-sm bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-rose-500/40 focus:border-rose-500"
           />
           <button
             type="button"

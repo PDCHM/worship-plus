@@ -459,7 +459,7 @@ export default function Library({
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search title or artist…"
           aria-label="Search songs"
-          className="w-full h-11 pl-10 pr-9 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-sm"
+          className="w-full h-11 pl-10 pr-9 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-base sm:text-sm"
         />
         {query && (
           <button
@@ -681,7 +681,7 @@ export default function Library({
                   if (e.key === "Enter" && saveAsTarget.title.trim()) { onSaveAsCopy?.(saveAsTarget.songId, saveAsTarget.title.trim()); setSaveAsTarget(null); }
                   else if (e.key === "Escape") setSaveAsTarget(null);
                 }}
-                className="w-full h-10 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-sm"
+                className="w-full h-10 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-base sm:text-sm"
               />
             </div>
             <div className="px-5 pb-5 pt-1 flex items-center justify-end gap-2">

@@ -3830,7 +3830,7 @@ export default function Home() {
                   if (e.key === "Enter" && saveAsPrompt.title.trim()) { void saveAsCopy(saveAsPrompt.song, saveAsPrompt.title.trim(), saveAsPrompt.after); setSaveAsPrompt(null); }
                   else if (e.key === "Escape") setSaveAsPrompt(null);
                 }}
-                className="w-full h-10 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-sm"
+                className="w-full h-10 px-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none focus:border-[#9d8bff] dark:focus:border-[#6350ef] focus:ring-2 focus:ring-[#735fee]/20 transition-colors text-base sm:text-sm"
               />
             </div>
             <div className="px-5 pb-5 pt-1 flex items-center justify-end gap-2">
@@ -4311,7 +4311,7 @@ function NavCreateInput({ placeholder, value, onChange, onSubmit, onCancel }: {
       onChange={(e) => onChange(e.target.value)}
       onKeyDown={(e) => { if (e.key === "Enter") onSubmit(); else if (e.key === "Escape") onCancel(); }}
       onBlur={onCancel}
-      className="w-full h-9 px-2.5 mb-0.5 rounded-lg text-sm bg-slate-50 dark:bg-slate-800 border border-[#9d8bff] dark:border-[#6350ef] outline-none focus:ring-2 focus:ring-[#735fee]/20"
+      className="w-full h-9 px-2.5 mb-0.5 rounded-lg text-base sm:text-sm bg-slate-50 dark:bg-slate-800 border border-[#9d8bff] dark:border-[#6350ef] outline-none focus:ring-2 focus:ring-[#735fee]/20"
     />
   );
 }

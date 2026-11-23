@@ -116,7 +116,7 @@ export default function SongSearchSheet({ findInLibrary, onOpenExisting, onCreat
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") search(); }}
               placeholder="e.g. how he loves us oh how he loves"
-              className="flex-1 h-10 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-sm focus:border-[#9d8bff]"
+              className="flex-1 h-10 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 outline-none text-base sm:text-sm focus:border-[#9d8bff] min-w-0"
             />
             <button
               type="button"
