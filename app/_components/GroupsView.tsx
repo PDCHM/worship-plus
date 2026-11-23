@@ -62,16 +62,45 @@ export type GroupsViewProps = {
 };
 
 const INSTRUMENTS = [
-  { id:"guitar",label:"Guitar",emoji:"🎸" },{ id:"keys",label:"Keys",emoji:"🎹" },
-  { id:"drums",label:"Drums",emoji:"🥁" },{ id:"vocals",label:"Vocals",emoji:"🎙️" },
-  { id:"bass",label:"Bass",emoji:"🎸" },{ id:"cajon",label:"Cajon",emoji:"🪘" },
-  { id:"sound_team",label:"Sound",emoji:"🎚️" },{ id:"other",label:"Other",emoji:"🎵" },
+  { id:"guitar",label:"Guitar" },{ id:"keys",label:"Keys" },
+  { id:"drums",label:"Drums" },{ id:"vocals",label:"Vocals" },
+  { id:"bass",label:"Bass" },{ id:"cajon",label:"Cajon" },
+  { id:"sound_team",label:"Sound" },{ id:"other",label:"Other" },
 ];
 
-function insLabel(m: GroupMember) {
+// Instrument icons — Lucide (ISC licence) except Cajon (custom). Guitar is the
+// acoustic guitar, Bass the electric. stroke="currentColor" so each icon takes
+// its container's text colour (purple on a selected tile).
+const INSTRUMENT_ICON_PATHS: Record<string, React.ReactNode> = {
+  guitar: <><path d="m11.9 12.1 4.514-4.514"/><path d="M20.1 2.3a1 1 0 0 0-1.4 0l-1.114 1.114A2 2 0 0 0 17 4.828v1.344a2 2 0 0 1-.586 1.414A2 2 0 0 1 17.828 7h1.344a2 2 0 0 0 1.414-.586L21.7 5.3a1 1 0 0 0 0-1.4z"/><path d="m6 16 2 2"/><path d="M8.23 9.85A3 3 0 0 1 11 8a5 5 0 0 1 5 5 3 3 0 0 1-1.85 2.77l-.92.38A2 2 0 0 0 12 18a4 4 0 0 1-4 4 6 6 0 0 1-6-6 4 4 0 0 1 4-4 2 2 0 0 0 1.85-1.23z"/></>,
+  keys: <><path d="M10 13v4"/><path d="M14 13v4"/><path d="M18 13v4"/><path d="M2 13h20"/><path d="M22 11.5A3.5 3.5 0 0 0 18.5 8a3.52 3.52 0 0 1-3.173-2A7 7 0 0 0 2 9v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2z"/><path d="M6 13v4"/></>,
+  drums: <><path d="m2 2 8 8"/><path d="m22 2-8 8"/><ellipse cx="12" cy="9" rx="10" ry="5"/><path d="M7 13.4v7.9"/><path d="M12 14v8"/><path d="M17 13.4v7.9"/><path d="M2 9v8a10 5 0 0 0 20 0V9"/></>,
+  vocals: <><path d="m11 7.601-5.994 8.19a1 1 0 0 0 .1 1.298l.817.818a1 1 0 0 0 1.314.087L15.09 12"/><path d="M16.5 21.174C15.5 20.5 14.372 20 13 20c-2.058 0-3.928 2.356-6 2-2.072-.356-2.775-3.369-1.5-4.5"/><circle cx="16" cy="7" r="5"/></>,
+  bass: <><path d="m12.172 11.828 4.242-4.242"/><path d="M16.414 7.586A2 2 0 0 0 17 6.172V5a2 2 0 0 1 1.177-1.823L20.59 2.09a1 1 0 0 1 1.32 1.32l-1.088 2.412A2 2 0 0 1 19 7h-1a2 2 0 0 0-1.586.586"/><path d="m6 16 2 2"/><path d="M8.23 9.85a3 3 0 0 1 1.28-1.454 1 1 0 0 1 1.496.815 4 4 0 0 0 3.783 3.783 1 1 0 0 1 .815 1.496 3 3 0 0 1-1.454 1.28l-.92.38A2 2 0 0 0 12 18a4 4 0 0 1-4 4 6 6 0 0 1-6-6 4 4 0 0 1 4-4 2 2 0 0 0 1.85-1.23z"/></>,
+  cajon: <><path d="M6 8.3 9.2 5.3 17 5.3 13.8 8.3Z"/><path d="M13.8 8.3 17 5.3 17 17.7 13.8 20.7Z"/><path d="M6 8.3 13.8 8.3 13.8 20.7 6 20.7Z"/><circle cx="9.9" cy="15.3" r="2"/><path d="M7.2 20.7v1.5M12.6 20.7v1.5"/></>,
+  sound_team: <><path d="M10 8h4"/><path d="M12 21v-9"/><path d="M12 8V3"/><path d="M17 16h4"/><path d="M19 12V3"/><path d="M19 21v-5"/><path d="M3 14h4"/><path d="M5 10V3"/><path d="M5 21v-7"/></>,
+  other: <><path d="M21 16V3a1 1 0 0 0-1.28-.96l-10 2.917a1 1 0 0 0-.72.96V19"/><circle cx="18" cy="16" r="3"/><circle cx="6" cy="19" r="3"/></>,
+};
+function InstrumentIcon({ id, className }: { id: string; className?: string }) {
+  const paths = INSTRUMENT_ICON_PATHS[id] ?? INSTRUMENT_ICON_PATHS.other;
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={className}>
+      {paths}
+    </svg>
+  );
+}
+
+// Instrument label for a member: icon + name (or the Sound team role).
+function insLabel(m: GroupMember): React.ReactNode {
   const ins = INSTRUMENTS.find(i => i.id === m.instrument);
   if (!ins) return null;
-  return m.instrument === "sound_team" && m.instrumentDetail ? `${ins.emoji} ${m.instrumentDetail}` : `${ins.emoji} ${ins.label}`;
+  const text = m.instrument === "sound_team" && m.instrumentDetail ? m.instrumentDetail : ins.label;
+  return (
+    <>
+      <InstrumentIcon id={ins.id} className="inline-block w-3.5 h-3.5 mr-1 -mt-0.5 align-middle" />
+      {text}
+    </>
+  );
 }
 
 type Membership = { group: Group; role: GroupMember["role"]; memberCount: number };
@@ -727,7 +756,7 @@ function AddMemberModal({ groupId, viewerRole, suggestions, onAdd, onClose, show
               {INSTRUMENTS.map(ins => (
                 <button key={ins.id} type="button" onClick={() => setInstrument(ins.id)}
                   className={"rounded-xl p-2 text-center border transition-all "+(instrument===ins.id?"border-[#735fee] bg-[#efe9fe] dark:bg-[#2a2440]":"border-slate-200 dark:border-slate-700 hover:border-[#c9bdfb]")}>
-                  <div className="text-base">{ins.emoji}</div>
+                  <InstrumentIcon id={ins.id} className={"w-7 h-7 mx-auto "+(instrument===ins.id?"text-[#6350ef] dark:text-[#b3a3ff]":"text-slate-500 dark:text-slate-400")} />
                   <div className={"text-[10px] font-medium mt-0.5 "+(instrument===ins.id?"text-[#6350ef]":"text-slate-500")}>{ins.label}</div>
                 </button>
               ))}
