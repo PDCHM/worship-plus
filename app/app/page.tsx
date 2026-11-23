@@ -3148,6 +3148,24 @@ export default function Home() {
     if (error) { logErr("set member role", error); showToast("Couldn't change role: " + error.message); setGroupMembers(snapshot); }
   };
 
+  // Change a member's instrument (Owner / Co-leader). Writes ONLY instrument +
+  // instrument_detail. The DB is the gate (group_members_admin_update + the
+  // guard trigger: same rule as role changes). A rejected RLS update returns 0
+  // rows rather than an error, so ask for the row back to detect it.
+  const setMemberInstrument = async (memberId: string, instrument: string, detail: string | null): Promise<boolean> => {
+    if (!guardOnline()) return false;
+    const snapshot = groupMembers;
+    setGroupMembers(p => p.map(m => m.id === memberId ? { ...m, instrument, instrumentDetail: detail } : m));
+    const { data, error } = await supabase.from("group_members").update({ instrument, instrument_detail: detail }).eq("id", memberId).select("id");
+    if (error || !data?.length) {
+      if (error) logErr("set member instrument", error);
+      showToast("Couldn't change instrument" + (error ? ": " + error.message : " — you don't have permission"));
+      setGroupMembers(snapshot);
+      return false;
+    }
+    return true;
+  };
+
   // Save the team's Custom member order (Owner / Co-leader). The DB function
   // reorder_team_members() is the gate — Editors / Members are rejected there.
   // Optimistic: sort_index 1..n in the given order, rolled back on error.
@@ -3648,7 +3666,7 @@ export default function Home() {
               the setlist (FoldersView stays mounted underneath), so closing it
               returns to the same setlist at the same scroll position. */}
           {teamSheetId && (
-            <TeamMembersSheet groupId={teamSheetId} onClose={closeTeamSheet} userId={user.id} onReorderMembers={reorderTeamMembers}
+            <TeamMembersSheet groupId={teamSheetId} onClose={closeTeamSheet} userId={user.id} onReorderMembers={reorderTeamMembers} onSetMemberInstrument={setMemberInstrument}
               groups={groups} groupMembers={groupMembers} onAddMember={gatedAddMember}
               onSetMemberRole={setMemberRole} onRemoveMember={removeGroupMember} showToast={showToast} />
           )}
@@ -3715,7 +3733,7 @@ export default function Home() {
             </div>
           )}
           {view.kind === "groups" && groupsLoaded && (
-            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={librarySongs} folders={folders} onCreateGroup={gatedCreateTeam} onUpdateGroup={updateGroupName} onAddMember={gatedAddMember} onSetMemberRole={setMemberRole} onRemoveMember={removeGroupMember} onTransferOwnership={transferTeamOwnership} onReorderMembers={reorderTeamMembers} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onDeleteGroup={deleteGroup} onOpenSong={openSong} onOpenSetlist={(id) => navigateTo({ kind: "folders", subview: id })} showToast={showToast} selectedTeamId={view.kind === "groups" ? (view.teamId ?? null) : null} onSelectTeam={(id) => navigateTo({ kind: "groups", teamId: id ?? undefined })}/>
+            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={librarySongs} folders={folders} onCreateGroup={gatedCreateTeam} onUpdateGroup={updateGroupName} onAddMember={gatedAddMember} onSetMemberRole={setMemberRole} onRemoveMember={removeGroupMember} onTransferOwnership={transferTeamOwnership} onReorderMembers={reorderTeamMembers} onSetMemberInstrument={setMemberInstrument} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onDeleteGroup={deleteGroup} onOpenSong={openSong} onOpenSetlist={(id) => navigateTo({ kind: "folders", subview: id })} showToast={showToast} selectedTeamId={view.kind === "groups" ? (view.teamId ?? null) : null} onSelectTeam={(id) => navigateTo({ kind: "groups", teamId: id ?? undefined })}/>
           )}
         </main>
       </div>

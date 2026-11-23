@@ -53,6 +53,8 @@ export type GroupsViewProps = {
   onTransferOwnership?: (groupId: string, memberId: string) => Promise<boolean>;
   // Owner / Co-leader: save the team's Custom member order (ids top → bottom).
   onReorderMembers?: (groupId: string, memberIds: string[]) => Promise<void>;
+  // Owner / Co-leader: change a member's instrument (+ Sound role / Other name).
+  onSetMemberInstrument?: (memberId: string, instrument: string, detail: string | null) => Promise<boolean>;
   onShareSong: (groupId: string, songId: string) => Promise<void>;
   onUnshareSong: (groupId: string, songId: string) => void;
   onDeleteGroup: (groupId: string) => Promise<boolean>;
@@ -298,7 +300,7 @@ function TeamTile({ name }: { name: string }) {
 // Management view: the Owner ('leader') and Co-leaders. Owner-only actions
 // (rename, delete, transfer ownership) render only for the Owner — the DB
 // rejects them for anyone else regardless.
-function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, folders, onUpdateGroup, onAddMember, onSetMemberRole, onRemoveMember, onTransferOwnership, onReorderMembers, onShareSong, onUnshareSong, onDeleteGroup, onOpenSong, onOpenSetlist, showToast }: { group: Group; onBack: () => void } & GroupsViewProps) {
+function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, folders, onUpdateGroup, onAddMember, onSetMemberRole, onRemoveMember, onTransferOwnership, onReorderMembers, onSetMemberInstrument, onShareSong, onUnshareSong, onDeleteGroup, onOpenSong, onOpenSetlist, showToast }: { group: Group; onBack: () => void } & GroupsViewProps) {
   const [tab, setTab] = useState<"members"|"songs">("members");
   const [addSongsOpen, setAddSongsOpen] = useState(false);
   const [editingName, setEditingName] = useState(false);
@@ -358,7 +360,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
         ))}
       </div>
       {tab==="members" && (
-        <TeamMembersPanel group={group} members={members} userId={userId} viewerRole={myRole} onReorderMembers={onReorderMembers}
+        <TeamMembersPanel group={group} members={members} userId={userId} viewerRole={myRole} onReorderMembers={onReorderMembers} onSetMemberInstrument={onSetMemberInstrument}
           suggestions={memberSuggestions} onAddMember={onAddMember} onSetMemberRole={onSetMemberRole}
           onRemoveMember={onRemoveMember} showToast={showToast} />
       )}
@@ -451,6 +453,100 @@ function suggestionsFor(groupId: string, groupMembers: GroupMember[]): GroupMemb
   return out;
 }
 
+/* Instrument picker — the ONE picker used by Add Member and by Edit instrument:
+   8 tiles; Sound reveals its role field, Other an optional custom name
+   (max 20 chars). Controlled: the parent owns instrument + detail. */
+function InstrumentPicker({ instrument, detail, onPick, onDetail, onEnter }: {
+  instrument: string; detail: string; onPick: (id: string) => void; onDetail: (v: string) => void; onEnter?: () => void;
+}) {
+  return (
+    <>
+      <div className="grid grid-cols-4 gap-1.5">
+        {INSTRUMENTS.map(ins => (
+          <button key={ins.id} type="button" onClick={() => onPick(ins.id)} aria-pressed={instrument===ins.id}
+            className={"rounded-xl p-2 text-center border transition-all "+(instrument===ins.id?"border-[#735fee] bg-[#efe9fe] dark:bg-[#2a2440]":"border-slate-200 dark:border-slate-700 hover:border-[#c9bdfb]")}>
+            <InstrumentIcon id={ins.id} className={"w-7 h-7 mx-auto "+(instrument===ins.id?"text-[#6350ef] dark:text-[#b3a3ff]":"text-slate-500 dark:text-slate-400")} />
+            <div className={"text-[10px] font-medium mt-0.5 "+(instrument===ins.id?"text-[#6350ef]":"text-slate-500")}>{ins.label}</div>
+          </button>
+        ))}
+      </div>
+      {instrument==="sound_team" && (
+        <input autoFocus type="text" placeholder="e.g. FOH, Monitor" value={detail} onChange={e => onDetail(e.target.value)} aria-label="Sound team role"
+          onKeyDown={e => e.key==="Enter" && onEnter?.()}
+          className="mt-2 w-full h-9 px-3 rounded-lg border border-[#9d8bff] outline-none text-base sm:text-sm bg-white dark:bg-slate-800" />
+      )}
+      {/* "Other": optional custom instrument name, shown instead of "Other"
+          (blank keeps "Other"). Capped at 20 characters. */}
+      {instrument==="other" && (
+        <input autoFocus type="text" placeholder="e.g. Electric guitar" value={detail} maxLength={20}
+          onChange={e => onDetail(e.target.value.slice(0, 20))} aria-label="Instrument name"
+          onKeyDown={e => e.key==="Enter" && onEnter?.()}
+          className="mt-2 w-full h-9 px-3 rounded-lg border border-[#9d8bff] outline-none text-base sm:text-sm bg-white dark:bg-slate-800" />
+      )}
+    </>
+  );
+}
+
+/* Edit a member's instrument (Owner / Co-leader). Plain instruments save on
+   tap; Sound / Other reveal their text field and save with the button. Only
+   instrument + instrument_detail are written; the DB enforces who may. */
+function EditInstrumentSheet({ member, onSave, onClose, showToast }: {
+  member: GroupMember; onSave: (instrument: string, detail: string | null) => Promise<boolean>;
+  onClose: () => void; showToast: (m: string) => void;
+}) {
+  const [instrument, setInstrument] = useState(member.instrument ?? "");
+  const [detail, setDetail] = useState(member.instrumentDetail ?? "");
+  const [saving, setSaving] = useState(false);
+  const needsText = instrument === "sound_team" || instrument === "other";
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
+  const save = async (ins: string, det: string | null) => {
+    if (ins === "sound_team" && !det?.trim()) { showToast("Enter sound team role"); return; }
+    setSaving(true);
+    const ok = await onSave(ins, det?.trim() ? det.trim() : null);
+    setSaving(false);
+    if (ok) onClose();
+  };
+  const pick = (id: string) => {
+    if (id === "sound_team" || id === "other") {
+      // Keep what was there if re-picking the same text-carrying instrument.
+      if (id !== instrument) { setInstrument(id); setDetail(id === member.instrument ? (member.instrumentDetail ?? "") : ""); }
+      return;
+    }
+    setInstrument(id);
+    void save(id, null);
+  };
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4 print:hidden" {...backdropDismiss(onClose)}>
+      <div role="dialog" aria-modal="true" aria-labelledby="edit-instrument-title"
+        className="wp-sheet-up w-full sm:max-w-sm max-h-[85vh] overflow-y-auto bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl pb-[env(safe-area-inset-bottom,0px)]"
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between gap-3 px-5 pt-4 pb-3">
+          <h3 id="edit-instrument-title" className="text-sm font-semibold truncate min-w-0">Instrument · {member.displayName ?? "Member"}</h3>
+          <button type="button" onClick={onClose} aria-label="Close" className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div className="px-5 pb-5">
+          <InstrumentPicker instrument={instrument} detail={detail} onPick={pick} onDetail={setDetail}
+            onEnter={() => { if (needsText) void save(instrument, detail); }} />
+          {needsText && (
+            <button type="button" onClick={() => void save(instrument, detail)} disabled={saving}
+              className="mt-3 w-full h-10 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] disabled:opacity-50">
+              {saving ? "Saving…" : "Save"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
 /* ── Member list: search + sort + Custom (drag) order ─────────────────────── */
 type MemberSort = "custom" | "role" | "name" | "instrument" | "status";
 const MEMBER_SORT_LABEL: Record<MemberSort, string> = {
@@ -490,16 +586,22 @@ function scrollParentOf(el: HTMLElement | null): HTMLElement | null {
   return null;
 }
 
-function TeamMembersPanel({ group, members, userId, viewerRole, suggestions, onAddMember, onSetMemberRole, onRemoveMember, onReorderMembers, showToast }: {
+function TeamMembersPanel({ group, members, userId, viewerRole, suggestions, onAddMember, onSetMemberRole, onRemoveMember, onReorderMembers, onSetMemberInstrument, showToast }: {
   group: Group; members: GroupMember[]; userId: string; viewerRole: MemberRole | null; suggestions: GroupMember[];
   onAddMember: GroupsViewProps["onAddMember"]; onSetMemberRole: GroupsViewProps["onSetMemberRole"];
   onRemoveMember: GroupsViewProps["onRemoveMember"]; onReorderMembers?: GroupsViewProps["onReorderMembers"];
+  onSetMemberInstrument?: GroupsViewProps["onSetMemberInstrument"];
   showToast: (m: string) => void;
 }) {
   const [addOpen, setAddOpen] = useState(false);
   const [removeMemberTarget, setRemoveMemberTarget] = useState<{ id: string; name: string } | null>(null);
   const [rolesInfoOpen, setRolesInfoOpen] = useState(false);
+  const [instrumentFor, setInstrumentFor] = useState<GroupMember | null>(null);
   const canManage = isManagerRole(viewerRole);
+  // Same rule as role changes (and the DB guard): the Owner edits anyone incl.
+  // themselves; a Co-leader edits Editors / Members.
+  const canEditInstrument = (m: GroupMember) => !!onSetMemberInstrument &&
+    (m.userId === userId ? viewerRole === "leader" : canManageMember(viewerRole, m.role));
 
   // Search (name + email) and sort — view-only. Sort is remembered like the
   // Setlists sort; first visit defaults to Role.
@@ -663,7 +765,12 @@ function TeamMembersPanel({ group, members, userId, viewerRole, suggestions, onA
                     {/* Own line: instrument/category + status. Wraps inside
                         the text column instead of spilling under controls. */}
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 min-w-0">
-                      {insLabel(m) && <span className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-full">{insLabel(m)}</span>}
+                      {canEditInstrument(m) ? (
+                        <button type="button" onClick={() => setInstrumentFor(m)} aria-label={`Change instrument for ${m.displayName ?? "member"}`}
+                          className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-full text-left underline decoration-dotted decoration-slate-300 dark:decoration-slate-600 underline-offset-[3px] hover:text-[#6350ef] dark:hover:text-[#b3a3ff]">
+                          {insLabel(m) ?? "+ Instrument"}
+                        </button>
+                      ) : insLabel(m) && <span className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-full">{insLabel(m)}</span>}
                       <span className={"shrink-0 text-[11px] font-medium leading-none px-2 py-1 rounded-full "+(m.status==="joined"?"bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400":"bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400")}>
                         {m.status==="joined"?"Joined":"Pending"}
                       </span>
@@ -720,6 +827,14 @@ function TeamMembersPanel({ group, members, userId, viewerRole, suggestions, onA
           )
         )}
       {rolesInfoOpen && <RolesInfoSheet onClose={() => setRolesInfoOpen(false)} />}
+      {instrumentFor && onSetMemberInstrument && (
+        <EditInstrumentSheet member={instrumentFor} showToast={showToast} onClose={() => setInstrumentFor(null)}
+          onSave={async (ins, det) => {
+            const ok = await onSetMemberInstrument(instrumentFor.id, ins, det);
+            if (ok) showToast(`${instrumentFor.displayName ?? "Member"}'s instrument updated`);
+            return ok;
+          }} />
+      )}
       {addOpen && <AddMemberModal groupId={group.id} viewerRole={viewerRole} suggestions={suggestions} onAdd={onAddMember} onClose={() => setAddOpen(false)} showToast={showToast} />}
       {removeMemberTarget && (
       <ConfirmDialog
@@ -742,9 +857,9 @@ function TeamMembersPanel({ group, members, userId, viewerRole, suggestions, onA
    It's only a shortcut onto the team: same member list, same Add member /
    Invite actions. It overlays the setlist (portal), so closing it — ✕, Esc,
    backdrop — leaves the user exactly where they were on that setlist. */
-export function TeamMembersSheet({ groupId, onClose, userId, groups, groupMembers, onAddMember, onSetMemberRole, onRemoveMember, onReorderMembers, showToast }: {
+export function TeamMembersSheet({ groupId, onClose, userId, groups, groupMembers, onAddMember, onSetMemberRole, onRemoveMember, onReorderMembers, onSetMemberInstrument, showToast }: {
   groupId: string; onClose: () => void;
-} & Pick<GroupsViewProps, "userId" | "groups" | "groupMembers" | "onAddMember" | "onSetMemberRole" | "onRemoveMember" | "onReorderMembers" | "showToast">) {
+} & Pick<GroupsViewProps, "userId" | "groups" | "groupMembers" | "onAddMember" | "onSetMemberRole" | "onRemoveMember" | "onReorderMembers" | "onSetMemberInstrument" | "showToast">) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { // A confirm dialog open on top of the sheet takes Esc first.
       if (e.key === "Escape" && document.querySelectorAll('[aria-modal="true"]').length <= 1) onClose(); };
@@ -776,7 +891,7 @@ export function TeamMembersSheet({ groupId, onClose, userId, groups, groupMember
         </div>
         <div className="flex-1 overflow-y-auto overscroll-contain px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))]">
           {group ? (
-            <TeamMembersPanel group={group} members={members} userId={userId} viewerRole={me?.role ?? null} onReorderMembers={onReorderMembers}
+            <TeamMembersPanel group={group} members={members} userId={userId} viewerRole={me?.role ?? null} onReorderMembers={onReorderMembers} onSetMemberInstrument={onSetMemberInstrument}
               suggestions={suggestionsFor(groupId, groupMembers)} onAddMember={onAddMember} onSetMemberRole={onSetMemberRole}
               onRemoveMember={onRemoveMember} showToast={showToast} />
           ) : (
@@ -932,27 +1047,9 @@ function AddMemberModal({ groupId, viewerRole, suggestions, onAdd, onClose, show
           </div>
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Instrument</div>
-            <div className="grid grid-cols-4 gap-1.5">
-              {INSTRUMENTS.map(ins => (
-                <button key={ins.id} type="button" onClick={() => { if (ins.id !== instrument) { setInstrument(ins.id); setDetail(""); } }}
-                  className={"rounded-xl p-2 text-center border transition-all "+(instrument===ins.id?"border-[#735fee] bg-[#efe9fe] dark:bg-[#2a2440]":"border-slate-200 dark:border-slate-700 hover:border-[#c9bdfb]")}>
-                  <InstrumentIcon id={ins.id} className={"w-7 h-7 mx-auto "+(instrument===ins.id?"text-[#6350ef] dark:text-[#b3a3ff]":"text-slate-500 dark:text-slate-400")} />
-                  <div className={"text-[10px] font-medium mt-0.5 "+(instrument===ins.id?"text-[#6350ef]":"text-slate-500")}>{ins.label}</div>
-                </button>
-              ))}
-            </div>
-            {instrument==="sound_team" && (
-              <input autoFocus type="text" placeholder="e.g. FOH, Monitor" value={detail} onChange={e => setDetail(e.target.value)}
-                className="mt-2 w-full h-9 px-3 rounded-lg border border-[#9d8bff] outline-none text-base sm:text-sm bg-white dark:bg-slate-800" />
-            )}
-            {/* "Other": optional custom instrument name, shown instead of
-                "Other" (blank keeps "Other"). Capped at 20 characters. */}
-            {instrument==="other" && (
-              <input autoFocus type="text" placeholder="e.g. Electric guitar" value={detail} maxLength={20}
-                onChange={e => setDetail(e.target.value.slice(0, 20))} aria-label="Instrument name"
-                onKeyDown={e => e.key==="Enter" && handleAdd()}
-                className="mt-2 w-full h-9 px-3 rounded-lg border border-[#9d8bff] outline-none text-base sm:text-sm bg-white dark:bg-slate-800" />
-            )}
+            <InstrumentPicker instrument={instrument} detail={detail}
+              onPick={(id) => { if (id !== instrument) { setInstrument(id); setDetail(""); } }}
+              onDetail={setDetail} onEnter={handleAdd} />
           </div>
         </div>
         <div className="px-5 pb-5">

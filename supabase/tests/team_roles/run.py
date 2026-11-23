@@ -80,6 +80,18 @@ CASES = [
  ('M','member: set own sort_index (direct)', upd('group_members', 'sort_index=1', GM('b5')), False),
  ('X','outsider: reorder (RPC)', reorder(['b5','b1']), False),
  ('M','member: can read sort_index', f"select count(*) from public.group_members where group_id='{G}' and sort_index is null", True),
+ # ── Instrument changes (same permission level as role changes; no new DB rule) ──
+ ('C','co-leader: change Member instrument', upd('group_members', "instrument='keys', instrument_detail=null", GM('b5')), True),
+ ('C','co-leader: change Editor instrument → Other+name', upd('group_members', "instrument='other', instrument_detail='Electric guitar'", GM('b4')), True),
+ ('C','co-leader: change Owner instrument', upd('group_members', "instrument='keys'", GM('b1')), False),
+ ('C','co-leader: change other Co-leader instrument', upd('group_members', "instrument='keys'", GM('b3')), False),
+ ('O','owner: change Co-leader instrument', upd('group_members', "instrument='drums'", GM('b2')), True),
+ ('O','owner: change own instrument', upd('group_members', "instrument='vocals'", GM('b1')), True),
+ ('E','editor: change a Member instrument', upd('group_members', "instrument='keys'", GM('b5')), False),
+ ('E','editor: change own instrument', upd('group_members', "instrument='keys'", GM('b4')), False),
+ ('M','member: change own instrument', upd('group_members', "instrument='keys'", GM('b5')), False),
+ ('M','member: change Editor instrument', upd('group_members', "instrument='keys'", GM('b4')), False),
+ ('X','outsider: change an instrument', upd('group_members', "instrument='keys'", GM('b5')), False),
 ]
 fails = 0
 for c in CASES:
