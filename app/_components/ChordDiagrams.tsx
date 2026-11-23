@@ -53,7 +53,7 @@ function GuitarDiagram({ shape }: { shape: GuitarShape }) {
         const from = Math.min(...held), to = Math.max(...held);
         return (
           <rect key={`b${bf}`} x={x(from)} y={y(rel - 1) + stepY / 2 - 2.6} width={x(to) - x(from)} height={5.2} rx={2.6}
-            className="fill-[#735fee] dark:fill-[#b3a3ff]" />
+            className="fill-[#b7a7ff]" />
         );
       })}
       {shape.frets.map((fr, s) => {
@@ -70,7 +70,7 @@ function GuitarDiagram({ shape }: { shape: GuitarShape }) {
         }
         const rel = fr;              // already relative to baseFret
         if (rel < 1 || rel > FRETS) return null;
-        return <circle key={`d${s}`} cx={x(s)} cy={y(rel - 1) + stepY / 2} r={3.1} className="fill-[#735fee] dark:fill-[#b3a3ff]" />;
+        return <circle key={`d${s}`} cx={x(s)} cy={y(rel - 1) + stepY / 2} r={3.1} className="fill-[#b7a7ff]" />;
       })}
     </svg>
   );
@@ -90,15 +90,22 @@ function PianoDiagram({ voicing }: { voicing: PianoVoicing }) {
 
   const fill = (pc: number, black: boolean) =>
     bassPc === pc ? "fill-amber-400"
-      : on.has(pc) ? "fill-[#735fee] dark:fill-[#b3a3ff]"
+      : on.has(pc) ? "fill-[#b7a7ff]"
         : black ? "fill-slate-700 dark:fill-slate-500" : "fill-white dark:fill-slate-200";
 
   return (
     <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} aria-hidden>
-      {WHITE.map((pc, i) => (
-        <rect key={`w${pc}`} x={i * ww} y={0} width={ww - 0.6} height={H} rx={1.5}
-          className={fill(pc, false) + " stroke-slate-300 dark:stroke-slate-600"} strokeWidth={0.6} />
-      ))}
+      {WHITE.map((pc, i) => {
+        // #b7a7ff on a white key is faint (~2:1 against its white neighbours),
+        // so a highlighted white key gets a stronger purple edge to stay clearly
+        // visible. Unpressed keys keep the thin grey outline.
+        const pressed = on.has(pc) && bassPc !== pc;
+        return (
+          <rect key={`w${pc}`} x={i * ww} y={0} width={ww - 0.6} height={H} rx={1.5}
+            className={fill(pc, false) + (pressed ? " stroke-[#6a55ec]" : " stroke-slate-300 dark:stroke-slate-600")}
+            strokeWidth={pressed ? 1 : 0.6} />
+        );
+      })}
       {BLACK.map(({ pc, after }) => (
         <rect key={`b${pc}`} x={(after + 1) * ww - bw / 2 - 0.3} y={0} width={bw} height={bh} rx={1.2}
           className={fill(pc, true)} />
