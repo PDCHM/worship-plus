@@ -1091,6 +1091,17 @@ export default function SongEditor({
   // Set true while a chord is actually dragged so the trailing click doesn't
   // open the chord editor.
   const chordDraggedRef = useRef(false);
+  // Tap-to-edit (touch): when the chord's pointerdown→pointerup ends as a TAP,
+  // we open the chord directly from the pointer handler. We can't rely on
+  // click / dblclick / contextmenu for chords on touch: the drag captures the
+  // pointer on the sections container, so WebKit may deliver the follow-up
+  // click to the container (never to the chord), and iOS Safari doesn't fire
+  // contextmenu on long-press. tapHandledAtRef lets the chord's onClick ignore
+  // a click that DOES arrive for the same tap; menuOpenedAtRef keeps the
+  // compatibility mousedown that follows a touch from closing the menu at once.
+  // Times are event.timeStamp values (one shared clock for all events).
+  const tapHandledAtRef = useRef(-Infinity);
+  const menuOpenedAtRef = useRef(-Infinity);
   // Direct-manipulation chord drag: a ghost follows the pointer and a caret marks
   // the word it'll snap to; the actual re-anchor happens once, on release.
   // Chord-drag overlay. React state is set only when a drag STARTS (text +
@@ -1421,6 +1432,9 @@ export default function SongEditor({
     const close = (e: Event) => {
       const target = e.target as Node | null;
       if (target && contextMenuRef.current?.contains(target)) return;
+      // Ignore the emulated mousedown that browsers fire right after the touch
+      // that opened this menu (otherwise a tap would open and close it at once).
+      if (e.timeStamp - menuOpenedAtRef.current < 700) return;
       setContextMenu(null);
     };
     const onKey = (e: KeyboardEvent) => {
@@ -2490,6 +2504,9 @@ export default function SongEditor({
       chordDraggedRef.current = false;
       let moved = false;
       const pointerId = e.pointerId;
+      // A finger jitters a few px on a tap — don't treat that as a drag.
+      const pointerType = e.pointerType;
+      const dragThreshold = pointerType === "mouse" ? 4 : 10;
       // Capture IMMEDIATELY on the STABLE sections container (not the glyph, whose
       // DOM node remounts on re-anchor) so finger/S-Pen catch + hold the gesture
       // every time; hold touch-action so a leftward drag isn't claimed by scroll
@@ -2548,7 +2565,7 @@ export default function SongEditor({
       const onMove = (ev: PointerEvent) => {
         if (ev.pointerId !== pointerId) return;
         lastX = ev.clientX; lastY = ev.clientY;
-        if (!moved && Math.hypot(lastX - startX, lastY - startY) > 4) {
+        if (!moved && Math.hypot(lastX - startX, lastY - startY) > dragThreshold) {
           moved = true;
           chordDraggedRef.current = true;
           setDraggingId(chordId);
@@ -2580,13 +2597,36 @@ export default function SongEditor({
         dragLastRef.current = null;
         setDraggingId(null);
         setDragGhost(null);
+        // pointerup without a drag = a TAP → edit (a pointercancel never is).
+        if (!moved && ev?.type === "pointerup") openChordFromTap(chordId, pointerType, ev.timeStamp);
       };
       document.addEventListener("pointermove", onMove, { passive: false });
       document.addEventListener("pointerup", finishDrag);
       document.addEventListener("pointercancel", finishDrag);
     };
 
-  // ── WebKit / iOS: the PRE-FIX chord drag, verbatim (from 68b8712). ──
+  // A chord press that ended as a TAP (no drag). Touch/pen → the chord's
+  // Edit / Delete menu (what desktop gets from right-click); choosing Edit there
+  // is a real tap on a button, which reliably raises the iOS keyboard. Mouse →
+  // the inline chord editor (what a click was meant to do).
+  const openChordFromTap = (chordId: string, pointerType: string, at: number) => {
+    tapHandledAtRef.current = at;
+    if (pointerType === "mouse") {
+      setAddingChord(null);
+      setEditingChord(chordId);
+      return;
+    }
+    const el = document.querySelector<HTMLElement>(`[data-chord-id="${chordId}"]`);
+    const r = el?.getBoundingClientRect();
+    menuOpenedAtRef.current = at;
+    setContextMenu({
+      chordId,
+      x: Math.max(8, Math.min((r?.left ?? 0) - 4, window.innerWidth - 160)),
+      y: Math.max(8, Math.min((r?.bottom ?? 0) + 6, window.innerHeight - 96)),
+    });
+  };
+
+  // ── WebKit / iOS: the PRE-FIX chord drag (from 68b8712) + tap-to-edit. ──
   const handleChordDragStartWebKit =
     (lineId: string, chordId: string, chordOnly: boolean, chordText: string) =>
     (e: React.PointerEvent) => {
@@ -2598,6 +2638,9 @@ export default function SongEditor({
       chordDraggedRef.current = false;
       let moved = false;
       const pointerId = e.pointerId;
+      // A finger jitters a few px on a tap — don't treat that as a drag.
+      const pointerType = e.pointerType;
+      const dragThreshold = pointerType === "mouse" ? 4 : 10;
       // Capture IMMEDIATELY on the STABLE sections container (not the glyph, whose
       // DOM node remounts on re-anchor) so finger/S-Pen catch + hold the gesture
       // every time; hold touch-action so a leftward drag isn't claimed by scroll
@@ -2608,7 +2651,7 @@ export default function SongEditor({
       dragLastRef.current = null;
 
       const onMove = (ev: PointerEvent) => {
-        if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) > 4) {
+        if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) > dragThreshold) {
           moved = true;
           chordDraggedRef.current = true;
           setDraggingId(chordId);
@@ -2651,7 +2694,7 @@ export default function SongEditor({
 
       // Shared by pointerup AND pointercancel — commit the LAST previewed landing
       // (so a back-swipe slipping through still lands the chord, never discards).
-      const finishDrag = () => {
+      const finishDrag = (ev?: PointerEvent) => {
         document.removeEventListener("pointermove", onMove);
         document.removeEventListener("pointerup", finishDrag);
         document.removeEventListener("pointercancel", finishDrag);
@@ -2666,6 +2709,8 @@ export default function SongEditor({
         setDraggingId(null);
         setDragGhost(null);
         setDragCaret(null);
+        // pointerup without a drag = a TAP → edit (a pointercancel never is).
+        if (!moved && ev?.type === "pointerup") openChordFromTap(chordId, pointerType, ev.timeStamp);
       };
       document.addEventListener("pointermove", onMove, { passive: false });
       document.addEventListener("pointerup", finishDrag);
@@ -4114,6 +4159,8 @@ export default function SongEditor({
                                   chordDraggedRef.current = false;
                                   return;
                                 }
+                                // Already opened by the pointer handler for this tap.
+                                if (e.timeStamp - tapHandledAtRef.current < 700) return;
                                 setAddingChord(null);
                                 setEditingChord(ch.id);
                               }
@@ -4608,11 +4655,20 @@ export default function SongEditor({
             button to edit.
           </p>
         ) : (
-          <p>
+          <>
+          {/* Touch screens: tap opens the chord's Edit / Delete menu (no
+              double-click or right-click on a touchscreen). */}
+          <p className="hidden pointer-coarse:block">
+            <span className="font-semibold text-slate-700 dark:text-slate-300">Drag</span>{" "}
+            a chord to reposition ·{" "}
+            <span className="font-semibold text-slate-700 dark:text-slate-300">Tap</span>{" "}
+            a chord to edit or delete it
+          </p>
+          <p className="pointer-coarse:hidden">
             <span className="font-semibold text-slate-700 dark:text-slate-300">Drag</span>{" "}
             a chord to reposition ·{" "}
             <span className="font-semibold text-slate-700 dark:text-slate-300">
-              Double-click
+              Click
             </span>{" "}
             to edit ·{" "}
             <span className="font-semibold text-slate-700 dark:text-slate-300">
@@ -4624,6 +4680,7 @@ export default function SongEditor({
             </kbd>{" "}
             to delete
           </p>
+          </>
         )}
       </div>
 
