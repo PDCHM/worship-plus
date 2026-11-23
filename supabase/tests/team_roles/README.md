@@ -1,8 +1,8 @@
 # Team-role permission tests (database level)
 
-Runs 54 cases as real `authenticated` users against a local Postgres loaded
+Runs 66 cases as real `authenticated` users against a local Postgres loaded
 with `supabase/schema.sql`, checking RLS + guards for Owner / Co-leader /
-Editor / Member / outsider (migration `20261124120000_team_co_leader_role.sql`).
+Editor / Member / outsider (migrations `20261124120000_team_co_leader_role.sql`, `20261125120000_team_member_sort_index.sql`).
 
 ```sh
 # local Postgres 16 listening on socket dir /tmp/wp-pg, port 54329

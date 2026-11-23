@@ -9,6 +9,8 @@ def role(k, r): return upd('group_members', f"role='{r}'", GM(k))
 def addm(r): return f"select 1 from public.add_group_member('{G}','New','{r}','guitar','')"
 def ins_slot(r): return f"with r as (insert into public.group_members(group_id,display_name,role,status) values ('{G}','Slot','{r}','pending') returning 1) select count(*) from r"
 def transfer(k): return f"select 1 from public.transfer_team_ownership('{G}','{GM(k)}')"
+def reorder(ids): return "select 1 from public.reorder_team_members('" + G + "', array[" + ",".join("'"+GM(k)+"'" for k in ids) + "]::uuid[])"
+ORDER_Q = f"; select string_agg(display_name, ',' order by sort_index) from public.group_members where group_id='{G}' and sort_index is not null"
 CASES = [
  # who, label, sql, expect, [post-check sql, expected output]
  ('C','co-leader: Member→Editor', role('b5','editor'), True),
@@ -65,6 +67,19 @@ CASES = [
  ('X','outsider: claim Member invite slot', f"select 1 from public.accept_invite('tok','{GM('b6')}'); select role||'/'||status from public.group_members where id='{GM('b6')}'", True, 'member/joined'),
  ('X','outsider: set slot role directly', role('b6','co_leader'), False),
  ('X','outsider: delete team', dele('groups',G), False),
+ # ── Custom member order (20261125120000_team_member_sort_index.sql) ──
+ ('O','owner: reorder (RPC)', reorder(['b5','b1','b2','b3','b4']) + ORDER_Q, True, 'M,O,C,C2,E'),
+ ('C','co-leader: reorder incl. Owner row (RPC)', reorder(['b4','b1','b3','b2','b5']) + ORDER_Q, True, 'E,O,C2,C,M'),
+ ('C','co-leader: set sort_index on Owner row (direct)', upd('group_members', 'sort_index=1', GM('b1')), True),
+ ('C','co-leader: sort_index + role on Owner (direct)', upd('group_members', "sort_index=1, role='member'", GM('b1')), False),
+ ('C','co-leader: sort_index + name on other Co-leader', upd('group_members', "sort_index=1, display_name='x'", GM('b3')), False),
+ ('C','co-leader: reorder with a foreign member id', "select 1 from public.reorder_team_members('" + G + "', array['" + GM('b1') + "','00000000-0000-0000-0000-0000000000ff']::uuid[])", False),
+ ('E','editor: reorder (RPC)', reorder(['b5','b1']), False),
+ ('E','editor: set sort_index (direct)', upd('group_members', 'sort_index=1', GM('b5')), False),
+ ('M','member: reorder (RPC)', reorder(['b5','b1']), False),
+ ('M','member: set own sort_index (direct)', upd('group_members', 'sort_index=1', GM('b5')), False),
+ ('X','outsider: reorder (RPC)', reorder(['b5','b1']), False),
+ ('M','member: can read sort_index', f"select count(*) from public.group_members where group_id='{G}' and sort_index is null", True),
 ]
 fails = 0
 for c in CASES:

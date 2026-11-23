@@ -3,11 +3,11 @@ import { backdropDismiss } from "@/lib/backdropDismiss";
 import { PageTitleRow, ViewModeToggle, type ViewMode } from "@/app/_components/PageTitle";
 import { usePersistedState, oneOf } from "@/lib/usePersistedState";
 import { SELECTED } from "@/lib/selectedStyle";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Song } from "@/lib/song";
 import { initialsFrom, PersonGlyph } from "@/app/_components/Avatar";
-import type { Folder } from "@/app/_components/FoldersView";
+import { SearchField, type Folder } from "@/app/_components/FoldersView";
 import ConfirmDialog from "@/app/_components/ConfirmDialog";
 
 export type Group = { id: string; name: string; inviteToken: string; createdAt: number; };
@@ -19,6 +19,8 @@ export type GroupMember = {
   id: string; groupId: string; userId: string | null; role: MemberRole;
   displayName: string | null; instrument: string | null; instrumentDetail: string | null;
   status: "pending"|"joined"; email: string | null;
+  // Team-wide Custom order of the member list (null = not placed yet).
+  sortIndex?: number | null;
 };
 
 // Human labels for roles. "Member" is the view/play-only tier (matching the
@@ -49,6 +51,8 @@ export type GroupsViewProps = {
   onRemoveMember: (memberId: string) => Promise<boolean>;
   // Owner-only: hand the team to a joined member (the caller becomes Co-leader).
   onTransferOwnership?: (groupId: string, memberId: string) => Promise<boolean>;
+  // Owner / Co-leader: save the team's Custom member order (ids top → bottom).
+  onReorderMembers?: (groupId: string, memberIds: string[]) => Promise<void>;
   onShareSong: (groupId: string, songId: string) => Promise<void>;
   onUnshareSong: (groupId: string, songId: string) => void;
   onDeleteGroup: (groupId: string) => Promise<boolean>;
@@ -290,7 +294,7 @@ function TeamTile({ name }: { name: string }) {
 // Management view: the Owner ('leader') and Co-leaders. Owner-only actions
 // (rename, delete, transfer ownership) render only for the Owner — the DB
 // rejects them for anyone else regardless.
-function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, folders, onUpdateGroup, onAddMember, onSetMemberRole, onRemoveMember, onTransferOwnership, onShareSong, onUnshareSong, onDeleteGroup, onOpenSong, onOpenSetlist, showToast }: { group: Group; onBack: () => void } & GroupsViewProps) {
+function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, folders, onUpdateGroup, onAddMember, onSetMemberRole, onRemoveMember, onTransferOwnership, onReorderMembers, onShareSong, onUnshareSong, onDeleteGroup, onOpenSong, onOpenSetlist, showToast }: { group: Group; onBack: () => void } & GroupsViewProps) {
   const [tab, setTab] = useState<"members"|"songs">("members");
   const [addSongsOpen, setAddSongsOpen] = useState(false);
   const [editingName, setEditingName] = useState(false);
@@ -350,7 +354,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
         ))}
       </div>
       {tab==="members" && (
-        <TeamMembersPanel group={group} members={members} userId={userId} viewerRole={myRole}
+        <TeamMembersPanel group={group} members={members} userId={userId} viewerRole={myRole} onReorderMembers={onReorderMembers}
           suggestions={memberSuggestions} onAddMember={onAddMember} onSetMemberRole={onSetMemberRole}
           onRemoveMember={onRemoveMember} showToast={showToast} />
       )}
@@ -443,15 +447,143 @@ function suggestionsFor(groupId: string, groupMembers: GroupMember[]): GroupMemb
   return out;
 }
 
-function TeamMembersPanel({ group, members, userId, viewerRole, suggestions, onAddMember, onSetMemberRole, onRemoveMember, showToast }: {
+/* ── Member list: search + sort + Custom (drag) order ─────────────────────── */
+type MemberSort = "custom" | "role" | "name" | "instrument" | "status";
+const MEMBER_SORT_LABEL: Record<MemberSort, string> = {
+  custom: "Custom",
+  role: "Role",
+  name: "Name A–Z",
+  instrument: "Instrument",
+  status: "Status — joined first",
+};
+const ROLE_RANK: Record<MemberRole, number> = { leader: 0, co_leader: 1, editor: 2, member: 3 };
+const memberName = (m: GroupMember) => (m.displayName ?? m.email ?? "").trim();
+const byName = (a: GroupMember, b: GroupMember) => memberName(a).localeCompare(memberName(b), undefined, { sensitivity: "base" });
+const byRole = (a: GroupMember, b: GroupMember) => ROLE_RANK[a.role] - ROLE_RANK[b.role] || byName(a, b);
+const instrumentRank = (m: GroupMember) => { const i = INSTRUMENTS.findIndex(x => x.id === m.instrument); return i < 0 ? INSTRUMENTS.length : i; };
+// Custom: the team's saved order; members not placed yet follow, in role order.
+const byCustom = (a: GroupMember, b: GroupMember) => {
+  const ai = a.sortIndex ?? null, bi = b.sortIndex ?? null;
+  if (ai !== null && bi !== null && ai !== bi) return ai - bi;
+  if (ai !== null && bi === null) return -1;
+  if (ai === null && bi !== null) return 1;
+  return byRole(a, b);
+};
+const MEMBER_SORTERS: Record<MemberSort, (a: GroupMember, b: GroupMember) => number> = {
+  custom: byCustom,
+  role: byRole,
+  name: byName,
+  instrument: (a, b) => instrumentRank(a) - instrumentRank(b) || byName(a, b),
+  status: (a, b) => (a.status === b.status ? 0 : a.status === "joined" ? -1 : 1) || byName(a, b),
+};
+
+// Nearest vertically scrollable ancestor (the slide-up team sheet), else the page.
+function scrollParentOf(el: HTMLElement | null): HTMLElement | null {
+  for (let n = el?.parentElement; n; n = n.parentElement) {
+    const oy = getComputedStyle(n).overflowY;
+    if ((oy === "auto" || oy === "scroll") && n.scrollHeight > n.clientHeight) return n;
+  }
+  return null;
+}
+
+function TeamMembersPanel({ group, members, userId, viewerRole, suggestions, onAddMember, onSetMemberRole, onRemoveMember, onReorderMembers, showToast }: {
   group: Group; members: GroupMember[]; userId: string; viewerRole: MemberRole | null; suggestions: GroupMember[];
   onAddMember: GroupsViewProps["onAddMember"]; onSetMemberRole: GroupsViewProps["onSetMemberRole"];
-  onRemoveMember: GroupsViewProps["onRemoveMember"]; showToast: (m: string) => void;
+  onRemoveMember: GroupsViewProps["onRemoveMember"]; onReorderMembers?: GroupsViewProps["onReorderMembers"];
+  showToast: (m: string) => void;
 }) {
   const [addOpen, setAddOpen] = useState(false);
   const [removeMemberTarget, setRemoveMemberTarget] = useState<{ id: string; name: string } | null>(null);
   const [rolesInfoOpen, setRolesInfoOpen] = useState(false);
   const canManage = isManagerRole(viewerRole);
+
+  // Search (name + email) and sort — view-only. Sort is remembered like the
+  // Setlists sort; first visit defaults to Role.
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = usePersistedState<MemberSort>(
+    "wp-view-team-members-sort", "role", oneOf<MemberSort>("custom", "role", "name", "instrument", "status"));
+  const [sortOpen, setSortOpen] = useState(false);
+  const sortRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!sortOpen) return;
+    const onDown = (e: PointerEvent) => { if (sortRef.current && !sortRef.current.contains(e.target as Node)) setSortOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setSortOpen(false); };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("pointerdown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [sortOpen]);
+  const q = query.trim().toLowerCase();
+  const sorted = useMemo(() => {
+    const list = q ? members.filter(m => (m.displayName ?? "").toLowerCase().includes(q) || (m.email ?? "").toLowerCase().includes(q)) : members;
+    return [...list].sort(MEMBER_SORTERS[sort]);
+  }, [members, q, sort]);
+
+  // Custom drag-to-reorder (Owner / Co-leader, Custom sort, no search active).
+  // Only the grip handle starts a drag: it has touch-action:none and captures
+  // the pointer, so the rest of the row still scrolls the page normally.
+  const canDrag = sort === "custom" && canManage && !q && !!onReorderMembers;
+  const [dragOrder, setDragOrder] = useState<string[] | null>(null);
+  const [dragId, setDragId] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ id: string; y: number; raf: number; scroller: HTMLElement | null; start: string[] } | null>(null);
+  const byId = useMemo(() => new Map(members.map(m => [m.id, m])), [members]);
+  const rows: GroupMember[] = dragOrder ? dragOrder.map(id => byId.get(id)).filter((m): m is GroupMember => !!m) : sorted;
+  const placeDragged = () => {
+    const d = drag.current; const list = listRef.current;
+    if (!d || !list) return;
+    // Slot = number of OTHER rows whose middle is above the pointer.
+    let idx = 0;
+    list.querySelectorAll<HTMLElement>("[data-member-row]").forEach(el => {
+      if (el.dataset.memberId === d.id) return;
+      const r = el.getBoundingClientRect();
+      if (r.top + r.height / 2 < d.y) idx++;
+    });
+    setDragOrder(prev => {
+      if (!prev) return prev;
+      const without = prev.filter(id => id !== d.id);
+      if (prev.indexOf(d.id) === idx) return prev;
+      without.splice(idx, 0, d.id);
+      return without;
+    });
+  };
+  const tick = () => {
+    const d = drag.current; if (!d) return;
+    // Auto-scroll when the finger nears the top / bottom of the visible area.
+    const top = d.scroller ? d.scroller.getBoundingClientRect().top : 0;
+    const bottom = d.scroller ? d.scroller.getBoundingClientRect().bottom : window.innerHeight;
+    const edge = 72;
+    const speed = d.y < top + edge ? -Math.ceil((top + edge - d.y) / 6) : d.y > bottom - edge - 56 ? Math.ceil((d.y - (bottom - edge - 56)) / 6) : 0;
+    if (speed) { if (d.scroller) d.scroller.scrollTop += speed; else window.scrollBy(0, speed); placeDragged(); }
+    d.raf = requestAnimationFrame(tick);
+  };
+  const startDrag = (e: React.PointerEvent<HTMLElement>, id: string) => {
+    if (!canDrag || (e.pointerType === "mouse" && e.button !== 0)) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const start = sorted.map(m => m.id);
+    drag.current = { id, y: e.clientY, raf: 0, scroller: scrollParentOf(listRef.current), start };
+    setDragOrder(start);
+    setDragId(id);
+    drag.current.raf = requestAnimationFrame(tick);
+  };
+  const moveDrag = (e: React.PointerEvent<HTMLElement>) => {
+    if (!drag.current) return;
+    drag.current.y = e.clientY;
+    placeDragged();
+  };
+  const endDrag = () => {
+    const d = drag.current; if (!d) return;
+    cancelAnimationFrame(d.raf);
+    drag.current = null;
+    const final = dragOrder;
+    setDragId(null);
+    setDragOrder(null);
+    if (final && onReorderMembers && final.join() !== d.start.join()) void onReorderMembers(group.id, final);
+  };
+  // Leaving Custom / starting a search mid-drag just drops the drag.
+  useEffect(() => { if (!canDrag && drag.current) { cancelAnimationFrame(drag.current.raf); drag.current = null; setDragId(null); setDragOrder(null); } }, [canDrag]);
+  useEffect(() => () => { if (drag.current) cancelAnimationFrame(drag.current.raf); }, []);
+
   const inviteUrl = (memberId: string) => typeof window !== "undefined"
     ? `${window.location.origin}/join/${group.inviteToken}?slot=${memberId}`
     : `https://worshipplus.vercel.app/join/${group.inviteToken}?slot=${memberId}`;
@@ -470,19 +602,53 @@ function TeamMembersPanel({ group, members, userId, viewerRole, suggestions, onA
           </button>
           )}
         </div>
+        {members.length > 0 && (
+          <div className="mb-3 flex items-center gap-2">
+            <SearchField value={query} onChange={setQuery} placeholder="Search members…" label="Search members" />
+            {/* Sort — same button + popover as the Setlists screen. */}
+            <div ref={sortRef} className="relative shrink-0">
+              <button type="button" onClick={() => setSortOpen((o) => !o)}
+                aria-haspopup="menu" aria-expanded={sortOpen} aria-label={`Sort members — ${MEMBER_SORT_LABEL[sort]}`}
+                className="h-10 px-3 rounded-lg text-sm font-medium bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M11 5h9M11 9h6M11 13h3"/><path d="M4 17l3 3 3-3M7 4v16"/></svg>
+                <span className="hidden sm:inline">Sort</span>
+              </button>
+              {sortOpen && (
+                <div role="menu" className="fixed inset-x-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom,0px))] z-50 py-1 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xl shadow-slate-900/20 sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-full sm:mt-1 sm:w-56 sm:rounded-lg sm:shadow-xl sm:z-40">
+                  {(Object.keys(MEMBER_SORT_LABEL) as MemberSort[]).map((k) => (
+                    <button key={k} type="button" role="menuitemradio" aria-checked={sort === k}
+                      onClick={() => { setSort(k); setSortOpen(false); }}
+                      className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
+                      {MEMBER_SORT_LABEL[k]}
+                      {sort === k && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-[#6350ef] dark:text-[#b3a3ff]" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        {sort === "custom" && canManage && onReorderMembers && members.length > 1 && (
+          <p className="-mt-1 mb-3 text-xs text-slate-500 dark:text-slate-400">
+            {q ? "Clear the search to rearrange members." : "Drag ⠿ to arrange the order everyone on the team sees."}
+          </p>
+        )}
         {members.length === 0 ? (
           <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-12 text-center text-sm text-slate-500">No members yet — add your musicians.</div>
         ) : (
-          <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden">
-            {members.map((m, idx) => (
+          rows.length === 0 ? (
+          <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-10 text-center text-sm text-slate-500">No members match “{query.trim()}”.</div>
+          ) : (
+          <div ref={listRef} className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden">
+            {rows.map((m, idx) => (
               // One layout for every row. Phone: [avatar + text] on line 1; the
               // controls on their own full-width line below, starting under the
               // name (52px = 40px avatar + 12px gap): role toggle / badge left,
               // Invite beside it, remove × pinned far right — identical for
               // Editor / Member / Leader / Joined / Pending. sm+: the controls
               // sit beside the text, vertically centred.
-              <div key={m.id} data-member-row
-                className={"flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-4 py-3 "+(idx<members.length-1?"border-b border-slate-100 dark:border-slate-800":"")}>
+              <div key={m.id} data-member-row data-member-id={m.id}
+                className={"flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-4 py-3 "+(idx<rows.length-1?"border-b border-slate-100 dark:border-slate-800 ":"")+(dragId===m.id?"relative z-10 bg-[#f6f3ff] dark:bg-[#211c33] shadow-lg":"")}>
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <div className="w-10 h-10 rounded-full bg-[#efe9fe] dark:bg-[#2a2440] flex items-center justify-center text-[#6350ef] dark:text-[#b3a3ff] text-sm font-semibold shrink-0">
                     {initialsFrom(m.displayName, m.email) || <PersonGlyph />}
@@ -499,6 +665,15 @@ function TeamMembersPanel({ group, members, userId, viewerRole, suggestions, onA
                       </span>
                     </div>
                   </div>
+                  {canDrag && (
+                    <button type="button" aria-label={`Drag to reorder ${m.displayName ?? "member"}`} title="Drag to reorder"
+                      onPointerDown={(e) => startDrag(e, m.id)} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag}
+                      onContextMenu={(e) => e.preventDefault()}
+                      style={{ touchAction: "none" }}
+                      className={"w-8 h-10 -mr-2 shrink-0 rounded-lg flex items-center justify-center select-none text-slate-400 hover:text-[#6350ef] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors "+(dragId===m.id?"cursor-grabbing text-[#6350ef]":"cursor-grab")}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
+                    </button>
+                  )}
                 </div>
                 {/* Controls row. Members the viewer can manage get the role
                     picker, Invite (pending) and remove ×; everyone else shows
@@ -538,6 +713,7 @@ function TeamMembersPanel({ group, members, userId, viewerRole, suggestions, onA
               </div>
             ))}
           </div>
+          )
         )}
       {rolesInfoOpen && <RolesInfoSheet onClose={() => setRolesInfoOpen(false)} />}
       {addOpen && <AddMemberModal groupId={group.id} viewerRole={viewerRole} suggestions={suggestions} onAdd={onAddMember} onClose={() => setAddOpen(false)} showToast={showToast} />}
@@ -562,9 +738,9 @@ function TeamMembersPanel({ group, members, userId, viewerRole, suggestions, onA
    It's only a shortcut onto the team: same member list, same Add member /
    Invite actions. It overlays the setlist (portal), so closing it — ✕, Esc,
    backdrop — leaves the user exactly where they were on that setlist. */
-export function TeamMembersSheet({ groupId, onClose, userId, groups, groupMembers, onAddMember, onSetMemberRole, onRemoveMember, showToast }: {
+export function TeamMembersSheet({ groupId, onClose, userId, groups, groupMembers, onAddMember, onSetMemberRole, onRemoveMember, onReorderMembers, showToast }: {
   groupId: string; onClose: () => void;
-} & Pick<GroupsViewProps, "userId" | "groups" | "groupMembers" | "onAddMember" | "onSetMemberRole" | "onRemoveMember" | "showToast">) {
+} & Pick<GroupsViewProps, "userId" | "groups" | "groupMembers" | "onAddMember" | "onSetMemberRole" | "onRemoveMember" | "onReorderMembers" | "showToast">) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { // A confirm dialog open on top of the sheet takes Esc first.
       if (e.key === "Escape" && document.querySelectorAll('[aria-modal="true"]').length <= 1) onClose(); };
@@ -596,7 +772,7 @@ export function TeamMembersSheet({ groupId, onClose, userId, groups, groupMember
         </div>
         <div className="flex-1 overflow-y-auto overscroll-contain px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))]">
           {group ? (
-            <TeamMembersPanel group={group} members={members} userId={userId} viewerRole={me?.role ?? null}
+            <TeamMembersPanel group={group} members={members} userId={userId} viewerRole={me?.role ?? null} onReorderMembers={onReorderMembers}
               suggestions={suggestionsFor(groupId, groupMembers)} onAddMember={onAddMember} onSetMemberRole={onSetMemberRole}
               onRemoveMember={onRemoveMember} showToast={showToast} />
           ) : (

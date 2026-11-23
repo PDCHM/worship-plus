@@ -214,7 +214,7 @@ const SETLIST_SORT_LABEL: Record<SetlistSort, string> = {
 };
 
 /** Search input — same look as the Songs screen's search bar. */
-function SearchField({ value, onChange, placeholder, label }: {
+export function SearchField({ value, onChange, placeholder, label }: {
   value: string; onChange: (v: string) => void; placeholder: string; label: string;
 }) {
   return (

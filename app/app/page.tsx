@@ -1277,10 +1277,19 @@ export default function Home() {
           applyFolderBundle(r);
         });
 
+        // group_members.sort_index (team Custom order) comes from a later
+        // migration: if the column is missing, load without it (Custom then
+        // falls back to role order) instead of failing the whole Teams load.
+        const MEMBER_COLS = "id,group_id,user_id,role,display_name,status,instrument,instrument_detail,email";
+        const loadMembers = async () => {
+          const r = await supabase.from("group_members").select(MEMBER_COLS + ",sort_index");
+          if (r.error && /sort_index|42703/i.test(r.error.message || "")) return supabase.from("group_members").select(MEMBER_COLS);
+          return r;
+        };
         /* eslint-disable @typescript-eslint/no-explicit-any */
         void Promise.all([
           supabase.from("groups").select("id,name,invite_token,created_at"),
-          supabase.from("group_members").select("id,group_id,user_id,role,display_name,status,instrument,instrument_detail,email"),
+          loadMembers(),
           supabase.from("group_songs").select("id,group_id,song_id"),
         ]).then(([{ data: gRows, error: gErr }, { data: mRows, error: mErr }, { data: gsRows, error: gsErr }]) => {
           if (cancelled) return;
@@ -1293,7 +1302,7 @@ export default function Home() {
             id:r.id, groupId:r.group_id, userId:r.user_id??null, role:r.role,
             displayName:r.display_name??null, status:r.status??"pending",
             instrument:r.instrument??null, instrumentDetail:r.instrument_detail??null,
-            email:r.email??null
+            email:r.email??null, sortIndex:r.sort_index??null
           })));
           setGroupSongs((gsRows??[]).map((r:any)=>({id:r.id,groupId:r.group_id,songId:r.song_id})));
           setGroupsLoaded(true);
@@ -3075,7 +3084,7 @@ export default function Home() {
     const{data,error}=await supabase.rpc("add_group_member",{p_group_id:groupId,p_display_name:displayName,p_role:role,p_instrument:instrument,p_instrument_detail:instrumentDetail});
     if(error){showToast("Error: "+error.message);return;}
     const r=data as any;
-    setGroupMembers(prev=>[...prev,{id:r.id,groupId:r.group_id,userId:r.user_id??null,role:r.role,displayName:r.display_name??null,instrument:r.instrument??null,instrumentDetail:r.instrument_detail??null,status:r.status??"pending",email:null}]);
+    setGroupMembers(prev=>[...prev,{id:r.id,groupId:r.group_id,userId:r.user_id??null,role:r.role,displayName:r.display_name??null,instrument:r.instrument??null,instrumentDetail:r.instrument_detail??null,status:r.status??"pending",email:null,sortIndex:r.sort_index??null}]);
   };
   /* eslint-enable @typescript-eslint/no-explicit-any */
   const shareGroupSong=async(groupId:string,songId:string):Promise<void>=>{
@@ -3137,6 +3146,18 @@ export default function Home() {
     setGroupMembers(p => p.map(m => m.id === memberId ? { ...m, role } : m));
     const { error } = await supabase.from("group_members").update({ role }).eq("id", memberId);
     if (error) { logErr("set member role", error); showToast("Couldn't change role: " + error.message); setGroupMembers(snapshot); }
+  };
+
+  // Save the team's Custom member order (Owner / Co-leader). The DB function
+  // reorder_team_members() is the gate — Editors / Members are rejected there.
+  // Optimistic: sort_index 1..n in the given order, rolled back on error.
+  const reorderTeamMembers = async (groupId: string, memberIds: string[]): Promise<void> => {
+    if (!guardOnline()) return;
+    const snapshot = groupMembers;
+    const pos = new Map(memberIds.map((id, i) => [id, i + 1]));
+    setGroupMembers(p => p.map(m => m.groupId === groupId && pos.has(m.id) ? { ...m, sortIndex: pos.get(m.id)! } : m));
+    const { error } = await supabase.rpc("reorder_team_members", { p_group_id: groupId, p_member_ids: memberIds });
+    if (error) { logErr("reorder team members", error); showToast("Couldn't save the order: " + error.message); setGroupMembers(snapshot); }
   };
 
   // Owner-only: hand the team to a joined member; the caller becomes a
@@ -3627,7 +3648,7 @@ export default function Home() {
               the setlist (FoldersView stays mounted underneath), so closing it
               returns to the same setlist at the same scroll position. */}
           {teamSheetId && (
-            <TeamMembersSheet groupId={teamSheetId} onClose={closeTeamSheet} userId={user.id}
+            <TeamMembersSheet groupId={teamSheetId} onClose={closeTeamSheet} userId={user.id} onReorderMembers={reorderTeamMembers}
               groups={groups} groupMembers={groupMembers} onAddMember={gatedAddMember}
               onSetMemberRole={setMemberRole} onRemoveMember={removeGroupMember} showToast={showToast} />
           )}
@@ -3694,7 +3715,7 @@ export default function Home() {
             </div>
           )}
           {view.kind === "groups" && groupsLoaded && (
-            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={librarySongs} folders={folders} onCreateGroup={gatedCreateTeam} onUpdateGroup={updateGroupName} onAddMember={gatedAddMember} onSetMemberRole={setMemberRole} onRemoveMember={removeGroupMember} onTransferOwnership={transferTeamOwnership} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onDeleteGroup={deleteGroup} onOpenSong={openSong} onOpenSetlist={(id) => navigateTo({ kind: "folders", subview: id })} showToast={showToast} selectedTeamId={view.kind === "groups" ? (view.teamId ?? null) : null} onSelectTeam={(id) => navigateTo({ kind: "groups", teamId: id ?? undefined })}/>
+            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={librarySongs} folders={folders} onCreateGroup={gatedCreateTeam} onUpdateGroup={updateGroupName} onAddMember={gatedAddMember} onSetMemberRole={setMemberRole} onRemoveMember={removeGroupMember} onTransferOwnership={transferTeamOwnership} onReorderMembers={reorderTeamMembers} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onDeleteGroup={deleteGroup} onOpenSong={openSong} onOpenSetlist={(id) => navigateTo({ kind: "folders", subview: id })} showToast={showToast} selectedTeamId={view.kind === "groups" ? (view.teamId ?? null) : null} onSelectTeam={(id) => navigateTo({ kind: "groups", teamId: id ?? undefined })}/>
           )}
         </main>
       </div>
