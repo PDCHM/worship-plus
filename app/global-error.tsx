@@ -26,6 +26,12 @@ export default function GlobalError({
           <p className="mt-2 text-sm text-slate-500">
             An unexpected error occurred. Try again, and if it keeps happening let us know.
           </p>
+          {/* Debug details for real devices (no dev tools on an iPhone).
+              Inline styles: this page replaces the root layout, so the app's
+              CSS may not be loaded here. */}
+          <pre style={{ marginTop: 16, maxHeight: "45vh", overflow: "auto", whiteSpace: "pre-wrap", wordBreak: "break-word", textAlign: "left", fontFamily: "ui-monospace, Menlo, monospace", fontSize: 11, lineHeight: 1.35, background: "#fee2e2", color: "#7f1d1d", border: "1px solid #fca5a5", borderRadius: 10, padding: 10, userSelect: "text" }}>
+            {`${error.name}: ${error.message}${error.digest ? `\ndigest: ${error.digest}` : ""}\n${typeof navigator !== "undefined" ? navigator.userAgent : ""}\n\n${error.stack ?? ""}`}
+          </pre>
           <button
             type="button"
             onClick={() => reset()}

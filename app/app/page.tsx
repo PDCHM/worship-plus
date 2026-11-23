@@ -34,6 +34,7 @@ import Library from "@/app/_components/Library";
 import PasteSongModal from "@/app/_components/PasteSongModal";
 import SettingsView from "@/app/_components/SettingsView";
 import SongEditor from "@/app/_components/SongEditor";
+import ErrorBoundary from "@/app/_components/ErrorBoundary";
 import { type SongLink } from "@/app/_components/SongReferences";
 import FoldersView, { AddSongsModal, type Folder, type FolderSong, type SetlistEvent } from "@/app/_components/FoldersView";
 import GroupsView, { TeamMembersSheet, type Group, type GroupMember, type GroupSong, type MemberRole } from "@/app/_components/GroupsView";
@@ -3413,6 +3414,7 @@ export default function Home() {
             </div>
           )}
           {view.kind === "editor" && activeSong && (presentActive || !(hydratingId === view.songId && activeSong.sections.length === 0)) && (
+            <ErrorBoundary label="Song editor" key={activeSong.id}>
             <SongEditor
               key={presentActive && presentKeyRef.current ? presentKeyRef.current : activeSong.id}
               song={activeSong}
@@ -3467,6 +3469,7 @@ export default function Home() {
               }}
               showToast={showToast}
             />
+            </ErrorBoundary>
           )}
           {view.kind === "editor" && !activeSong && (
             <EmptyState

@@ -9,6 +9,7 @@ import {
 } from "next/font/google";
 import "./globals.css";
 import ServiceWorkerRegister from "./_components/ServiceWorkerRegister";
+import ErrorOverlay, { EARLY_ERROR_SCRIPT } from "./_components/ErrorOverlay";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -133,6 +134,8 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} ${jetbrainsMono.variable} ${robotoMono.variable} ${ibmPlexMono.variable} ${courierPrime.variable} h-full antialiased`}
     >
       <head>
+        {/* Records JS errors from the very first moment (shown by ErrorOverlay). */}
+        <script dangerouslySetInnerHTML={{ __html: EARLY_ERROR_SCRIPT }} />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -142,6 +145,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <ServiceWorkerRegister />
         {children}
+        <ErrorOverlay />
       </body>
     </html>
   );
