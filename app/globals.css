@@ -42,6 +42,12 @@ html, body {
   text-size-adjust: 100%;
 }
 
+/* Guard only — the iOS "content off the right edge" bug was the sticky focus
+   zoom (fixed in IosInputFix), not layout overflow. `clip` (not `hidden`)
+   creates no scroll container, so position: sticky keeps working. */
+body { overflow-x: clip; }
+
+
 /* Launch splash (LaunchSplash in app/app/page.tsx). In a browser tab it uses the
    theme background, like the old loading screen. In the installed app the
    head script adds html.wp-launch before first paint, so <html>, <body> and

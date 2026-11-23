@@ -9,6 +9,7 @@ import {
 } from "next/font/google";
 import "./globals.css";
 import ServiceWorkerRegister from "./_components/ServiceWorkerRegister";
+import IosInputFix from "./_components/IosInputFix";
 import ErrorOverlay, { EARLY_ERROR_SCRIPT } from "./_components/ErrorOverlay";
 
 const geistSans = Geist({
@@ -158,7 +159,9 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-const themeScript = `(function(){try{var s=localStorage.getItem('wp-theme');var d=s?s==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;if(d)document.documentElement.classList.add('dark');var p=location.pathname;if((p==='/app'||p.indexOf('/app/')===0||p==='/login')&&(window.matchMedia('(display-mode: standalone)').matches||navigator.standalone)){document.documentElement.classList.add('wp-launch');var m=document.createElement('meta');m.name='theme-color';m.content='#020617';m.id='wp-launch-theme';document.head.prepend(m);}}catch(e){}})();`;
+// Before first paint: theme class; iOS-only maximum-scale=1 (stops the sticky
+// focus auto-zoom on <16px inputs — see IosInputFix); installed-app launch colours.
+const themeScript = `(function(){try{var ua=navigator.userAgent;if(/iPad|iPhone|iPod/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1)){var vm=document.querySelector('meta[name="viewport"]');if(vm&&vm.content.indexOf('maximum-scale')<0)vm.content+=', maximum-scale=1';}var s=localStorage.getItem('wp-theme');var d=s?s==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;if(d)document.documentElement.classList.add('dark');var p=location.pathname;if((p==='/app'||p.indexOf('/app/')===0||p==='/login')&&(window.matchMedia('(display-mode: standalone)').matches||navigator.standalone)){document.documentElement.classList.add('wp-launch');var m=document.createElement('meta');m.name='theme-color';m.content='#020617';m.id='wp-launch-theme';document.head.prepend(m);}}catch(e){}})();`;
 
 export default function RootLayout({
   children,
@@ -181,6 +184,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-full flex flex-col">
         <ServiceWorkerRegister />
+        <IosInputFix />
         {children}
         <ErrorOverlay />
       </body>

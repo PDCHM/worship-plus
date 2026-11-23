@@ -3349,7 +3349,7 @@ export default function Home() {
     // mounts — the icon never re-decodes, re-sizes or blinks on the handoff.
     <>
     {splash !== "off" ? <LaunchSplash fading={splash === "fading"} /> : null}
-    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+    <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 pl-[env(safe-area-inset-left,0px)] pr-[env(safe-area-inset-right,0px)]">
 
       <OfflineBadge />
       {/* Offline-readiness indicator — so a leader knows the library is fully
