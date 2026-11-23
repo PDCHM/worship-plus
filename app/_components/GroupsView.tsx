@@ -11,7 +11,10 @@ import type { Folder } from "@/app/_components/FoldersView";
 import ConfirmDialog from "@/app/_components/ConfirmDialog";
 
 export type Group = { id: string; name: string; inviteToken: string; createdAt: number; };
-export type MemberRole = "leader" | "editor" | "member";
+// Role ladder: leader (the team Owner) → co_leader → editor → member. The
+// database enforces every rule (RLS + guards, migration 20261124120000); the
+// UI only mirrors it by hiding controls a role can't use.
+export type MemberRole = "leader" | "co_leader" | "editor" | "member";
 export type GroupMember = {
   id: string; groupId: string; userId: string | null; role: MemberRole;
   displayName: string | null; instrument: string | null; instrumentDetail: string | null;
@@ -19,8 +22,23 @@ export type GroupMember = {
 };
 
 // Human labels for roles. "Member" is the view/play-only tier (matching the
-// "N members" count); "Editor" can edit songs/setlists; "Leader" is full admin.
-const ROLE_LABEL: Record<MemberRole, string> = { leader: "Leader", editor: "Editor", member: "Member" };
+// "N members" count); "Editor" can edit songs/setlists; "Co-leader" also
+// manages Editors/Members; "Leader" is the team Owner (full control).
+const ROLE_LABEL: Record<MemberRole, string> = { leader: "Leader", co_leader: "Co-leader", editor: "Editor", member: "Member" };
+const ROLE_WITH_ARTICLE: Record<MemberRole, string> = { leader: "the leader", co_leader: "a co-leader", editor: "an editor", member: "a member" };
+// Owner or Co-leader: sees the management view (member controls).
+const isManagerRole = (r: MemberRole | null | undefined) => r === "leader" || r === "co_leader";
+// Roles the viewer may assign to someone else: the Owner can make Co-leaders;
+// a Co-leader only switches people between Editor and Member.
+const assignableRoles = (viewer: MemberRole | null | undefined): MemberRole[] =>
+  viewer === "leader" ? ["co_leader", "editor", "member"] : viewer === "co_leader" ? ["editor", "member"] : [];
+// Can the viewer change / remove / re-invite this member? Mirrors the DB rules.
+const canManageMember = (viewer: MemberRole | null | undefined, target: MemberRole) =>
+  viewer === "leader" ? target !== "leader" : viewer === "co_leader" ? (target === "editor" || target === "member") : false;
+// Highlighted (lavender) badge for the two management roles.
+const roleBadgeClass = (r: MemberRole) => isManagerRole(r)
+  ? "bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff]"
+  : "bg-slate-100 dark:bg-slate-800 text-slate-500";
 export type GroupSong = { id: string; groupId: string; songId: string; };
 export type GroupsViewProps = {
   userId: string; groups: Group[]; groupMembers: GroupMember[]; groupSongs: GroupSong[]; songs: Song[]; folders: Folder[];
@@ -29,6 +47,8 @@ export type GroupsViewProps = {
   onAddMember: (groupId: string, displayName: string, role: string, instrument: string, instrumentDetail: string) => Promise<void>;
   onSetMemberRole: (memberId: string, role: MemberRole) => Promise<void>;
   onRemoveMember: (memberId: string) => Promise<boolean>;
+  // Owner-only: hand the team to a joined member (the caller becomes Co-leader).
+  onTransferOwnership?: (groupId: string, memberId: string) => Promise<boolean>;
   onShareSong: (groupId: string, songId: string) => Promise<void>;
   onUnshareSong: (groupId: string, songId: string) => void;
   onDeleteGroup: (groupId: string) => Promise<boolean>;
@@ -78,8 +98,8 @@ export default function GroupsView(props: GroupsViewProps) {
   if (selectedId) {
     const membership = myMemberships.find(m => m.group.id === selectedId);
     if (membership) {
-      const isLeader = membership.role === "leader";
-      return isLeader
+      // Owner and Co-leaders get the management view; Editors / Members the read view.
+      return isManagerRole(membership.role)
         ? <LeaderView group={membership.group} onBack={() => setSelectedId(null)} {...props} />
         : <MemberView group={membership.group} onBack={() => setSelectedId(null)} {...props} />;
     }
@@ -186,13 +206,12 @@ function TeamListView({ memberships, onSelect, onCreateGroup, showToast }: {
       {viewMode === "grid" ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
           {memberships.map(({ group, role, memberCount }) => {
-            const isLeader = role === "leader";
             return (
               <button key={group.id} type="button" onClick={() => onSelect(group.id)}
                 className="flex flex-col items-start gap-3 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-[#c9bdfb] transition-colors text-left min-w-0">
                 <div className="w-full flex items-start justify-between gap-2">
                   <TeamTile name={group.name} />
-                  <span className={"text-[11px] font-semibold px-2 py-0.5 rounded-lg shrink-0 "+(isLeader?"bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff]":"bg-slate-100 dark:bg-slate-800 text-slate-500")}>
+                  <span className={"text-[11px] font-semibold px-2 py-0.5 rounded-lg shrink-0 "+roleBadgeClass(role)}>
                     {ROLE_LABEL[role]}
                   </span>
                 </div>
@@ -207,7 +226,6 @@ function TeamListView({ memberships, onSelect, onCreateGroup, showToast }: {
       ) : (
       <div className="space-y-2">
         {memberships.map(({ group, role, memberCount }) => {
-          const isLeader = role === "leader";
           return (
             <button key={group.id} type="button" onClick={() => onSelect(group.id)}
               className="w-full flex items-center gap-3 p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-[#c9bdfb] transition-colors text-left">
@@ -216,7 +234,7 @@ function TeamListView({ memberships, onSelect, onCreateGroup, showToast }: {
                 <div className="text-sm font-semibold truncate">{group.name}</div>
                 <div className="text-xs text-slate-500 mt-0.5">{memberCount} member{memberCount!==1?"s":""}</div>
               </div>
-              <span className={"text-xs font-semibold px-2.5 py-1 rounded-lg shrink-0 "+(isLeader?"bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff]":"bg-slate-100 dark:bg-slate-800 text-slate-500")}>
+              <span className={"text-xs font-semibold px-2.5 py-1 rounded-lg shrink-0 "+roleBadgeClass(role)}>
                 {ROLE_LABEL[role]}
               </span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="text-slate-300 shrink-0"><polyline points="9 18 15 12 9 6"/></svg>
@@ -240,12 +258,16 @@ function TeamTile({ name }: { name: string }) {
   );
 }
 
-function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, folders, onUpdateGroup, onAddMember, onSetMemberRole, onRemoveMember, onShareSong, onUnshareSong, onDeleteGroup, onOpenSong, onOpenSetlist, showToast }: { group: Group; onBack: () => void } & GroupsViewProps) {
+// Management view: the Owner ('leader') and Co-leaders. Owner-only actions
+// (rename, delete, transfer ownership) render only for the Owner — the DB
+// rejects them for anyone else regardless.
+function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, folders, onUpdateGroup, onAddMember, onSetMemberRole, onRemoveMember, onTransferOwnership, onShareSong, onUnshareSong, onDeleteGroup, onOpenSong, onOpenSetlist, showToast }: { group: Group; onBack: () => void } & GroupsViewProps) {
   const [tab, setTab] = useState<"members"|"songs">("members");
   const [addSongsOpen, setAddSongsOpen] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameVal, setNameVal] = useState(group.name);
   const [confirmDeleteTeam, setConfirmDeleteTeam] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
   const members = groupMembers.filter(m => m.groupId === group.id);
   const memberSuggestions = suggestionsFor(group.id, groupMembers);
   const saveName = async () => {
@@ -254,7 +276,8 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
     else setNameVal(group.name);
     setEditingName(false);
   };
-  const isLeader = members.find(m => m.userId === userId)?.role === "leader";
+  const myRole: MemberRole = members.find(m => m.userId === userId)?.role ?? "member";
+  const isOwner = myRole === "leader";
   const handleDelete = async () => {
     const ok = await onDeleteGroup(group.id);
     if (ok) { showToast("Team deleted"); onBack(); }
@@ -277,15 +300,17 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
           ) : (
             <div className="flex items-center gap-1.5">
               <h1 className="text-2xl font-bold">{group.name}</h1>
+              {isOwner && (
               <button type="button" onClick={() => { setNameVal(group.name); setEditingName(true); }} title="Rename team" aria-label="Rename team"
                 className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 hover:text-[#6350ef] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
               </button>
+              )}
             </div>
           )}
           <p className="text-sm text-slate-500 mt-0.5">{members.length} member{members.length!==1?"s":""}</p>
         </div>
-        <span className="px-2.5 py-1 rounded-lg bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff] text-xs font-semibold mt-1">Leader</span>
+        <span className={"px-2.5 py-1 rounded-lg text-xs font-semibold mt-1 shrink-0 "+roleBadgeClass(myRole)}>{ROLE_LABEL[myRole]}</span>
       </div>
       <div className="flex gap-1 mb-4 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl w-fit">
         {(["members","songs"] as const).map(t => (
@@ -296,7 +321,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
         ))}
       </div>
       {tab==="members" && (
-        <TeamMembersPanel group={group} members={members} userId={userId} canManage
+        <TeamMembersPanel group={group} members={members} userId={userId} viewerRole={myRole}
           suggestions={memberSuggestions} onAddMember={onAddMember} onSetMemberRole={onSetMemberRole}
           onRemoveMember={onRemoveMember} showToast={showToast} />
       )}
@@ -329,8 +354,14 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
         </div>
       )}
       <TeamSetlistList setlists={teamSetlists} onOpen={onOpenSetlist} />
-      {isLeader && (
-        <div className="mt-10 pt-6 border-t border-slate-200 dark:border-slate-800">
+      {isOwner && (
+        <div className="mt-10 pt-6 border-t border-slate-200 dark:border-slate-800 flex flex-wrap gap-2">
+          {onTransferOwnership && (
+            <button type="button" onClick={() => setTransferOpen(true)}
+              className="h-9 px-4 rounded-xl text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+              Transfer ownership
+            </button>
+          )}
           <button type="button" onClick={() => setConfirmDeleteTeam(true)}
             className="h-9 px-4 rounded-xl text-sm font-semibold text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors">
             Delete team
@@ -338,6 +369,11 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
         </div>
       )}
       {addSongsOpen && <AddSongsModal songs={songs.filter(s => s.userId === userId)} alreadyShared={sharedSongIds} groupId={group.id} onShare={onShareSong} onClose={() => setAddSongsOpen(false)} showToast={showToast} />}
+      {transferOpen && onTransferOwnership && (
+        <TransferOwnershipSheet group={group} members={members} userId={userId}
+          onTransfer={(memberId) => onTransferOwnership(group.id, memberId)}
+          onClose={() => setTransferOpen(false)} showToast={showToast} />
+      )}
       {confirmDeleteTeam && (
         <ConfirmDialog
           title="Delete team?"
@@ -354,8 +390,13 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
 /* Members of ONE team — the single source of truth for the member list,
    used by the team page (Members tab) AND the slide-up team sheet opened from
    a setlist. Members are always a team concept; nothing here is per-setlist.
-   canManage (leaders): Add member, Invite links, role toggle, remove.
-   Otherwise read-only rows with role badges (RLS enforces this anyway). */
+   viewerRole decides the controls (RLS enforces the same rules):
+     Owner      → Add member; on every non-Owner row: role picker
+                  (Co-leader / Editor / Member), Invite (pending), remove.
+     Co-leader  → Add member; on Editor / Member rows only: Editor/Member
+                  toggle, Invite (pending), remove. Owner / Co-leader rows
+                  show a badge.
+     others     → read-only rows with role badges. */
 function suggestionsFor(groupId: string, groupMembers: GroupMember[]): GroupMember[] {
   // Members from the leader's other teams, de-duplicated by display name —
   // used to autocomplete the Add Member form.
@@ -373,13 +414,15 @@ function suggestionsFor(groupId: string, groupMembers: GroupMember[]): GroupMemb
   return out;
 }
 
-function TeamMembersPanel({ group, members, userId, canManage, suggestions, onAddMember, onSetMemberRole, onRemoveMember, showToast }: {
-  group: Group; members: GroupMember[]; userId: string; canManage: boolean; suggestions: GroupMember[];
+function TeamMembersPanel({ group, members, userId, viewerRole, suggestions, onAddMember, onSetMemberRole, onRemoveMember, showToast }: {
+  group: Group; members: GroupMember[]; userId: string; viewerRole: MemberRole | null; suggestions: GroupMember[];
   onAddMember: GroupsViewProps["onAddMember"]; onSetMemberRole: GroupsViewProps["onSetMemberRole"];
   onRemoveMember: GroupsViewProps["onRemoveMember"]; showToast: (m: string) => void;
 }) {
   const [addOpen, setAddOpen] = useState(false);
   const [removeMemberTarget, setRemoveMemberTarget] = useState<{ id: string; name: string } | null>(null);
+  const [rolesInfoOpen, setRolesInfoOpen] = useState(false);
+  const canManage = isManagerRole(viewerRole);
   const inviteUrl = (memberId: string) => typeof window !== "undefined"
     ? `${window.location.origin}/join/${group.inviteToken}?slot=${memberId}`
     : `https://worshipplus.vercel.app/join/${group.inviteToken}?slot=${memberId}`;
@@ -389,14 +432,15 @@ function TeamMembersPanel({ group, members, userId, canManage, suggestions, onAd
   };
   return (
       <div>
-        {canManage && (
-        <div className="flex justify-end mb-3">
+        <div className="flex items-center justify-between gap-2 mb-3">
+          <RolesInfoButton onClick={() => setRolesInfoOpen(true)} />
+          {canManage && (
           <button type="button" onClick={() => setAddOpen(true)}
             className="shrink-0 h-9 px-4 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] flex items-center gap-1.5">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add Member
           </button>
+          )}
         </div>
-        )}
         {members.length === 0 ? (
           <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-12 text-center text-sm text-slate-500">No members yet — add your musicians.</div>
         ) : (
@@ -427,50 +471,47 @@ function TeamMembersPanel({ group, members, userId, canManage, suggestions, onAd
                     </div>
                   </div>
                 </div>
-                {/* Controls column. Leaders show a static badge; a leader can
-                    toggle any other member between Editor and Member in place.
-                    No control on self or on fellow leaders (role is enforced by
-                    RLS). */}
-                {canManage ? (
-                <div className="flex items-center gap-2 min-w-0 pl-[52px] sm:pl-0 sm:shrink-0 sm:self-center">
-                  {m.role === "leader" ? (
-                    <span className="h-8 inline-flex items-center text-xs font-semibold px-3 rounded-lg bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff]">Leader</span>
-                  ) : m.userId === userId ? (
-                    <span className="h-8 inline-flex items-center text-xs font-medium px-3 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500">{ROLE_LABEL[m.role]}</span>
-                  ) : (
-                    <div className="flex h-8 rounded-lg border border-slate-200 dark:border-slate-700 seg-group" role="group" aria-label="Member role">
-                      {(["editor", "member"] as const).map((r) => (
-                        <button key={r} type="button" aria-pressed={m.role===r}
-                          onClick={() => { if (m.role !== r) { onSetMemberRole(m.id, r); showToast(`${m.displayName ?? "Member"} is now ${ROLE_LABEL[r]}`); } }}
-                          className={"px-2.5 text-xs font-medium transition-colors "+(m.role===r?SELECTED:"bg-white dark:bg-slate-900 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800")}>
-                          {ROLE_LABEL[r]}
+                {/* Controls row. Members the viewer can manage get the role
+                    picker, Invite (pending) and remove ×; everyone else shows
+                    a static role badge. Same placement for every row. */}
+                {(() => {
+                  const manageable = m.userId !== userId && canManageMember(viewerRole, m.role);
+                  const options = assignableRoles(viewerRole);
+                  if (!manageable) {
+                    return (
+                      <span className={"h-8 inline-flex items-center self-start ml-[52px] sm:ml-0 sm:self-center text-xs font-semibold px-3 rounded-lg "+roleBadgeClass(m.role)}>{ROLE_LABEL[m.role]}</span>
+                    );
+                  }
+                  return (
+                    <div className="flex flex-wrap items-center gap-2 min-w-0 pl-[52px] sm:pl-0 sm:flex-nowrap sm:shrink-0 sm:self-center">
+                      <div className="flex h-8 rounded-lg border border-slate-200 dark:border-slate-700 seg-group" role="group" aria-label="Member role">
+                        {options.map((r) => (
+                          <button key={r} type="button" aria-pressed={m.role===r}
+                            onClick={() => { if (m.role !== r) { onSetMemberRole(m.id, r); showToast(`${m.displayName ?? "Member"} is now ${ROLE_LABEL[r]}`); } }}
+                            className={"px-2.5 text-xs font-medium whitespace-nowrap transition-colors "+(m.role===r?SELECTED:"bg-white dark:bg-slate-900 text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800")}>
+                            {ROLE_LABEL[r]}
+                          </button>
+                        ))}
+                      </div>
+                      {m.status==="pending" && (
+                        <button type="button" onClick={() => copyInvite(m.id, m.displayName??"")}
+                          className="h-8 px-3 rounded-lg text-xs font-semibold bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#efe9fe] transition-colors">
+                          Invite
                         </button>
-                      ))}
+                      )}
+                      <button type="button" aria-label={`Remove ${m.displayName ?? "member"}`} onClick={() => setRemoveMemberTarget({ id: m.id, name: m.displayName ?? "this member" })}
+                        className="ml-auto sm:ml-0 w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                      </button>
                     </div>
-                  )}
-                  {m.status==="pending" && m.userId !== userId && (
-                    <button type="button" onClick={() => copyInvite(m.id, m.displayName??"")}
-                      className="h-8 px-3 rounded-lg text-xs font-semibold bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#efe9fe] transition-colors">
-                      Invite
-                    </button>
-                  )}
-                  {m.userId !== userId && (
-                    <button type="button" aria-label={`Remove ${m.displayName ?? "member"}`} onClick={() => setRemoveMemberTarget({ id: m.id, name: m.displayName ?? "this member" })}
-                      className="ml-auto sm:ml-0 w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                    </button>
-                  )}
-                </div>
-                ) : m.role === "leader" ? (
-                  <span className="h-8 inline-flex items-center self-start ml-[52px] sm:ml-0 sm:self-center text-xs font-semibold px-3 rounded-lg bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff]">Leader</span>
-                ) : (
-                  <span className="h-8 inline-flex items-center self-start ml-[52px] sm:ml-0 sm:self-center text-xs font-medium px-3 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500">{ROLE_LABEL[m.role]}</span>
-                )}
+                  );
+                })()}
               </div>
             ))}
           </div>
         )}
-      {addOpen && <AddMemberModal groupId={group.id} suggestions={suggestions} onAdd={onAddMember} onClose={() => setAddOpen(false)} showToast={showToast} />}
+      {rolesInfoOpen && <RolesInfoSheet onClose={() => setRolesInfoOpen(false)} />}
+      {addOpen && <AddMemberModal groupId={group.id} viewerRole={viewerRole} suggestions={suggestions} onAdd={onAddMember} onClose={() => setAddOpen(false)} showToast={showToast} />}
       {removeMemberTarget && (
       <ConfirmDialog
         title="Remove member?"
@@ -517,7 +558,7 @@ export function TeamMembersSheet({ groupId, onClose, userId, groups, groupMember
           <div className="min-w-0">
             <h2 id="team-sheet-title" className="text-lg font-bold truncate">{group?.name ?? "Team"}</h2>
             <p className="text-sm text-slate-500 mt-0.5">
-              {members.length} member{members.length !== 1 ? "s" : ""}{me ? ` · You're ${ROLE_LABEL[me.role] === "Leader" ? "the leader" : "an " + ROLE_LABEL[me.role].toLowerCase()}` : ""}
+              {members.length} member{members.length !== 1 ? "s" : ""}{me ? ` · You're ${ROLE_WITH_ARTICLE[me.role]}` : ""}
             </p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close" className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-200/60 dark:hover:bg-slate-800">
@@ -526,7 +567,7 @@ export function TeamMembersSheet({ groupId, onClose, userId, groups, groupMember
         </div>
         <div className="flex-1 overflow-y-auto overscroll-contain px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))]">
           {group ? (
-            <TeamMembersPanel group={group} members={members} userId={userId} canManage={me?.role === "leader"}
+            <TeamMembersPanel group={group} members={members} userId={userId} viewerRole={me?.role ?? null}
               suggestions={suggestionsFor(groupId, groupMembers)} onAddMember={onAddMember} onSetMemberRole={onSetMemberRole}
               onRemoveMember={onRemoveMember} showToast={showToast} />
           ) : (
@@ -546,6 +587,7 @@ function MemberView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
   // Editors also land here (only leaders get the management view), so show the
   // viewer's actual role rather than assuming Member.
   const myRole: MemberRole = groupMembers.find(m => m.groupId === group.id && m.userId === userId)?.role ?? "member";
+  const [rolesInfoOpen, setRolesInfoOpen] = useState(false);
   return (
     <div className="max-w-3xl w-full mx-auto px-4 sm:px-6 py-6">
       <button type="button" onClick={onBack} className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 mb-3 transition-colors">
@@ -554,8 +596,12 @@ function MemberView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
       </button>
       <div className="flex items-start justify-between mb-6">
         <div><h1 className="text-2xl font-bold">{group.name}</h1><p className="text-sm text-slate-500 mt-0.5">{sharedSongs.length} shared song{sharedSongs.length!==1?"s":""}</p></div>
-        <span className={"px-2.5 py-1 rounded-lg text-xs font-semibold mt-1 "+(myRole==="editor"?"bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff]":"bg-slate-100 dark:bg-slate-800 text-slate-500")}>{ROLE_LABEL[myRole]}</span>
+        <div className="flex items-center gap-1 mt-1 shrink-0">
+          <span className={"px-2.5 py-1 rounded-lg text-xs font-semibold "+(myRole==="editor"?"bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff]":"bg-slate-100 dark:bg-slate-800 text-slate-500")}>{ROLE_LABEL[myRole]}</span>
+          <RolesInfoButton compact onClick={() => setRolesInfoOpen(true)} />
+        </div>
       </div>
+      {rolesInfoOpen && <RolesInfoSheet onClose={() => setRolesInfoOpen(false)} />}
       <TeamSetlistList setlists={teamSetlists} onOpen={onOpenSetlist} />
       {sharedSongs.length===0 ? (
         <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-16 text-center text-sm text-slate-500">Your team leader hasn't shared any songs yet.</div>
@@ -594,9 +640,13 @@ function TeamSetlistList({ setlists, onOpen }: { setlists: Folder[]; onOpen: (id
   );
 }
 
-function AddMemberModal({ groupId, suggestions, onAdd, onClose, showToast }: { groupId: string; suggestions: GroupMember[]; onAdd: GroupsViewProps["onAddMember"]; onClose: () => void; showToast: (m: string) => void; }) {
+function AddMemberModal({ groupId, viewerRole, suggestions, onAdd, onClose, showToast }: { groupId: string; viewerRole: MemberRole | null; suggestions: GroupMember[]; onAdd: GroupsViewProps["onAddMember"]; onClose: () => void; showToast: (m: string) => void; }) {
   const [name, setName] = useState("");
-  const [role, setRole] = useState("member");
+  // Only roles the viewer may assign (Owner: + Co-leader). Never "Leader" —
+  // a team has one Owner; ownership moves only via Transfer ownership.
+  const roleOptions = (["member", "editor", "co_leader"] as const).filter(r => assignableRoles(viewerRole).includes(r));
+  const [role, setRole] = useState<MemberRole>("member");
+  const [rolesInfoOpen, setRolesInfoOpen] = useState(false);
   const [instrument, setInstrument] = useState("guitar");
   const [detail, setDetail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -612,7 +662,7 @@ function AddMemberModal({ groupId, suggestions, onAdd, onClose, showToast }: { g
     setName(s.displayName ?? "");
     setInstrument(s.instrument ?? "guitar");
     setDetail(s.instrumentDetail ?? "");
-    setRole(s.role === "leader" ? "leader" : "member");
+    setRole((roleOptions as readonly MemberRole[]).includes(s.role) ? s.role : "member");
     setShowSuggest(false);
   };
   const handleAdd = async () => {
@@ -658,16 +708,18 @@ function AddMemberModal({ groupId, suggestions, onAdd, onClose, showToast }: { g
             )}
           </div>
           <div>
-            <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Role</div>
+            <div className="flex items-center gap-1 mb-2">
+              <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">Role</div>
+              <RolesInfoButton compact onClick={() => setRolesInfoOpen(true)} />
+            </div>
             <div className="flex gap-2">
-              {[["member","Member"],["editor","Editor"],["leader","Leader"]].map(([v,l]) => (
+              {roleOptions.map((v) => (
                 <button key={v} type="button" onClick={() => setRole(v)}
                   className={"flex-1 h-9 rounded-xl text-sm font-medium border transition-colors "+(role===v?"border-[#735fee] bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef]":"border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400")}>
-                  {l}
+                  {ROLE_LABEL[v]}
                 </button>
               ))}
             </div>
-            <p className="text-[11px] text-slate-500 mt-1.5">Members view &amp; play. Editors can edit songs and setlists. Leaders manage the team.</p>
           </div>
           <div>
             <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Instrument</div>
@@ -693,7 +745,130 @@ function AddMemberModal({ groupId, suggestions, onAdd, onClose, showToast }: { g
           </button>
         </div>
       </div>
+      {rolesInfoOpen && <RolesInfoSheet onClose={() => setRolesInfoOpen(false)} />}
     </div>
+  );
+}
+
+/* ⓘ affordance that opens the "Team roles" sheet. The explanations live
+   there so the role pickers themselves stay clean. */
+function RolesInfoButton({ onClick, compact = false }: { onClick: () => void; compact?: boolean }) {
+  return (
+    <button type="button" onClick={onClick} aria-label="About team roles" title="About team roles"
+      className={compact
+        ? "w-6 h-6 rounded-full flex items-center justify-center text-slate-400 hover:text-[#6350ef] transition-colors"
+        : "h-9 px-2 -ml-2 rounded-lg flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-[#6350ef] transition-colors"}>
+      <svg width={compact ? 14 : 15} height={compact ? 14 : 15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      {!compact && <span>Team roles</span>}
+    </button>
+  );
+}
+
+const ROLE_INFO: { label: string; text: string }[] = [
+  { label: "Leader (Owner)", text: "Full control: manages members, roles and content. Only one per team; can delete or transfer the team." },
+  { label: "Co-leader", text: "Manages members and content. Can't delete the team or change the owner." },
+  { label: "Editor", text: "Edits songs and setlists. Can't manage members." },
+  { label: "Member", text: "Views and uses songs and setlists. Can't edit or manage." },
+];
+const STATUS_INFO: { label: string; text: string; cls: string }[] = [
+  { label: "Joined", text: "Accepted the invite.", cls: "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400" },
+  { label: "Pending", text: "Invited, not yet accepted.", cls: "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400" },
+];
+
+/* Slide-up "Team roles" sheet (portal, above any open modal). */
+function RolesInfoSheet({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); onClose(); } };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div className="fixed inset-0 z-[80] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4 print:hidden" {...backdropDismiss(onClose)}>
+      <div role="dialog" aria-modal="true" aria-labelledby="roles-info-title"
+        className="wp-sheet-up w-full sm:max-w-sm max-h-[85vh] overflow-y-auto bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl pb-[env(safe-area-inset-bottom,0px)]"
+        onClick={e => e.stopPropagation()}>
+        <div className="sm:hidden flex justify-center pt-2" aria-hidden="true"><span className="w-10 h-1 rounded-full bg-slate-300 dark:bg-slate-700" /></div>
+        <div className="flex items-center justify-between px-5 pt-3 sm:pt-4 pb-2">
+          <h3 id="roles-info-title" className="text-base font-bold">Team roles</h3>
+          <button type="button" onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <ul className="px-5 pb-3 space-y-2.5">
+          {ROLE_INFO.map(r => (
+            <li key={r.label} className="text-sm leading-snug">
+              <span className="font-semibold text-slate-900 dark:text-slate-100">{r.label}</span>
+              <span className="text-slate-500 dark:text-slate-400"> — {r.text}</span>
+            </li>
+          ))}
+        </ul>
+        <div className="mx-5 mb-5 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-2">
+          {STATUS_INFO.map(st => (
+            <div key={st.label} className="flex items-center gap-2 text-sm">
+              <span className={"shrink-0 text-[11px] font-medium leading-none px-2 py-1 rounded-full "+st.cls}>{st.label}</span>
+              <span className="text-slate-500 dark:text-slate-400">{st.text}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+/* Owner-only: pick a joined member to become the new Owner. The DB function
+   transfer_team_ownership() enforces it; the old Owner becomes a Co-leader. */
+function TransferOwnershipSheet({ group, members, userId, onTransfer, onClose, showToast }: {
+  group: Group; members: GroupMember[]; userId: string;
+  onTransfer: (memberId: string) => Promise<boolean>; onClose: () => void; showToast: (m: string) => void;
+}) {
+  const [target, setTarget] = useState<GroupMember | null>(null);
+  const eligible = members.filter(m => m.userId && m.userId !== userId && m.status === "joined");
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4 print:hidden" {...backdropDismiss(onClose)}>
+      <div role="dialog" aria-modal="true" aria-labelledby="transfer-title"
+        className="wp-sheet-up w-full sm:max-w-sm max-h-[85vh] overflow-y-auto bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl pb-[env(safe-area-inset-bottom,0px)]"
+        onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 pt-4 pb-1">
+          <h3 id="transfer-title" className="text-base font-bold">Transfer ownership</h3>
+          <button type="button" onClick={onClose} aria-label="Close" className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <p className="px-5 pb-3 text-xs text-slate-500">The new owner gets full control of {group.name}. You&apos;ll become a Co-leader.</p>
+        {eligible.length === 0 ? (
+          <p className="px-5 pb-6 text-sm text-slate-500">Only members who have joined can become the owner.</p>
+        ) : (
+          <ul className="px-2 pb-4">
+            {eligible.map(m => (
+              <li key={m.id}>
+                <button type="button" onClick={() => setTarget(m)}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-left">
+                  <span className="w-9 h-9 rounded-full bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff] text-xs font-semibold flex items-center justify-center shrink-0">{initialsFrom(m.displayName, m.email) || <PersonGlyph />}</span>
+                  <span className="flex-1 min-w-0 text-sm font-medium truncate">{m.displayName ?? "Unknown"}</span>
+                  <span className={"text-[11px] font-semibold px-2 py-0.5 rounded-lg shrink-0 "+roleBadgeClass(m.role)}>{ROLE_LABEL[m.role]}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      {target && (
+        <ConfirmDialog
+          title="Transfer ownership?"
+          message={`Make ${target.displayName ?? "this member"} the owner of "${group.name}"? You'll become a Co-leader and can't undo this yourself.`}
+          confirmLabel="Transfer"
+          onCancel={() => setTarget(null)}
+          onConfirm={async () => {
+            const t = target; setTarget(null);
+            if (await onTransfer(t.id)) { showToast(`${t.displayName ?? "Member"} is now the owner`); onClose(); }
+          }}
+        />
+      )}
+    </div>,
+    document.body,
   );
 }
 
