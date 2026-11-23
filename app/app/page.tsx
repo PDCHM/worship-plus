@@ -587,6 +587,27 @@ export default function Home() {
   // search, import dedupe, pickers.
   const librarySongs = useMemo(() => songs.filter((s) => !s.setlistScope), [songs]);
   const [songsLoaded, setSongsLoaded] = useState(false);
+  // Launch splash: held over the app until the first library query resolves
+  // (capped so a hung request can't trap it), then faded out over ~200ms.
+  const [splash, setSplash] = useState<"on" | "fading" | "off">("on");
+  useEffect(() => {
+    if (splash !== "on") return;
+    // Small delay once loaded so the song list has painted under the splash.
+    const t = setTimeout(() => setSplash("fading"), songsLoaded ? 60 : 8000);
+    return () => clearTimeout(t);
+  }, [songsLoaded, splash]);
+  useEffect(() => {
+    if (splash !== "fading") return;
+    const t = setTimeout(() => {
+      setSplash("off");
+      document.documentElement.classList.remove("wp-launch");
+      // Back to the in-app brand purple status bar (see viewport in layout.tsx).
+      document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.setAttribute("content", "#735fee"));
+    }, 220);
+    return () => clearTimeout(t);
+  }, [splash]);
+  // Leaving /app (e.g. signed-out redirect) must not keep the launch colours.
+  useEffect(() => () => document.documentElement.classList.remove("wp-launch"), []);
   // True once the team-shared songs load has SUCCEEDED. Lets the setlist view
   // tell "song hidden (owner's draft)" apart from "still loading / failed".
   const [sharedSongsReady, setSharedSongsReady] = useState(false);
@@ -3265,6 +3286,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100">
+      {splash !== "off" && <LaunchSplash fading={splash === "fading"} />}
       <OfflineBadge />
       {/* Offline-readiness indicator — so a leader knows the library is fully
           cached before a service. Downloading progress while caching; a brief
@@ -3793,14 +3815,22 @@ function UnsavedModal({ onSave, onSaveAs, onDiscard, onCancel }: { onSave: () =>
 }
 
 function LoadingScreen() {
+  return <LaunchSplash />;
+}
+
+// Full-screen launch splash that continues Android's PWA splash: same colour
+// (manifest background_color, via .wp-splash in globals.css) and the maskable
+// icon drawn the way the OS splash draws it — a 240px icon clipped to a 160px
+// circle, centred. Rendered identically by LoadingScreen (auth phase, also the
+// server-rendered first paint) and over the app until the library loads, so
+// the handoff between the two never moves or resizes the logo.
+function LaunchSplash({ fading = false }: { fading?: boolean }) {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
-      <div className="flex flex-col items-center gap-3">
-        <Image src="/worship-plus-icon.png" alt="Worship+" width={72} height={72} priority className="w-18 h-18 object-contain" />
-        <svg className="animate-spin h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" aria-label="Loading">
-          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.25" />
-          <path d="M4 12a8 8 0 0 1 8-8" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-        </svg>
+    <div role="status" aria-label="Loading Worship+" aria-hidden={fading || undefined}
+      className={"wp-splash fixed inset-0 z-[90] flex items-center justify-center transition-opacity duration-200 ease-out print:hidden " + (fading ? "opacity-0 pointer-events-none" : "opacity-100")}>
+      <div className="relative w-40 h-40 rounded-full overflow-hidden">
+        <Image src="/icon-maskable-512.png" alt="" width={240} height={240} priority unoptimized
+          className="absolute max-w-none w-60 h-60 -left-10 -top-10" />
       </div>
     </div>
   );

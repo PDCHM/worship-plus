@@ -42,6 +42,18 @@ html, body {
   text-size-adjust: 100%;
 }
 
+/* Launch splash (LaunchSplash in app/app/page.tsx). In a browser tab it uses the
+   theme background, like the old loading screen. In the installed app the
+   head script adds html.wp-launch before first paint, so <html>, <body> and
+   the splash all paint the manifest background_color (#020617) and continue
+   the OS splash seamlessly; the class is removed once the splash fades. */
+.wp-splash { background: #f8fafc; }
+.dark .wp-splash { background: #020617; }
+html.wp-launch,
+html.wp-launch body,
+html.wp-launch .wp-splash { background: #020617; }
+
+
 /* Touch targets (WCAG 2.5.5 / Apple HIG): on touch screens every control gets an
    invisible hit area of at least 44×44px centred on it, without changing how
    anything looks or lays out. In @layer base so Tailwind utilities (absolute,

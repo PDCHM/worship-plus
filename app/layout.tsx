@@ -112,8 +112,14 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  // Soft brand purple (was the old heavy indigo #4f46e5).
-  themeColor: "#735fee",
+  // Soft brand purple (was the old heavy indigo #4f46e5). The installed app
+  // launches with the dark splash colour (matches manifest theme_color /
+  // background_color) so the status bar doesn't flash purple over the splash;
+  // the page resets it to the brand purple once the launch splash fades.
+  themeColor: [
+    { media: "(display-mode: standalone)", color: "#020617" },
+    { color: "#735fee" },
+  ],
   // Draw edge-to-edge so the installed iPhone app (statusBarStyle
   // "black-translucent") gets real env(safe-area-inset-*) values; every bar
   // that touches a screen edge pads itself with them (top bar, bottom nav,
@@ -121,7 +127,7 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-const themeScript = `(function(){try{var s=localStorage.getItem('wp-theme');var d=s?s==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;if(d)document.documentElement.classList.add('dark');}catch(e){}})();`;
+const themeScript = `(function(){try{var s=localStorage.getItem('wp-theme');var d=s?s==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;if(d)document.documentElement.classList.add('dark');if(location.pathname.indexOf('/app')===0&&(window.matchMedia('(display-mode: standalone)').matches||navigator.standalone))document.documentElement.classList.add('wp-launch');}catch(e){}})();`;
 
 export default function RootLayout({
   children,
