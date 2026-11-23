@@ -688,11 +688,40 @@ export default function Home() {
     return () => { cancelled = true; };
   }, [supabase, user, profile?.plan]);
   const [exportOpen, setExportOpen] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  // Desktop/tablet persistent-nav collapse (distinct from the mobile `sidebarOpen`
-  // overlay). Auto-collapsed when a song is opened in read-only performance mode
-  // so the chart plays full-width; restored to the prior value on leaving.
-  const [navCollapsed, setNavCollapsed] = useState(false);
+  // Sidebar follows the iPadOS pattern (Mail / Notes / Files):
+  //  • < 1024px (phone + portrait tablet): `sidebarOpen` — the panel slides OVER
+  //    the content with a scrim; closes on selection / scrim / ☰.
+  //  • ≥ 1024px (landscape tablet + desktop): `navCollapsed` — an in-flow column
+  //    that pushes the content; ☰ removes it and the content fills the width.
+  // The user's choice is persisted per width class (tablet / wide); the phone
+  // overlay always starts closed.
+  const [sidebarOpen, setSidebarOpen] = useState(() => loadSidebarPref().tablet && widthClass() === "tablet");
+  // Auto-collapsed when a song is opened in read-only performance mode so the
+  // chart plays full-width; restored to the prior value on leaving.
+  const [navCollapsed, setNavCollapsed] = useState(() => loadSidebarPref().wideCollapsed);
+  const toggleSidebar = () => {
+    if (widthClass() === "wide") {
+      setNavCollapsed((c) => { saveSidebarPref({ wideCollapsed: !c }); return !c; });
+    } else {
+      setSidebarOpen((o) => { if (widthClass() === "tablet") saveSidebarPref({ tablet: !o }); return !o; });
+    }
+  };
+  // Rotating / resizing across a width class re-applies that class's saved
+  // choice: into portrait tablet → its last overlay state; into phone → closed.
+  useEffect(() => {
+    const mqs = [window.matchMedia("(min-width: 768px)"), window.matchMedia("(min-width: 1024px)")];
+    const onChange = () => {
+      const wc = widthClass();
+      if (wc === "phone") setSidebarOpen(false);
+      else if (wc === "tablet") setSidebarOpen(loadSidebarPref().tablet);
+    };
+    mqs.forEach((m) => m.addEventListener("change", onChange));
+    return () => mqs.forEach((m) => m.removeEventListener("change", onChange));
+  }, []);
+  const closeOverlaySidebar = () => {
+    setSidebarOpen(false);
+    if (widthClass() === "tablet") saveSidebarPref({ tablet: false });
+  };
   // The active editor's read-only (performance/view) state, reported up by SongEditor.
   const [editorReadOnly, setEditorReadOnly] = useState(false);
   const [editorMarkup, setEditorMarkup] = useState(false);
@@ -3354,14 +3383,13 @@ export default function Home() {
         onOpenSettings={() => navigateTo({ kind: "settings" })}
         onOpenHelp={() => setHelpOpen(true)}
         sidebarOpen={sidebarOpen}
-        onToggleSidebar={() => setSidebarOpen(o => !o)}
         navCollapsed={navCollapsed}
-        onToggleNav={() => setNavCollapsed(c => !c)}
+        onToggleSidebar={toggleSidebar}
         view={view}
       />
 
       <div className="flex-1 min-h-0">
-        <div onClick={() => setSidebarOpen(false)} className={"fixed inset-0 z-30 bg-black/40 transition-opacity duration-200 print:hidden md:hidden " + (sidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none")} />
+        <div onClick={closeOverlaySidebar} aria-hidden="true" className={"fixed inset-x-0 bottom-0 top-[calc(3.5rem+env(safe-area-inset-top,0px))] z-30 bg-black/40 transition-opacity duration-200 print:hidden lg:hidden " + (sidebarOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none")} />
         <Sidebar
           view={view}
           onNavigate={navigateTo}
@@ -3371,13 +3399,13 @@ export default function Home() {
           songsCount={librarySongs.filter((s) => s.userId === user.id).length}
           sidebarOpen={sidebarOpen}
           desktopCollapsed={navCollapsed}
-          onClose={() => setSidebarOpen(false)}
+          onClose={closeOverlaySidebar}
           onAddSong={() => { setAddTargetFolderId(null); setAddSheetOpen(true); }}
           onCreateFolder={(name) => createFolder(name, "folder", null)}
           onCreateSetlist={(name) => createFolder(name, "setlist", null)}
           onCreateTeam={gatedCreateTeam}
         />
-        <main className={"w-full overflow-x-hidden pb-[calc(5rem+env(safe-area-inset-bottom,0px))] md:pb-0 transition-[padding] duration-200 " + (navCollapsed ? "md:pl-0" : "md:pl-[240px]")}>
+        <main className={"w-full overflow-x-hidden pb-[calc(5rem+env(safe-area-inset-bottom,0px))] md:pb-0 transition-[padding] duration-200 " + (navCollapsed ? "lg:pl-0" : "lg:pl-[240px]")}>
           {view.kind === "library" && !songsLoaded && (
             <div className="max-w-6xl w-full mx-auto px-4 sm:px-6 py-12 text-sm text-slate-500 dark:text-slate-500">
               Loading library…
@@ -3779,12 +3807,12 @@ function LoadingScreen() {
 }
 
 function TopNav({
-  onHome, profile, onSignOut, onOpenSettings, onOpenHelp, sidebarOpen, onToggleSidebar, navCollapsed, onToggleNav, view,
+  onHome, profile, onSignOut, onOpenSettings, onOpenHelp, sidebarOpen, onToggleSidebar, navCollapsed, view,
 }: {
   onHome: () => void;
   profile: Profile | null; onSignOut: () => void; onOpenSettings: () => void; onOpenHelp: () => void;
   sidebarOpen: boolean; onToggleSidebar: () => void;
-  navCollapsed: boolean; onToggleNav: () => void;
+  navCollapsed: boolean;
   view: View;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -3820,18 +3848,15 @@ function TopNav({
     <header className="border-b border-slate-200 dark:border-slate-800 backdrop-blur-md bg-white/80 dark:bg-slate-950/80 sticky top-0 z-30 print:hidden pt-[env(safe-area-inset-top,0px)]">
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2 min-w-0">
-          <button type="button" onClick={onToggleSidebar} className="md:hidden w-9 h-9 rounded-lg flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" aria-label="Toggle sidebar" aria-expanded={sidebarOpen}>
+          {/* ☰ — one toggle at every width. Below lg (phone / portrait tablet)
+              it opens the overlay panel; at lg+ it collapses the in-flow column. */}
+          <button type="button" onClick={onToggleSidebar}
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            aria-label="Toggle sidebar"
+            aria-expanded={sidebarOpen}
+            data-wide-expanded={!navCollapsed}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
           </button>
-          {/* Desktop nav toggle — only in the editor, so musicians can re-open the
-              nav after it auto-collapses for full-width playing (and collapse it
-              themselves in edit mode if they want). Hidden on mobile (the
-              hamburger above handles that). */}
-          {view.kind === "editor" && (
-            <button type="button" onClick={onToggleNav} className="hidden md:flex w-9 h-9 rounded-lg items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" aria-label={navCollapsed ? "Show navigation" : "Hide navigation"} aria-expanded={!navCollapsed}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-            </button>
-          )}
           <button type="button" onClick={onHome} aria-label="Worship+ home" className="flex items-center shrink-0">
             <Image src="/worship-plus-wordmark.png" alt="Worship+" width={1404} height={477} className="h-9 w-auto object-contain" priority />
           </button>
@@ -3918,6 +3943,31 @@ function TopNav({
 }
 
 const NAV_COLLAPSE_KEY = "wp-nav-collapsed-v1";
+// ☰ sidebar preference, persisted per width class. `wideCollapsed` is the
+// ≥1024px in-flow column (default shown); `tablet` is whether the 768–1023px
+// overlay was left open (default hidden). Phones always start closed.
+const SIDEBAR_PREF_KEY = "wp-sidebar-v1";
+type SidebarPref = { wideCollapsed: boolean; tablet: boolean };
+function widthClass(): "phone" | "tablet" | "wide" {
+  if (typeof window === "undefined") return "wide";
+  if (window.matchMedia("(min-width: 1024px)").matches) return "wide";
+  if (window.matchMedia("(min-width: 768px)").matches) return "tablet";
+  return "phone";
+}
+function loadSidebarPref(): SidebarPref {
+  try {
+    const raw = localStorage.getItem(SIDEBAR_PREF_KEY);
+    if (raw) {
+      const p = JSON.parse(raw) as Partial<SidebarPref>;
+      return { wideCollapsed: p.wideCollapsed === true, tablet: p.tablet === true };
+    }
+  } catch {}
+  return { wideCollapsed: false, tablet: false };
+}
+function saveSidebarPref(patch: Partial<SidebarPref>) {
+  try { localStorage.setItem(SIDEBAR_PREF_KEY, JSON.stringify({ ...loadSidebarPref(), ...patch })); } catch {}
+}
+
 function loadNavCollapsed(): Record<string, boolean> {
   try {
     const raw = localStorage.getItem(NAV_COLLAPSE_KEY);
@@ -3995,11 +4045,12 @@ function Sidebar({
 
   return (
     <aside className={
-      "fixed top-[calc(3.5rem+env(safe-area-inset-top,0px))] bottom-0 left-0 z-40 w-[240px] flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2 py-3 gap-0.5 overflow-y-auto transition-transform duration-200 ease-in-out print:hidden shadow-xl md:shadow-none " +
-      // Mobile uses the sidebarOpen overlay; desktop is persistent unless the
-      // shell collapses it (performance mode) — then it slides off-screen too.
-      (sidebarOpen ? "translate-x-0 " : "-translate-x-full ") +
-      (desktopCollapsed ? "md:-translate-x-full" : "md:translate-x-0")
+      "fixed top-[calc(3.5rem+env(safe-area-inset-top,0px))] bottom-0 left-0 z-40 w-[240px] flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-2 py-3 gap-0.5 overflow-y-auto transition-transform duration-200 ease-in-out print:hidden lg:shadow-none " +
+      // Below lg (phone / portrait tablet) the panel is an overlay driven by
+      // sidebarOpen; at lg+ it is an in-flow column (main is padded by 240px)
+      // that ☰ or performance mode slides off-screen.
+      (sidebarOpen ? "translate-x-0 shadow-xl " : "-translate-x-full ") +
+      (desktopCollapsed ? "lg:-translate-x-full" : "lg:translate-x-0")
     }>
       {/* ── Library ── */}
       <NavSection label="Library" count={songsCount} collapsed={!!collapsed.library}
