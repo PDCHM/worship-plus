@@ -55,7 +55,15 @@ html, body {
      far bigger than 44px, and their full-size ::after would sit on top of the
      inner buttons and swallow their taps. */
   @media (pointer: coarse) {
-    :is(button, [role="button"], select, summary, a[href]:is(.flex, .inline-flex, .block, .grid)):not([data-chord-id], [data-line-id] *, [data-chord-id] *, :has(button, [role="button"], a[href], input, select, textarea)),
+    /* EVERY control that could ever carry the ::after hit-area below is a
+       positioning context — unconditionally, with no :not()/:has() — so the
+       ::after is always sized against ITS OWN box (max 44px around it).
+       iOS Safari applied the ::after rule to a line's "Delete line" ×, which
+       this rule's old exclusions left position:static; its ::after then sized
+       itself against the whole song body (width/height: 100% of that) and sat
+       on top of every chord and lyric — every tap hit "Delete line".
+       position:relative with no offsets doesn't move anything. */
+    :is(button, [role="button"], select, summary, a[href]:is(.flex, .inline-flex, .block, .grid)),
     [data-tap-expand],
     [data-chip-id] {
       position: relative;
@@ -70,6 +78,18 @@ html, body {
       width: max(100%, 44px);
       height: max(100%, 44px);
       transform: translate(-50%, -50%);
+    }
+    /* Belt and braces: the exclusions again, as plain selectors every engine
+       resolves the same way. No expanded hit-area for controls inside chord
+       lines (except opted-in [data-tap-expand]), for chords, or for containers
+       that hold their own controls. */
+    [data-line-id] :is(button, [role="button"], select, summary, a[href]):not([data-tap-expand])::after,
+    [data-chord-id]::after,
+    [data-chord-id] *::after,
+    :is(button, [role="button"], select, summary, a[href]):has(button, [role="button"], a[href], input, select, textarea)::after {
+      /* !important: these must win even where an engine wrongly matched the
+         long rule above (whose selector has higher specificity). */
+      content: none !important;
     }
   }
 }
