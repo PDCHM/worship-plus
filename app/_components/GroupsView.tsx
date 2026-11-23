@@ -98,7 +98,11 @@ function InstrumentIcon({ id, className }: { id: string; className?: string }) {
 function insLabel(m: GroupMember): React.ReactNode {
   const ins = INSTRUMENTS.find(i => i.id === m.instrument);
   if (!ins) return null;
-  const text = m.instrument === "sound_team" && m.instrumentDetail ? m.instrumentDetail : ins.label;
+  // Sound team role ("FOH") or a custom "Other" instrument ("Electric guitar"),
+  // both stored in instrument_detail; blank falls back to the category name.
+  // Callers render this inside a `truncate` element, so a long label ends in "…".
+  const custom = (m.instrument === "sound_team" || m.instrument === "other") ? m.instrumentDetail?.trim() : "";
+  const text = custom || ins.label;
   return (
     <>
       <InstrumentIcon id={ins.id} className="inline-block w-3.5 h-3.5 mr-1 -mt-0.5 align-middle" />
@@ -930,7 +934,7 @@ function AddMemberModal({ groupId, viewerRole, suggestions, onAdd, onClose, show
             <div className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Instrument</div>
             <div className="grid grid-cols-4 gap-1.5">
               {INSTRUMENTS.map(ins => (
-                <button key={ins.id} type="button" onClick={() => setInstrument(ins.id)}
+                <button key={ins.id} type="button" onClick={() => { if (ins.id !== instrument) { setInstrument(ins.id); setDetail(""); } }}
                   className={"rounded-xl p-2 text-center border transition-all "+(instrument===ins.id?"border-[#735fee] bg-[#efe9fe] dark:bg-[#2a2440]":"border-slate-200 dark:border-slate-700 hover:border-[#c9bdfb]")}>
                   <InstrumentIcon id={ins.id} className={"w-7 h-7 mx-auto "+(instrument===ins.id?"text-[#6350ef] dark:text-[#b3a3ff]":"text-slate-500 dark:text-slate-400")} />
                   <div className={"text-[10px] font-medium mt-0.5 "+(instrument===ins.id?"text-[#6350ef]":"text-slate-500")}>{ins.label}</div>
@@ -939,6 +943,14 @@ function AddMemberModal({ groupId, viewerRole, suggestions, onAdd, onClose, show
             </div>
             {instrument==="sound_team" && (
               <input autoFocus type="text" placeholder="e.g. FOH, Monitor" value={detail} onChange={e => setDetail(e.target.value)}
+                className="mt-2 w-full h-9 px-3 rounded-lg border border-[#9d8bff] outline-none text-base sm:text-sm bg-white dark:bg-slate-800" />
+            )}
+            {/* "Other": optional custom instrument name, shown instead of
+                "Other" (blank keeps "Other"). Capped at 20 characters. */}
+            {instrument==="other" && (
+              <input autoFocus type="text" placeholder="e.g. Electric guitar" value={detail} maxLength={20}
+                onChange={e => setDetail(e.target.value.slice(0, 20))} aria-label="Instrument name"
+                onKeyDown={e => e.key==="Enter" && handleAdd()}
                 className="mt-2 w-full h-9 px-3 rounded-lg border border-[#9d8bff] outline-none text-base sm:text-sm bg-white dark:bg-slate-800" />
             )}
           </div>
