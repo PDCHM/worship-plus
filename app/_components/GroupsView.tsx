@@ -402,10 +402,12 @@ function TeamMembersPanel({ group, members, userId, canManage, suggestions, onAd
         ) : (
           <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden">
             {members.map((m, idx) => (
-              // One layout for every row. Phone: [avatar + text] on line 1, the
-              // controls on their own line below, right-aligned — so they can
-              // never overlap the name or the Joined/Pending badge. sm+: the
-              // controls sit beside the text, vertically centred.
+              // One layout for every row. Phone: [avatar + text] on line 1; the
+              // controls on their own full-width line below, starting under the
+              // name (52px = 40px avatar + 12px gap): role toggle / badge left,
+              // Invite beside it, remove × pinned far right — identical for
+              // Editor / Member / Leader / Joined / Pending. sm+: the controls
+              // sit beside the text, vertically centred.
               <div key={m.id} data-member-row
                 className={"flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-4 py-3 "+(idx<members.length-1?"border-b border-slate-100 dark:border-slate-800":"")}>
                 <div className="flex items-center gap-3 min-w-0 flex-1">
@@ -430,7 +432,7 @@ function TeamMembersPanel({ group, members, userId, canManage, suggestions, onAd
                     No control on self or on fellow leaders (role is enforced by
                     RLS). */}
                 {canManage ? (
-                <div className="flex items-center justify-end gap-2 shrink-0 self-end sm:self-center">
+                <div className="flex items-center gap-2 min-w-0 pl-[52px] sm:pl-0 sm:shrink-0 sm:self-center">
                   {m.role === "leader" ? (
                     <span className="h-8 inline-flex items-center text-xs font-semibold px-3 rounded-lg bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff]">Leader</span>
                   ) : m.userId === userId ? (
@@ -454,15 +456,15 @@ function TeamMembersPanel({ group, members, userId, canManage, suggestions, onAd
                   )}
                   {m.userId !== userId && (
                     <button type="button" aria-label={`Remove ${m.displayName ?? "member"}`} onClick={() => setRemoveMemberTarget({ id: m.id, name: m.displayName ?? "this member" })}
-                      className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors">
+                      className="ml-auto sm:ml-0 w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 transition-colors">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
                   )}
                 </div>
                 ) : m.role === "leader" ? (
-                  <span className="h-8 inline-flex items-center self-end sm:self-center text-xs font-semibold px-3 rounded-lg bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff]">Leader</span>
+                  <span className="h-8 inline-flex items-center self-start ml-[52px] sm:ml-0 sm:self-center text-xs font-semibold px-3 rounded-lg bg-[#efe9fe] dark:bg-[#2a2440] text-[#6350ef] dark:text-[#b3a3ff]">Leader</span>
                 ) : (
-                  <span className="h-8 inline-flex items-center self-end sm:self-center text-xs font-medium px-3 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500">{ROLE_LABEL[m.role]}</span>
+                  <span className="h-8 inline-flex items-center self-start ml-[52px] sm:ml-0 sm:self-center text-xs font-medium px-3 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500">{ROLE_LABEL[m.role]}</span>
                 )}
               </div>
             ))}
