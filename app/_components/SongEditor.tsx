@@ -1099,6 +1099,15 @@ export default function SongEditor({
   // per pointermove re-rendered this whole editor on every move, which made the
   // drag laggy on Android tablets.
   const [dragGhost, setDragGhost] = useState<{ x: number; y: number; text: string } | null>(null);
+  // Pre-fix (WebKit/iOS) path keeps its original per-move caret state.
+  const [dragCaret, setDragCaret] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  // WebKit (iOS Safari, every iOS browser, macOS Safari) applies touch-action to
+  // inline elements, so the chord drag ALWAYS worked there — and the Android
+  // fix (inline-block chords + ref-driven overlay) broke editing on real iOS.
+  // So WebKit keeps the exact pre-fix code path; Blink (Chrome, Samsung
+  // Internet, Edge) and others get the fix. Engine check, not UA parsing:
+  // GestureEvent exists only in WebKit. Read once; the editor is client-only.
+  const [webkitTouch] = useState(() => typeof window !== "undefined" && "GestureEvent" in window);
   const ghostRef = useRef<HTMLDivElement | null>(null);
   const caretRef = useRef<HTMLDivElement | null>(null);
   const dragLastRef = useRef<{ wordIndex: number; offset: number } | null>(null);
@@ -2470,7 +2479,7 @@ export default function SongEditor({
   // actual re-anchor happens once — on release (or a mid-drag pointercancel) — to
   // the nearest word + the sub-word offset under the drop point. The user drives
   // the landing instead of the chord jumping between words. Works in 1/2/3 cols.
-  const handleChordDragStart =
+  const handleChordDragStartBlink =
     (lineId: string, chordId: string, chordOnly: boolean, chordText: string) =>
     (e: React.PointerEvent) => {
       if (readOnly) return;
@@ -2576,6 +2585,94 @@ export default function SongEditor({
       document.addEventListener("pointerup", finishDrag);
       document.addEventListener("pointercancel", finishDrag);
     };
+
+  // ── WebKit / iOS: the PRE-FIX chord drag, verbatim (from 68b8712). ──
+  const handleChordDragStartWebKit =
+    (lineId: string, chordId: string, chordOnly: boolean, chordText: string) =>
+    (e: React.PointerEvent) => {
+      if (readOnly) return;
+      if (editingChord === chordId) return;
+      if (e.button !== 0) return;
+      const startX = e.clientX;
+      const startY = e.clientY;
+      chordDraggedRef.current = false;
+      let moved = false;
+      const pointerId = e.pointerId;
+      // Capture IMMEDIATELY on the STABLE sections container (not the glyph, whose
+      // DOM node remounts on re-anchor) so finger/S-Pen catch + hold the gesture
+      // every time; hold touch-action so a leftward drag isn't claimed by scroll
+      // or the Android edge back-swipe.
+      const captureEl = sectionsRef.current;
+      try { captureEl?.setPointerCapture(pointerId); } catch {}
+      if (captureEl) captureEl.style.touchAction = "none";
+      dragLastRef.current = null;
+
+      const onMove = (ev: PointerEvent) => {
+        if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) > 4) {
+          moved = true;
+          chordDraggedRef.current = true;
+          setDraggingId(chordId);
+        }
+        if (!moved) return;
+        ev.preventDefault();
+        // Ghost rides with the pointer — no data change yet.
+        setDragGhost({ x: ev.clientX, y: ev.clientY, text: chordText });
+        // Preview the landing: nearest word-unit on this line to the pointer.
+        const units = Array.from(
+          document.querySelectorAll<HTMLElement>(`[data-wu-line="${lineId}"]`),
+        );
+        let bestIdx: number | null = null;
+        let bestEl: HTMLElement | null = null;
+        let bestDist = Infinity;
+        for (const el of units) {
+          const r = el.getBoundingClientRect();
+          const cx = r.left + r.width / 2;
+          const cy = r.top + r.height / 2;
+          // Weight vertical distance so it prefers words on the same row.
+          const d = Math.abs(ev.clientX - cx) + Math.abs(ev.clientY - cy) * 3;
+          if (d < bestDist) {
+            bestDist = d;
+            const wi = Number(el.getAttribute("data-wu-index"));
+            if (!Number.isNaN(wi)) { bestIdx = wi; bestEl = el; }
+          }
+        }
+        if (bestIdx != null && bestEl) {
+          const wordEl = bestEl.querySelector<HTMLElement>("[data-word-text]");
+          const caretEl = wordEl ?? bestEl;
+          const cr = caretEl.getBoundingClientRect();
+          setDragCaret({ x: cr.left, y: cr.top, w: cr.width, h: cr.height });
+          // Sub-word offset under the pointer, clamped within offsetWithinWord.
+          const offset = !chordOnly && wordEl
+            ? offsetWithinWord(ev.clientX, wordEl, (wordEl.textContent ?? "").length)
+            : 0;
+          dragLastRef.current = { wordIndex: bestIdx, offset };
+        }
+      };
+
+      // Shared by pointerup AND pointercancel — commit the LAST previewed landing
+      // (so a back-swipe slipping through still lands the chord, never discards).
+      const finishDrag = () => {
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", finishDrag);
+        document.removeEventListener("pointercancel", finishDrag);
+        try { captureEl?.releasePointerCapture(pointerId); } catch {}
+        if (captureEl) captureEl.style.touchAction = "";
+        const landing = dragLastRef.current;
+        if (moved && landing) {
+          if (chordOnly) reorderChordToSlot(lineId, chordId, landing.wordIndex);
+          else setChordWord(lineId, chordId, landing.wordIndex, landing.offset);
+        }
+        dragLastRef.current = null;
+        setDraggingId(null);
+        setDragGhost(null);
+        setDragCaret(null);
+      };
+      document.addEventListener("pointermove", onMove, { passive: false });
+      document.addEventListener("pointerup", finishDrag);
+      document.addEventListener("pointercancel", finishDrag);
+    };
+
+  const handleChordDragStart = webkitTouch ? handleChordDragStartWebKit : handleChordDragStartBlink;
 
   const deleteChord = (chordId: string) => {
     update((s) => ({
@@ -4049,7 +4146,9 @@ export default function SongEditor({
                               // (pointercancel). -my = padding keeps layout identical.
                               // Chord-only lines are flex items — already block-level
                               // (touch-action applies), so their classes are unchanged.
-                              (hasWords ? "inline-block px-3 py-2.5 -mx-3 -my-2.5 " : "px-2.5 py-2 ") +
+                              (hasWords
+                                ? (webkitTouch ? "px-3 py-2.5 -mx-3 " : "inline-block px-3 py-2.5 -mx-3 -my-2.5 ")
+                                : "px-2.5 py-2 ") +
                               (draggingId === ch.id
                                 // Dim the original in place while its ghost rides the pointer.
                                 ? "cursor-grabbing opacity-30"
@@ -4595,8 +4694,30 @@ export default function SongEditor({
       </div>
 
       {/* Chord drag: live caret on the landing word + a ghost under the pointer. */}
-      {/* Positions are written by the drag handler via ghostRef/caretRef; the
-          caret stays hidden until the first landing preview is computed. */}
+      {webkitTouch ? (
+        <>
+          {/* WebKit/iOS — pre-fix overlay, positions from state. */}
+          {dragCaret && (
+            <div
+              aria-hidden
+              className="fixed z-40 pointer-events-none rounded bg-[#9d8bff]/25 ring-1 ring-[#9d8bff]/60 print:hidden"
+              style={{ left: dragCaret.x, top: dragCaret.y, width: dragCaret.w, height: dragCaret.h }}
+            />
+          )}
+          {dragGhost && (
+            <div
+              aria-hidden
+              className="fixed z-50 pointer-events-none font-bold px-1 rounded-md bg-[#735fee] text-white shadow-lg shadow-violet-500/20 whitespace-nowrap print:hidden"
+              style={{ left: dragGhost.x, top: dragGhost.y, fontSize: chordFontSize, fontFamily: lyricFontFamily, transform: "translate(-50%, -130%)" }}
+            >
+              {dragGhost.text}
+            </div>
+          )}
+        </>
+      ) : (
+      <>
+      {/* Blink — positions are written by the drag handler via ghostRef/caretRef;
+          the caret stays hidden until the first landing preview is computed. */}
       {dragGhost && (
         <div
           ref={caretRef}
@@ -4614,6 +4735,8 @@ export default function SongEditor({
         >
           {dragGhost.text}
         </div>
+      )}
+      </>
       )}
 
       {quickActionsOpen && (
