@@ -23,6 +23,18 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* Muted / secondary text token (accessibility, older readers). Every muted
+   label in the app uses Tailwind's slate-500 (text-slate-500, and
+   dark:text-slate-500 in dark mode), so the token itself is re-pointed —
+   one change, applied consistently. Only neutral muted gray moves; brand
+   purple, lavender tints, chord and status colours are literal values and
+   untouched. Contrast (WCAG AA ≥ 4.5:1):
+     light #565270 — 7.4 on white, 7.1 page (slate-50), 6.3 on lavender pills
+     dark  #9a96b6 — 7.1 on page (slate-950), 6.3 cards (slate-900), 5.2 slate-800
+   (was #64748b: 4.0–4.8 light, 3.1–4.2 dark). Soft lavender-gray, not black. */
+:root { --color-slate-500: #565270; }
+.dark { --color-slate-500: #9a96b6; }
+
 html, body {
   background: var(--background);
   color: var(--foreground);
