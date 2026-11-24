@@ -93,14 +93,20 @@ export default function QuickActionsPanel({
   };
 
   return (
-    <div className="fixed right-16 bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] md:bottom-8 z-40 w-64 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden print:hidden">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+    // Bottom-anchored, so it grows UPWARD: on a short landscape screen the
+    // content is taller than the space above the anchor and the top (title,
+    // Key/Capo) used to run off the top edge. The height is now capped to the
+    // space between the anchor and the top safe area (minus 12px); the header
+    // stays pinned and the rows scroll inside. Portrait content fits under the
+    // cap, so it's unchanged there. Right offset also clears the safe area.
+    <div className="fixed right-[calc(4rem+env(safe-area-inset-right,0px))] bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] md:bottom-8 z-40 w-64 flex flex-col max-h-[calc(100dvh-5rem-env(safe-area-inset-bottom,0px)-env(safe-area-inset-top,0px)-12px)] md:max-h-[calc(100dvh-2rem-env(safe-area-inset-top,0px)-12px)] bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden print:hidden">
+      <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-800">
         <span className="font-semibold text-sm">Quick Actions</span>
         <button type="button" onClick={onClose} className="w-6 h-6 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
-      <div className="p-4 space-y-4">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 space-y-4">
         <QARow label="Key">
           <div className="flex items-center gap-2">
             <StepBtn onClick={() => onTranspose(prevKey)} label="Previous key">
