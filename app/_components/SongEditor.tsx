@@ -148,17 +148,6 @@ function PencilLineIcon() {
   );
 }
 
-// Play — launches fullscreen perform mode. Filled, rounded triangle in the
-// toolbar slate (#3f4a5c light / #c4cad6 dark), no stroke.
-function PlayIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" stroke="none" aria-hidden="true"
-      className="fill-[#3f4a5c] dark:fill-[#c4cad6]">
-      <path d="M7 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 7 4.5Z" />
-    </svg>
-  );
-}
-
 function HighlighterIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -3810,9 +3799,14 @@ export default function SongEditor({
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
           </button>
           <ViewToggle viewMode={viewMode} onChange={switchView} allowThree={!narrowScreen} />
+          {/* Present: an outlined purple "screen" with a filled play triangle.
+              The 1.6px outline is an inset ring (box-shadow) — Chromium rounds
+              fractional border widths down to whole pixels. The visible shape is
+              38×29; on touch screens the global coarse-pointer rule pads its hit
+              area to ≥44×44. */}
           <button type="button" onClick={enterPresent} title="Fullscreen performance mode" aria-label="Fullscreen performance mode"
-            className={TOOLBAR_BTN + " " + TOOLBAR_BTN_REST}>
-            <PlayIcon />
+            className="w-[38px] h-[29px] shrink-0 rounded-[9px] shadow-[inset_0_0_0_1.6px_#8574f0] dark:shadow-[inset_0_0_0_1.6px_#b3a3ff] bg-white dark:bg-transparent text-[#8574f0] dark:text-[#b3a3ff] hover:bg-[#f6f3ff] dark:hover:bg-[#2a2440]/60 flex items-center justify-center transition-colors">
+            <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 4.8v14.4a1.1 1.1 0 0 0 1.68.94l11.2-7.2a1.1 1.1 0 0 0 0-1.88l-11.2-7.2A1.1 1.1 0 0 0 7.5 4.8z" fill="currentColor"/></svg>
           </button>
         </div>
         <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-end">
