@@ -1,7 +1,7 @@
 "use client";
 
 import { mixHex, readableColor } from "@/lib/contrast";
-import { SELECTED, SELECTED_ON_DARK } from "@/lib/selectedStyle";
+import { SELECTED } from "@/lib/selectedStyle";
 import { backdropDismiss } from "@/lib/backdropDismiss";
 import { FEATURE_AI_CHORDS } from "@/lib/flags";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -3611,56 +3611,64 @@ export default function SongEditor({
               </div>
             )}
           </div>
-          {/* Bottom bar — revealed on tap, auto-hides. Row 1 promotes the on-stage
-              quick actions (auto-scroll + text size); row 2 is Prev · position ·
-              Next. Prep-time actions (print/export/styles/delete) stay in ⋯. */}
+          {/* Bottom bar — revealed on tap, auto-hides. ONE compact light row
+              in the app's floating-nav language (translucent white, soft blur,
+              #e7e2f7 border, 18px radius, soft shadow): Prev pinned left, Next
+              pinned right; centre = Auto-scroll · current section chip · A−/A+.
+              Capped at 640px wide and a fixed ~48px tall, so it never grows into
+              a slab on tablets. On narrow phones Auto-scroll drops to its icon
+              and the chip truncates so it all stays on one row. Inset from the
+              safe areas on every side. */}
           {presentControls && (
             <div onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}
-              className="fixed inset-x-0 bottom-0 z-[2] flex flex-col gap-1.5 bg-slate-900/85 text-white backdrop-blur-md"
-              style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.4rem)", paddingTop: "0.45rem", paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.6rem)", paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.6rem)" }}>
-              {/* Promoted quick actions */}
-              <div className="flex items-center justify-center gap-2">
-                {/* Auto-scroll — distinct "scroll down" icon + text label so it's
-                    never mistaken for the metronome play. Highlights while running. */}
+              className="fixed z-[2] mx-auto max-w-[640px] flex items-center gap-1 sm:gap-2 px-1 sm:px-1.5 py-1.5 rounded-[18px] bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-[#e7e2f7] dark:border-slate-700 shadow-lg shadow-violet-900/10 dark:shadow-black/40"
+              style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.6rem)", left: "calc(env(safe-area-inset-left, 0px) + 0.6rem)", right: "calc(env(safe-area-inset-right, 0px) + 0.6rem)" }}>
+              <button type="button" onClick={() => { goPrev(); revealControls(); }} aria-label="Previous section"
+                className="shrink-0 flex items-center gap-0.5 sm:gap-1 h-9 pl-1.5 pr-2.5 sm:pl-2 sm:pr-3 rounded-xl bg-[#efe9fe] dark:bg-[#2a2440] text-[#8574f0] dark:text-[#b3a3ff] text-sm font-semibold hover:bg-[#e6defd] dark:hover:bg-[#332b4f] transition-colors">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
+                Prev
+              </button>
+              <div className="flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-2">
+                {/* Auto-scroll — distinct "scroll down" icon (never mistaken for
+                    the metronome play); lavender while running. */}
                 <button type="button" onClick={() => { setAutoScrolling((o) => !o); revealControls(); }}
-                  aria-pressed={autoScrolling}
-                  className={"flex items-center gap-1.5 h-9 px-3 rounded-lg text-sm font-medium transition-colors " + (autoScrolling ? SELECTED_ON_DARK : "hover:bg-white/10")}>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><polyline points="7 5 12 10 17 5"/><polyline points="7 13 12 18 17 13"/></svg>
-                  {autoScrolling ? "Scrolling" : "Auto-scroll"}
+                  aria-pressed={autoScrolling} aria-label={autoScrolling ? "Stop auto-scroll" : "Auto-scroll"}
+                  className={"shrink-0 flex items-center gap-1.5 h-9 px-2 sm:px-2.5 rounded-xl border text-sm font-medium transition-colors " + (autoScrolling
+                    ? "bg-[#efe9fe] border-[#d3c7f7] text-[#6350ef] dark:bg-[#2a2440] dark:border-[#4b3f80] dark:text-[#b3a3ff]"
+                    : "bg-white border-[#e7e2f7] text-slate-600 hover:bg-[#f6f3ff] dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800")}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="text-[#8574f0] dark:text-[#b3a3ff]"><polyline points="7 5 12 10 17 5"/><polyline points="7 13 12 18 17 13"/></svg>
+                  <span className="hidden sm:inline">{autoScrolling ? "Scrolling" : "Auto-scroll"}</span>
                 </button>
-                {/* Text size */}
-                <div className="flex items-center rounded-lg overflow-hidden border border-white/15">
+                {/* Current section (+ setlist position on wider screens). */}
+                {/* Empty at the very top (nothing scrolled past yet) → the first section. */}
+                {song.sections.length > 0 && (
+                  <span className="min-w-0 max-w-[9rem] sm:max-w-[14rem] h-7 px-2 sm:px-2.5 inline-flex items-center gap-1 rounded-full bg-[#efe9fe] dark:bg-[#2a2440] border border-[#d3c7f7] dark:border-[#4b3f80] text-[#8574f0] dark:text-[#b3a3ff] text-xs font-semibold"
+                    aria-live="polite" data-present-section>
+                    <span className="truncate">{presentSection || song.sections[0]?.label || ""}</span>
+                    {setlistContext && (
+                      <span className="hidden sm:inline shrink-0 font-normal opacity-75">· {setlistContext.currentIndex + 1}/{setlistContext.total}</span>
+                    )}
+                  </span>
+                )}
+                {/* Text size (A− / A+) — the presenter's text-size control. */}
+                <div className="shrink-0 flex items-center h-9 rounded-xl overflow-hidden border border-[#e7e2f7] dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300">
                   <button type="button" onClick={() => { adjustZoom(-1); revealControls(); }}
                     disabled={zoomOffset <= zoomMin} aria-label="Smaller text" title="Smaller text"
-                    className="h-9 px-3 flex items-center hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent">
+                    className="h-full px-2 sm:px-2.5 flex items-center hover:bg-[#f6f3ff] dark:hover:bg-slate-800 disabled:opacity-40 disabled:hover:bg-transparent">
                     <span className="text-xs font-bold">A</span><span className="text-xs">−</span>
                   </button>
                   <button type="button" onClick={() => { adjustZoom(1); revealControls(); }}
                     disabled={zoomOffset >= zoomMax} aria-label="Larger text" title="Larger text"
-                    className="h-9 px-3 flex items-center border-l border-white/15 hover:bg-white/10 disabled:opacity-40 disabled:hover:bg-transparent">
-                    <span className="text-base font-bold">A</span><span className="text-xs">+</span>
+                    className="h-full px-2 sm:px-2.5 flex items-center border-l border-[#e7e2f7] dark:border-slate-700 hover:bg-[#f6f3ff] dark:hover:bg-slate-800 disabled:opacity-40 disabled:hover:bg-transparent">
+                    <span className="text-base font-bold leading-none">A</span><span className="text-xs">+</span>
                   </button>
                 </div>
               </div>
-              {/* Prev · position · Next */}
-              <div className="flex items-center justify-between gap-2">
-                <button type="button" onClick={() => { goPrev(); revealControls(); }}
-                  className="flex items-center gap-1 h-10 px-3 rounded-lg hover:bg-white/10 text-sm font-medium">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
-                  Prev
-                </button>
-                <span className="min-w-0 text-xs text-white/70 truncate px-2 text-center flex flex-col leading-tight">
-                  <span className="truncate">{presentSection || " "}</span>
-                  {setlistContext && (
-                    <span className="text-[10px] text-white/50">Song {setlistContext.currentIndex + 1} / {setlistContext.total}</span>
-                  )}
-                </span>
-                <button type="button" onClick={() => { goNext(); revealControls(); }}
-                  className="flex items-center gap-1 h-10 px-3 rounded-lg hover:bg-white/10 text-sm font-medium">
-                  Next
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                </button>
-              </div>
+              <button type="button" onClick={() => { goNext(); revealControls(); }} aria-label="Next section"
+                className="shrink-0 flex items-center gap-0.5 sm:gap-1 h-9 pl-2.5 pr-1.5 sm:pl-3 sm:pr-2 rounded-xl bg-[#efe9fe] dark:bg-[#2a2440] text-[#8574f0] dark:text-[#b3a3ff] text-sm font-semibold hover:bg-[#e6defd] dark:hover:bg-[#332b4f] transition-colors">
+                Next
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
             </div>
           )}
         </>
@@ -4999,6 +5007,10 @@ export default function SongEditor({
               : <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>}
           </button>
         )}
+        {/* Zoom circles: hidden while presenting — the presenter bar's A−/A+
+            is the text-size control there (pinch still zooms the view). */}
+        {!presenting && (
+          <>
         <button type="button" onClick={() => adjustZoom(1)} title="Larger text" disabled={zoomOffset >= zoomMax}
           className="w-11 h-11 rounded-full shadow-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 enabled:hover:bg-[#f3f0ff] dark:enabled:hover:bg-slate-700 disabled:opacity-40 flex items-center justify-center transition-colors">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -5007,6 +5019,8 @@ export default function SongEditor({
           className="w-11 h-11 rounded-full shadow-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 enabled:hover:bg-[#f3f0ff] dark:enabled:hover:bg-slate-700 disabled:opacity-40 flex items-center justify-center transition-colors">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </button>
+          </>
+        )}
       </div>
 
       {/* Chord drag: live caret on the landing word + a ghost under the pointer. */}
