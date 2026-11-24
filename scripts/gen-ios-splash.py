@@ -16,21 +16,22 @@ ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "public/splash"
 BG = (2, 6, 23, 255)  # #020617 — manifest background_color / .wp-splash
 
-# (css width, css height, device pixel ratio, has landscape)
+# (css width, css height, device pixel ratio, has landscape) — every device
+# gets both orientations: the app rotates (manifest orientation "any").
 DEVICES = [
-    (440, 956, 3, False),  # iPhone 16/17 Pro Max
-    (420, 912, 3, False),  # iPhone Air
-    (402, 874, 3, False),  # iPhone 16 Pro
-    (430, 932, 3, False),  # iPhone 14 Pro Max, 15 Plus / Pro Max, 16 Plus
-    (393, 852, 3, False),  # iPhone 14 Pro, 15, 15 Pro, 16
-    (428, 926, 3, False),  # iPhone 12/13 Pro Max, 14 Plus
-    (390, 844, 3, False),  # iPhone 12, 13, 14, 12/13 Pro
-    (375, 812, 3, False),  # iPhone X, XS, 11 Pro, 12/13 mini
-    (414, 896, 3, False),  # iPhone XS Max, 11 Pro Max
-    (414, 896, 2, False),  # iPhone XR, 11
-    (414, 736, 3, False),  # iPhone 6/7/8 Plus
-    (375, 667, 2, False),  # iPhone 6/7/8, SE 2/3
-    (320, 568, 2, False),  # iPhone SE 1
+    (440, 956, 3, True),  # iPhone 16/17 Pro Max
+    (420, 912, 3, True),  # iPhone Air
+    (402, 874, 3, True),  # iPhone 16 Pro
+    (430, 932, 3, True),  # iPhone 14 Pro Max, 15 Plus / Pro Max, 16 Plus
+    (393, 852, 3, True),  # iPhone 14 Pro, 15, 15 Pro, 16
+    (428, 926, 3, True),  # iPhone 12/13 Pro Max, 14 Plus
+    (390, 844, 3, True),  # iPhone 12, 13, 14, 12/13 Pro
+    (375, 812, 3, True),  # iPhone X, XS, 11 Pro, 12/13 mini
+    (414, 896, 3, True),  # iPhone XS Max, 11 Pro Max
+    (414, 896, 2, True),  # iPhone XR, 11
+    (414, 736, 3, True),  # iPhone 6/7/8 Plus
+    (375, 667, 2, True),  # iPhone 6/7/8, SE 2/3
+    (320, 568, 2, True),  # iPhone SE 1
     (1032, 1376, 2, True),  # iPad Pro 13" (M4)
     (1024, 1366, 2, True),  # iPad Pro 12.9"
     (834, 1210, 2, True),  # iPad Pro 11" (M4)
