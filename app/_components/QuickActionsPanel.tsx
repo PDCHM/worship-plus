@@ -35,6 +35,14 @@ type Props = {
   onCapoChange: (capo: number | null) => void;
   onSettingsChange: (s: Settings) => void;
   onZoomChange: (offset: number) => void;
+  // Column count (display preference, per orientation): Auto or a manual 1/2/3.
+  // Shown whenever provided — it's a view setting, so the present-mode Lock
+  // never hides it.
+  columns?: "auto" | 1 | 2 | 3;
+  columnsShowing?: number;          // what Auto currently resolves to
+  columnsOrientation?: "portrait" | "landscape";
+  allowThreeColumns?: boolean;
+  onColumnsChange?: (c: "auto" | 1 | 2 | 3) => void;
   onScrollSpeedChange: (speed: number) => void;
   onToggleAutoScroll: () => void;
   onClose: () => void;
@@ -46,6 +54,7 @@ export default function QuickActionsPanel({
   autoScrolling, scrollSpeed,
   readOnly = false, playLayout = "scroll", onPlayLayoutChange,
   onTranspose, onCapoChange, onSettingsChange, onZoomChange,
+  columns, columnsShowing, columnsOrientation, allowThreeColumns = true, onColumnsChange,
   onScrollSpeedChange, onToggleAutoScroll, onClose,
 }: Props) {
   const keyIndex = KEYS.indexOf(song.key);
@@ -137,6 +146,23 @@ export default function QuickActionsPanel({
             </StepBtn>
           </div>
         </QARow>
+        {columns !== undefined && onColumnsChange && (
+          <div className="space-y-1">
+            <QARow label="Columns">
+              <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 seg-group" role="group" aria-label="Columns">
+                {(["auto", 1, 2, 3] as const).filter(c => c !== 3 || allowThreeColumns).map(c => (
+                  <button key={c} type="button" aria-pressed={columns === c} onClick={() => onColumnsChange(c)}
+                    className={"h-7 px-2 text-xs font-semibold transition-colors " + (columns === c ? SELECTED : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")}>
+                    {c === "auto" ? "Auto" : c}
+                  </button>
+                ))}
+              </div>
+            </QARow>
+            <div className="text-right text-[11px] font-medium text-slate-500 dark:text-slate-500">
+              {columnsOrientation === "portrait" ? "Portrait" : "Landscape"}{columns === "auto" && columnsShowing ? ` · Auto showing ${columnsShowing}` : ""}
+            </div>
+          </div>
+        )}
         <QARow label="Font face">
           <ChartFontPicker value={chartFont} onChange={onChartFontChange} />
         </QARow>

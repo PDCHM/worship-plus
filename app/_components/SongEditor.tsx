@@ -113,6 +113,31 @@ function writeSongView(songId: string, prefs: SongViewPrefs) {
     /* localStorage unavailable — prefs just won't persist */
   }
 }
+// Chart column count is a DISPLAY preference, not song content: kept per user
+// per device in localStorage, separately for portrait and landscape, so rotating
+// the device applies the right layout on its own. "auto" picks the count that
+// fits the screen width; 1 / 2 / 3 is a manual override that sticks until the
+// reader goes back to Auto. Same value drives edit mode and present mode.
+type ColumnPref = "auto" | 1 | 2 | 3;
+type Orientation = "portrait" | "landscape";
+const COLUMNS_KEY = "wp-columns-v1";
+const isColumnPref = (v: unknown): v is ColumnPref => v === "auto" || v === 1 || v === 2 || v === 3;
+function readColumnPrefs(): Record<Orientation, ColumnPref> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(COLUMNS_KEY) || "{}") as Partial<Record<Orientation, unknown>>;
+    return {
+      portrait: isColumnPref(raw.portrait) ? raw.portrait : "auto",
+      landscape: isColumnPref(raw.landscape) ? raw.landscape : "auto",
+    };
+  } catch {
+    return { portrait: "auto", landscape: "auto" };
+  }
+}
+function writeColumnPrefs(prefs: Record<Orientation, ColumnPref>) {
+  try { localStorage.setItem(COLUMNS_KEY, JSON.stringify(prefs)); } catch { /* not persisted */ }
+}
+const viewModeFor = (cols: number): ViewMode => (cols >= 3 ? "split-3" : cols === 2 ? "split-2" : "standard");
+
 // Edit / Markup toggle icons — exact path data lifted from Lucide's `square-pen`
 // and `highlighter` glyphs (ISC-licensed), inlined to match this codebase's
 // inline-SVG convention rather than pull in the lucide-react dependency.
@@ -360,17 +385,19 @@ function useMediaQuery(query: string): boolean {
 }
 
 function ViewToggle({
-  viewMode,
+  pref,
+  effective,
   onChange,
   allowThree = true,
 }: {
-  viewMode: ViewMode;
-  onChange: (m: ViewMode) => void;
+  pref: ColumnPref;            // the reader's choice for this orientation
+  effective: ViewMode;         // what's on screen (Auto's resolved count)
+  onChange: (m: ViewMode | "auto") => void;
   // false on narrow screens: 3 columns don't fit, so the option is hidden.
   allowThree?: boolean;
 }) {
-  const btn = (mode: ViewMode, label: string, icon: React.ReactNode) => {
-    const active = viewMode === mode;
+  const btn = (mode: ViewMode | "auto", label: string, icon: React.ReactNode) => {
+    const active = mode === "auto" ? pref === "auto" : pref !== "auto" && viewModeFor(pref) === mode;
     return (
       <button
         key={mode}
@@ -379,7 +406,7 @@ function ViewToggle({
         title={label}
         aria-label={label}
         aria-pressed={active}
-        className={`w-8 sm:w-10 h-8 sm:h-9 flex items-center justify-center transition-colors ${
+        className={`${mode === "auto" ? "px-2 sm:px-2.5 text-[11px] font-semibold" : "w-8 sm:w-10"} h-8 sm:h-9 flex items-center justify-center transition-colors ${
           active
             ? SELECTED
             : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
@@ -389,12 +416,14 @@ function ViewToggle({
       </button>
     );
   };
+  const autoCount = effective === "split-3" ? 3 : effective === "split-2" ? 2 : 1;
   return (
     <div
       className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 seg-group"
       role="group"
       aria-label="View mode"
     >
+      {btn("auto", `Auto columns (fits the screen — now ${autoCount})`, "Auto")}
       {btn(
         "standard",
         "Standard view (1 column)",
@@ -1130,16 +1159,30 @@ export default function SongEditor({
   // stored 3-column choice DISPLAYS as 2 columns (see `viewMode` below) — ~100px
   // columns break lyrics to 1–2 words per line on a phone — but the stored value
   // is kept, so the same song still opens in 3 columns on an iPad.
-  const [storedViewMode, setViewMode] = useState<ViewMode>(() => readSongView(song.id).viewMode ?? "standard");
   const narrowScreen = useMediaQuery(NARROW_SCREEN_QUERY);
-  const viewMode: ViewMode = narrowScreen && storedViewMode === "split-3" ? "split-2" : storedViewMode;
+  // Column count — per-orientation display preference (see COLUMNS_KEY).
+  const portraitScreen = useMediaQuery("(orientation: portrait)");
+  const orientation: Orientation = portraitScreen ? "portrait" : "landscape";
+  const [columnPrefs, setColumnPrefs] = useState<Record<Orientation, ColumnPref>>(readColumnPrefs);
+  const columnPref = columnPrefs[orientation];
+  const setColumnPref = (p: ColumnPref) => setColumnPrefs((all) => {
+    const next = { ...all, [orientation]: p };
+    writeColumnPrefs(next);
+    return next;
+  });
+  // Auto's measured count for the scroll layout (fit-to-screen measures its own).
+  const [autoCols, setAutoCols] = useState<1 | 2 | 3>(1);
+  const maxColsForScreen = narrowScreen ? 2 : 3;
+  const viewMode: ViewMode = viewModeFor(columnPref === "auto" ? autoCols : Math.min(columnPref, maxColsForScreen));
   // Has the reader made an explicit column choice with the 1/2/3 switcher (this
   // session, or a stored one from a previous visit to this song)? Fit-to-screen
   // auto-picks a column count, and it used to do so UNCONDITIONALLY — so in fit
   // layout the switcher set state, persisted it, and changed nothing on screen.
   // A pinned choice now wins: fit auto-sizes the font for the count the reader
   // asked for instead of overruling it.
-  const [columnsPinned, setColumnsPinned] = useState(() => readSongView(song.id).viewMode != null);
+  // A manual 1/2/3 choice is "pinned": fit-to-screen sizes the text for that
+  // count instead of auto-picking one. Auto = not pinned.
+  const columnsPinned = columnPref !== "auto";
   const sectionsRef = useRef<HTMLDivElement>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [keyPickerOpen, setKeyPickerOpen] = useState(false);
@@ -1408,9 +1451,9 @@ export default function SongEditor({
   // it into the NEXT song's stored prefs (that would mutate a song you only passed
   // through). Genuine layout changes still write to the current song.id.
   useEffect(() => {
-    writeSongView(song.id, { viewMode: storedViewMode, zoomOffset });
+    writeSongView(song.id, { zoomOffset });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storedViewMode, zoomOffset]);
+  }, [zoomOffset]);
 
   const baseFontSize = Math.min(FONT_MAX_PX, Math.max(FONT_MIN_PX, lyricBase + zoomOffset));
   // Ceiling for the fluid clamp() (the --lyric-font-size CSS var). The split-3
@@ -1762,17 +1805,72 @@ export default function SongEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitMode, columnsPinned, numCols, zoomOffset, baseFontSize, prefs.lyricFontSize, lineHeight, lyricFontFamily, showChords, song, resizeTick]);
 
-  const switchView = (mode: ViewMode) => {
+  // Column control (edit toolbar, present header, Quick Actions): Auto or a
+  // manual 1/2/3, saved for the CURRENT orientation only. Display-only — it
+  // never touches the song. A manual count outranks fit-to-screen's auto-pick.
+  const switchView = (mode: ViewMode | "auto") => {
     setEditingChord(null);
     setEditingLine(null);
     setEditingSection(null);
     setEditingTitle(false);
     setContextMenu(null);
-    setViewMode(mode);
-    // From here on the reader's choice outranks fit-to-screen's auto-pick, in
-    // every layout mode — the switcher must never be a control that does nothing.
-    setColumnsPinned(true);
+    setColumnPref(mode === "auto" ? "auto" : mode === "split-3" ? 3 : mode === "split-2" ? 2 : 1);
   };
+
+  // Auto columns (scroll layout): the most columns whose width still fits the
+  // chart's longest line at the font that column count uses, so lines don't
+  // wrap awkwardly — portrait gets fewer, landscape more. Measured with a hidden
+  // span in the real chart font; re-run on rotate / resize, zoom, font, content.
+  // (Fit-to-screen does its own auto-pick when not pinned.)
+  const [autoColsTick, setAutoColsTick] = useState(0);
+  useEffect(() => {
+    if (columnPref !== "auto") return;
+    let raf = 0;
+    const onResize = () => { cancelAnimationFrame(raf); raf = requestAnimationFrame(() => setAutoColsTick((t) => t + 1)); };
+    window.addEventListener("resize", onResize);
+    window.addEventListener("orientationchange", onResize);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", onResize); window.removeEventListener("orientationchange", onResize); };
+  }, [columnPref]);
+  useEffect(() => {
+    if (columnPref !== "auto") return;
+    const host = sectionsRef.current;
+    if (!host) return;
+    const width = host.clientWidth;
+    if (!width) return;
+    // Longest lines by character extent (lyric, or the last chord's end).
+    const extents = song.sections.flatMap((sec) => sec.lines).map((l) => {
+      const chordEnd = showChords ? Math.max(0, ...l.chords.map((c) => (c.pos ?? 0) + (c.chord?.length ?? 0) + 1)) : 0;
+      return l.lyric.length >= chordEnd ? l.lyric : l.lyric.padEnd(chordEnd, "m");
+    }).sort((a, b) => b.length - a.length).slice(0, 4);
+    let best: 1 | 2 | 3 = 1;
+    const commit = () => { const raf = requestAnimationFrame(() => setAutoCols(best)); return () => cancelAnimationFrame(raf); };
+    if (!extents.length) return commit();
+    const probe = document.createElement("span");
+    probe.style.cssText = `position:absolute;visibility:hidden;white-space:pre;left:-9999px;top:0;font-family:${lyricFontFamily};`;
+    host.appendChild(probe);
+    const longestAt = (px: number) => {
+      probe.style.fontSize = `${px}px`;
+      let w = 0;
+      for (const t of extents) { probe.textContent = t; w = Math.max(w, probe.getBoundingClientRect().width); }
+      return w;
+    };
+    for (const n of [2, 3] as const) {
+      if (n > maxColsForScreen) break;
+      const px = n === 3 ? Math.max(13, Math.round(baseFontSize * 0.78)) : baseFontSize;
+      const gap = n === 3 ? 16 : 20;
+      const colW = (width - (n - 1) * gap) / n;
+      // 2 columns: each must hold the longest line up to ~20em (≈35 chars) —
+      // longer lines then wrap once, which reads fine; anything narrower breaks
+      // lines into fragments. 3 columns also shrinks the font (split-3 ceiling),
+      // so it's only chosen when the longest line fits WITHOUT wrapping.
+      // +24 leaves room for the section's left rule / padding.
+      const longest = longestAt(px);
+      const need = (n === 2 ? Math.min(longest, px * 20) : longest) + 24;
+      if (colW >= need) best = n; else break;
+    }
+    probe.remove();
+    return commit();
+  }, [columnPref, orientation, autoColsTick, maxColsForScreen, baseFontSize, lyricFontFamily, showChords, song.sections, presenting]);
 
   // ── Fullscreen performance mode ─────────────────────────────────────────────
   const enterPresent = () => {
@@ -3429,11 +3527,28 @@ export default function SongEditor({
                 </button>
               )}
               {presentControls ? (
-                <button type="button" title="Column layout" aria-label="Cycle column layout"
-                  onClick={() => { switchView(viewMode === "standard" ? "split-2" : viewMode === "split-2" && !narrowScreen ? "split-3" : "standard"); revealControls(); }}
-                  className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60 shrink-0">
+                <>
+                {/* Columns: one tap cycles Auto → 1 → 2 → (3) → Auto for THIS
+                    orientation. A view setting — never blocked by the Lock. */}
+                <button type="button" title="Columns" aria-label={`Columns: ${columnPref === "auto" ? "Auto" : columnPref} — tap to change`}
+                  onClick={() => {
+                    const order: ColumnPref[] = narrowScreen ? ["auto", 1, 2] : ["auto", 1, 2, 3];
+                    const next = order[(order.indexOf(columnPref) + 1) % order.length] ?? "auto";
+                    switchView(next === "auto" ? "auto" : viewModeFor(next)); revealControls();
+                  }}
+                  className="h-7 pl-1.5 pr-2 rounded-lg flex items-center gap-1 text-xs font-semibold tabular-nums text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60 shrink-0">
                   <svg width="15" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="8" height="18" rx="1.5"/><rect x="13" y="3" width="8" height="18" rx="1.5"/></svg>
+                  {columnPref === "auto" ? "Auto" : columnPref}
                 </button>
+                {/* View settings (Quick Actions: columns, font, transpose …).
+                    The floating gear is hidden on phones, so present exposes it
+                    here for every screen size. */}
+                <button type="button" title="View settings" aria-label="View settings" aria-pressed={quickActionsOpen}
+                  onClick={() => { setQuickActionsOpen((o) => !o); revealControls(); }}
+                  className={"w-7 h-7 rounded-lg flex items-center justify-center shrink-0 " + (quickActionsOpen ? SELECTED : "text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60")}>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                </button>
+                </>
               ) : <span className="w-7 shrink-0" aria-hidden />}
               {/* Stage Lock — ALWAYS visible (not tap-gated) so the leader can
                   always see whether edits are live. Only for people who can edit
@@ -3798,7 +3913,7 @@ export default function SongEditor({
             className="w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
           </button>
-          <ViewToggle viewMode={viewMode} onChange={switchView} allowThree={!narrowScreen} />
+          <ViewToggle pref={columnPref} effective={viewMode} onChange={switchView} allowThree={!narrowScreen} />
           {/* Present: an outlined purple "screen" with a filled play triangle.
               The 1.6px outline is an inset ring (box-shadow) — Chromium rounds
               fractional border widths down to whole pixels. The visible shape is
@@ -4964,6 +5079,11 @@ export default function SongEditor({
           onCapoChange={handleCapoChange}
           onSettingsChange={onSettingsChange}
           onZoomChange={setZoomOffset}
+          columns={columnPref}
+          columnsShowing={fitMode && !columnsPinned ? fitColumns : (viewMode === "split-3" ? 3 : viewMode === "split-2" ? 2 : 1)}
+          columnsOrientation={orientation}
+          allowThreeColumns={!narrowScreen}
+          onColumnsChange={(c) => switchView(c === "auto" ? "auto" : viewModeFor(c))}
           onScrollSpeedChange={setScrollSpeed}
           onToggleAutoScroll={() => setAutoScrolling(o => !o)}
           onClose={() => setQuickActionsOpen(false)}
