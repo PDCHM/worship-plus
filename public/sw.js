@@ -26,17 +26,18 @@ const VERSION = new URL(self.location.href).searchParams.get("v") || "static";
 // time update check — even when an old page is too broken to boot and run
 // ServiceWorkerRegister — and the new cache names make activate purge every
 // cache the old worker filled (a stale shell can't survive an update).
-const REVISION = 2;
+const REVISION = 3; // r3: manifest no longer precached / intercepted
 const STATIC_CACHE = `wp-static-${VERSION}-r${REVISION}`;
 const PAGES_CACHE = `wp-pages-${VERSION}-r${REVISION}`;
 // A navigation that hasn't answered in this long is served from the cached
 // shell (when there is one) instead of leaving the launch splash up.
 const NAV_TIMEOUT_MS = 6000;
 
-// Minimal precache: the manifest + icons. The HTML shell is cached at runtime
-// (it is an authenticated SSR page, so we don't precache it at install time).
+// Minimal precache: icons. The HTML shell is cached at runtime (it is an
+// authenticated SSR page, so we don't precache it at install time). The web
+// app manifest is deliberately NOT cached or intercepted (see the fetch
+// handler): installs and WebAPK updates must always see the live file.
 const PRECACHE_URLS = [
-  "/manifest.webmanifest",
   "/icon-192.png",
   "/icon-512.png",
   "/icon-maskable-192.png",
@@ -132,6 +133,11 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
 
   const url = new URL(request.url);
+
+  // Web app manifest: never cached, never intercepted — the browser fetches it
+  // straight from the network, so orientation / icon / colour changes reach
+  // installs and WebAPK updates immediately.
+  if (url.pathname === "/manifest.webmanifest") return;
 
   // Never intercept cross-origin requests (Supabase song data, Stripe, fonts CDN…).
   if (url.origin !== self.location.origin) return;

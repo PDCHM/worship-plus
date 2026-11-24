@@ -10,6 +10,7 @@ import {
 import "./globals.css";
 import ServiceWorkerRegister from "./_components/ServiceWorkerRegister";
 import IosInputFix from "./_components/IosInputFix";
+import OrientationUnlock from "./_components/OrientationUnlock";
 import ErrorOverlay, { EARLY_ERROR_SCRIPT } from "./_components/ErrorOverlay";
 
 const geistSans = Geist({
@@ -200,6 +201,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <ServiceWorkerRegister />
         <IosInputFix />
+        <OrientationUnlock />
         {children}
         <ErrorOverlay />
       </body>
