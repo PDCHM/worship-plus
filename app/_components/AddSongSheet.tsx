@@ -79,6 +79,8 @@ export default function AddSongSheet({ onBuildNew, onPasteChart, onAiChords, onI
               <span className="font-medium text-slate-600 dark:text-slate-300">.sbp · .sbpbackup · .pdf · .docx · .txt</span>{" "}
               <span className="text-slate-500 dark:text-slate-500">(also ChordPro, OnSong, PowerPoint, RTF)</span>
             </div>
+            {/* Trademark hygiene — third-party names describe file compatibility only. */}
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">Not affiliated with SongBook Pro.</p>
             <button type="button" onClick={() => { onImportFile(); onClose(); }}
               className="w-full h-11 rounded-xl bg-[#735fee] hover:bg-[#6650e6] text-white text-sm font-semibold flex items-center justify-center gap-2 transition-colors shadow-sm shadow-violet-500/20">
               {ICON_FILE}
@@ -110,7 +112,7 @@ export default function AddSongSheet({ onBuildNew, onPasteChart, onAiChords, onI
               label="Import from photo" desc="Snap or upload a chord chart — Claude reads it" />
             <SheetBtn onClick={() => setImportSubOpen(true)}
               icon={ICON_FILE}
-              label="Import Song" desc="From a file — best with SongBook Pro .sbp / .sbpbackup" chevron />
+              label="Import Song" desc="Supports SongBook Pro files (.sbp, .sbpbackup)" chevron />
             {/* Hidden for V1 — see FEATURE_AI_CHORDS. Handler + Generate Chords
                 flow remain wired; flipping the flag brings the entry back. */}
             {FEATURE_AI_CHORDS && (

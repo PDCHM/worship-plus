@@ -1,6 +1,6 @@
 # Worship+ — Terms of Service
 
-_Last updated: 20 November 2026_
+_Last updated: 24 November 2026_
 
 Welcome to Worship+. These Terms of Service ("Terms") govern your use of the Worship+ app and website (the "Service"). By using Worship+, you agree to these Terms. If you do not agree, please do not use the Service.
 
@@ -35,7 +35,11 @@ You agree not to:
 - attempt to break, overload, reverse-engineer, or gain unauthorised access to the Service or other users' data;
 - resell or redistribute the Service without permission.
 
-## 5. Beta — provided "as is"
+## 5. Trademarks
+
+SongBook Pro and other third-party product or file-format names referenced in Worship+ are the trademarks of their respective owners. Worship+ is not affiliated with, endorsed by, or sponsored by SongBook Pro or any other third party. Such names are used only to describe file compatibility.
+
+## 6. Beta — provided "as is"
 
 Worship+ is currently offered as a beta version, free of charge, while still in testing.
 
@@ -43,22 +47,22 @@ Worship+ is currently offered as a beta version, free of charge, while still in 
 - Features may change, break, or be removed, and data issues can occur during beta. Please keep your own backups of important content.
 - To the fullest extent permitted by law, Worship+ is not liable for any loss or damage arising from your use of the Service, including loss of content or interruption of the Service.
 
-## 6. Future paid plans
+## 7. Future paid plans
 
 Worship+ may introduce paid plans in future. If it does, pricing and payment terms will be presented to you before you are charged, and any payments will be handled by a third-party payment provider.
 
-## 7. Suspension and termination
+## 8. Suspension and termination
 
 We may suspend or end access to the Service for anyone who breaches these Terms or uses the Service in a harmful or unlawful way. You may stop using the Service and delete your account at any time.
 
-## 8. Changes to these Terms
+## 9. Changes to these Terms
 
 We may update these Terms from time to time. We will update the "Last updated" date above, and significant changes will be communicated in the app where appropriate. Continuing to use the Service after changes means you accept the updated Terms.
 
-## 9. Governing law
+## 10. Governing law
 
 These Terms are governed by the laws of Singapore.
 
-## 10. Contact
+## 11. Contact
 
 Questions about these Terms? Contact us at [worshipplus@gmail.com](mailto:worshipplus@gmail.com).
