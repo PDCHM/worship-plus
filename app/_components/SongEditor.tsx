@@ -1162,6 +1162,9 @@ export default function SongEditor({
   // "Verse 1" indicator. rootRef is the fullscreen target + scroll container.
   // Seed from the lifted prop so a cross-song remount stays in present mode.
   const [presenting, setPresenting] = useState(initialPresenting);
+  // Stage Lock: false = locked (read-only). Reset to locked on every entry /
+  // exit (and on a cross-song remount, via this initial value).
+  const [presentUnlocked, setPresentUnlocked] = useState(false);
   // Live mirror of `presenting`, read inside the auto-scroll rAF so the tick can
   // never act on a stale value — the loop must always target the container
   // that's active RIGHT NOW, not the one active when the effect closure was made.
@@ -1287,8 +1290,12 @@ export default function SongEditor({
 
   const colors = isDark ? settings.sectionColorsDark : settings.sectionColorsLight;
   // A permission lock (member on a shared song) pins read-only regardless of the
-  // user's edit/performance preference.
-  const readOnly = !editMode || !canEdit;
+  // user's edit/performance preference. In present mode the stage Lock decides
+  // instead: present always opens LOCKED (read-only) and only someone who can
+  // edit (canEdit: owner / leader / co-leader / editor) can unlock it. Every
+  // chord / line / section edit path already gates on `readOnly`, so the lock
+  // is purely an extra gate — unlocked editing is the exact existing code.
+  const readOnly = !canEdit || (presenting ? !presentUnlocked : !editMode);
 
   // ── Show-once coachmarks ──────────────────────────────────────────────────
   const dismissTip = (id: TipId) => {
@@ -1516,7 +1523,8 @@ export default function SongEditor({
   // backgrounds, so we re-acquire on visibilitychange. Typed locally + feature-
   // detected so it's a clean no-op on browsers without the Wake Lock API.
   useEffect(() => {
-    if (!readOnly) return;
+    // Also held while presenting UNLOCKED — the stage screen must never sleep.
+    if (!readOnly && !presenting) return;
     type WakeLockSentinelLike = { release: () => Promise<void> };
     type WakeLockLike = { request: (type: "screen") => Promise<WakeLockSentinelLike> };
     const wakeLock =
@@ -1547,7 +1555,7 @@ export default function SongEditor({
       void sentinel?.release().catch(() => {});
       sentinel = null;
     };
-  }, [readOnly]);
+  }, [readOnly, presenting]);
 
   useEffect(() => {
     if (!saveMenuOpen) return;
@@ -1779,6 +1787,7 @@ export default function SongEditor({
 
   // ── Fullscreen performance mode ─────────────────────────────────────────────
   const enterPresent = () => {
+    setPresentUnlocked(false);
     setPresentControls(false);
     setPresenting(true);
     onPresentChange?.(true);
@@ -1805,9 +1814,23 @@ export default function SongEditor({
       else if (doc.webkitFullscreenElement) doc.webkitExitFullscreen?.();
     } catch { /* ignore */ }
     enteredRealFsRef.current = false;
+    setPresentUnlocked(false);
     setPresentControls(false);
     setPresenting(false);
     onPresentChange?.(false);
+  };
+
+  // Stage Lock toggle. Re-locking also closes any open chord / line editor or
+  // menu (an unsaved in-progress edit is dropped, not saved).
+  const togglePresentLock = () => {
+    if (!canEdit) return;
+    if (presentUnlocked) {
+      setPresentUnlocked(false);
+      setEditingChord(null); setAddingChord(null); setEditingLine(null); setActiveLine(null);
+      setContextMenu(null); setSectionPickerLine(null); setEditingSection(null);
+    } else {
+      setPresentUnlocked(true);
+    }
   };
 
   // Clean, named nav entry points — BOTH the on-screen Prev/Next and the eventual
@@ -3423,6 +3446,26 @@ export default function SongEditor({
                   <svg width="15" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="8" height="18" rx="1.5"/><rect x="13" y="3" width="8" height="18" rx="1.5"/></svg>
                 </button>
               ) : <span className="w-7 shrink-0" aria-hidden />}
+              {/* Stage Lock — ALWAYS visible (not tap-gated) so the leader can
+                  always see whether edits are live. Only for people who can edit
+                  this chart; for everyone else present is permanently read-only. */}
+              {canEdit && (
+                <button type="button" onClick={togglePresentLock}
+                  aria-pressed={presentUnlocked}
+                  aria-label={presentUnlocked ? "Editing is on — tap to lock the chart" : "Chart is locked — tap to unlock editing"}
+                  title={presentUnlocked ? "Editing on — tap to lock" : "Locked — tap to unlock editing"}
+                  data-present-lock={presentUnlocked ? "unlocked" : "locked"}
+                  className={"h-7 pl-1.5 pr-2 rounded-full flex items-center gap-1 shrink-0 text-xs font-medium border transition-colors " + (presentUnlocked
+                    ? "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-700"
+                    : "bg-slate-100/80 text-slate-500 border-transparent hover:bg-slate-200/70 dark:bg-slate-800/70 dark:text-slate-400 dark:hover:bg-slate-700/70")}>
+                  {presentUnlocked ? (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  )}
+                  {presentUnlocked ? "Editing" : "Locked"}
+                </button>
+              )}
             </div>
             {/* Read-only section flow-bar — navigation only. Reuses the shared
                 scrollToSection (sections carry a present-mode scroll-margin-top so
