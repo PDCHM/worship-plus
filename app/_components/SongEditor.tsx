@@ -3480,25 +3480,20 @@ export default function SongEditor({
             className="fixed inset-x-0 top-0 z-[2] flex flex-col gap-1 bg-white/85 dark:bg-slate-950/85 backdrop-blur-md border-b border-slate-200/70 dark:border-slate-800/70"
             style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.35rem)", paddingBottom: "0.3rem", paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.6rem)", paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.6rem)" }}>
             <div className="flex items-center gap-2 min-h-[1.75rem]">
-              {/* Exit is ALWAYS rendered — never tap-gated. Leaving fullscreen
-                  shouldn't require discovering the tap-to-reveal layer first,
-                  which is a bad place to strand someone mid-service. It only
-                  gets quieter when the other controls are hidden: chevron
-                  alone, muted, at exactly the w-7 the old spacer occupied, so
-                  the calm chart surface is undisturbed and the title's
-                  centring is unchanged. Safe-area insets come from this
-                  header's own padding, so it never sits under the notch. */}
+              {/* Back / exit: a 44px white circle with a purple chevron — the
+                  same look as the floating ⚙️ / ▶ / zoom circles — identical in
+                  portrait and landscape, phone and tablet. The header already
+                  pads by the safe-area insets (notch / rounded corners). In
+                  landscape there is no top inset, and iOS reserves the top
+                  screen edge for its pull-down gesture, which swallowed taps on
+                  the old 6px-from-the-top chevron — so when the top inset is 0
+                  the button drops ~10px clear of that edge. */}
               <button type="button" onClick={exitPresent}
                 aria-label="Exit performance mode"
                 title="Exit performance mode"
-                className={
-                  "flex items-center rounded-lg shrink-0 transition-colors " +
-                  (presentControls
-                    ? "gap-0.5 h-7 pl-1 pr-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60"
-                    : "justify-center w-7 h-7 text-slate-400/70 dark:text-slate-500/70 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-200/50 dark:hover:bg-slate-800/50")
-                }>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-                {presentControls && "Exit"}
+                style={{ marginTop: "max(0px, calc(10px - env(safe-area-inset-top, 0px)))" }}
+                className="w-11 h-11 shrink-0 rounded-full flex items-center justify-center bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-md shadow-slate-900/10 text-[#8574f0] dark:text-[#b3a3ff] hover:bg-[#f3f0ff] dark:hover:bg-slate-700 transition-colors">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
               </button>
               {/* Title + capo reminder. The chip only appears when a capo is set
                   (same `(song.capo ?? 0) > 0` test as the normal-view pill) and
