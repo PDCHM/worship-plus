@@ -91,7 +91,10 @@ function PianoDiagram({ voicing }: { voicing: PianoVoicing }) {
   const fill = (pc: number, black: boolean) =>
     bassPc === pc ? "fill-amber-400"
       : on.has(pc) ? "fill-[#b7a7ff]"
-        : black ? "fill-slate-700 dark:fill-slate-500" : "fill-white dark:fill-slate-200";
+        // Un-pressed black keys are a true near-black in BOTH themes (they used
+        // slate-700 / slate-500 — grey, and lavender-grey in dark mode since the
+        // muted-text token change — which read washed out).
+        : black ? "fill-[#111111]" : "fill-white dark:fill-slate-200";
 
   return (
     <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} aria-hidden>
