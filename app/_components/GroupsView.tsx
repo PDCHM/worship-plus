@@ -755,24 +755,26 @@ function TeamMembersPanel({ group, members, userId, viewerRole, suggestions, onA
           ) : (
           <div ref={listRef} className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden">
             {rows.map((m, idx) => (
-              // One layout for every row. Phone: [avatar + text] on line 1; the
-              // controls on their own full-width line below, starting under the
-              // name (52px = 40px avatar + 12px gap): role toggle / badge left,
-              // Invite beside it, remove × pinned far right — identical for
-              // Editor / Member / Leader / Joined / Pending. sm+: the controls
-              // sit beside the text, vertically centred.
+              // One layout for every row: [avatar + text] on line 1, the
+              // controls on their own line below starting under the name
+              // (46px = 34px avatar + 12px gap). sm+: controls beside the text.
+              // Mobile density: 10px row padding, 34px avatar, name → status 2px,
+              // → pills 8px. Remove × is pinned top-right beside the name (the
+              // name column keeps right padding so it never runs under it); on
+              // sm+ it sits inline after the controls as before. The Custom-order
+              // drag handle lives at the right end of the controls row.
               <div key={m.id} data-member-row data-member-id={m.id}
-                className={"flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-4 py-3 "+(idx<rows.length-1?"border-b border-slate-100 dark:border-slate-800 ":"")+(dragId===m.id?"relative z-10 bg-[#f6f3ff] dark:bg-[#211c33] shadow-lg":"")}>
+                className={"relative flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 px-4 py-2.5 sm:py-3 "+(idx<rows.length-1?"border-b border-slate-100 dark:border-slate-800 ":"")+(dragId===m.id?"z-10 bg-[#f6f3ff] dark:bg-[#211c33] shadow-lg":"")}>
                 <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="w-10 h-10 rounded-full bg-[#efe9fe] dark:bg-[#2a2440] flex items-center justify-center text-[#6350ef] dark:text-[#b3a3ff] text-sm font-semibold shrink-0">
+                  <div className="w-[34px] h-[34px] sm:w-10 sm:h-10 rounded-full bg-[#efe9fe] dark:bg-[#2a2440] flex items-center justify-center text-[#6350ef] dark:text-[#b3a3ff] text-xs sm:text-sm font-semibold shrink-0">
                     {initialsFrom(m.displayName, m.email) || <PersonGlyph />}
                   </div>
-                  <div className="flex-1 min-w-0">
+                  <div className={"flex-1 min-w-0 "+(m.userId !== userId && canManageMember(viewerRole, m.role) ? "pr-7 sm:pr-0" : "")}>
                     <div className="text-sm font-semibold text-slate-900 dark:text-slate-100 truncate">{m.displayName ?? "Unknown"}</div>
                     {m.email && <div className="text-xs text-slate-500 truncate">{m.email}</div>}
                     {/* Own line: instrument/category + status. Wraps inside
                         the text column instead of spilling under controls. */}
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-0.5 min-w-0">
                       {canEditInstrument(m) ? (
                         <button type="button" onClick={() => setInstrumentFor(m)} aria-label={`Change instrument for ${m.displayName ?? "member"}`}
                           className="text-xs text-slate-500 dark:text-slate-400 truncate max-w-full text-left underline decoration-dotted decoration-slate-300 dark:decoration-slate-600 underline-offset-[3px] hover:text-[#6350ef] dark:hover:text-[#b3a3ff]">
@@ -784,15 +786,6 @@ function TeamMembersPanel({ group, members, userId, viewerRole, suggestions, onA
                       </span>
                     </div>
                   </div>
-                  {canDrag && (
-                    <button type="button" aria-label={`Drag to reorder ${m.displayName ?? "member"}`} title="Drag to reorder"
-                      onPointerDown={(e) => startDrag(e, m.id)} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag}
-                      onContextMenu={(e) => e.preventDefault()}
-                      style={{ touchAction: "none" }}
-                      className={"w-8 h-10 -mr-2 shrink-0 rounded-lg flex items-center justify-center select-none text-slate-400 hover:text-[#6350ef] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors "+(dragId===m.id?"cursor-grabbing text-[#6350ef]":"cursor-grab")}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
-                    </button>
-                  )}
                 </div>
                 {/* Controls row. Members the viewer can manage get the role
                     picker, Invite (pending) and remove ×; everyone else shows
@@ -800,32 +793,46 @@ function TeamMembersPanel({ group, members, userId, viewerRole, suggestions, onA
                 {(() => {
                   const manageable = m.userId !== userId && canManageMember(viewerRole, m.role);
                   const options = assignableRoles(viewerRole);
-                  if (!manageable) {
-                    return (
-                      <span className={PILL+" self-start ml-[52px] sm:ml-0 sm:self-center "+(isManagerRole(m.role)?PILL_ACTIVE:"bg-white text-slate-500 border-slate-200 dark:bg-slate-900 dark:text-slate-400 dark:border-slate-700")}>{ROLE_LABEL[m.role]}</span>
-                    );
-                  }
                   return (
-                    <div className="flex flex-wrap items-center gap-1.5 min-w-0 pl-[52px] sm:pl-0 sm:flex-nowrap sm:shrink-0 sm:self-center">
-                      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Member role">
-                        {options.map((r) => (
-                          <button key={r} type="button" aria-pressed={m.role===r}
-                            onClick={() => { if (m.role !== r) { onSetMemberRole(m.id, r); showToast(`${m.displayName ?? "Member"} is now ${ROLE_LABEL[r]}`); } }}
-                            className={PILL+" "+(m.role===r?PILL_ACTIVE:PILL_IDLE)}>
-                            {ROLE_LABEL[r]}
+                    <>
+                    <div className="flex flex-wrap items-center gap-1.5 min-w-0 pl-[46px] sm:pl-0 sm:flex-nowrap sm:shrink-0 sm:self-center">
+                      {manageable ? (
+                        <>
+                        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Member role">
+                          {options.map((r) => (
+                            <button key={r} type="button" aria-pressed={m.role===r}
+                              onClick={() => { if (m.role !== r) { onSetMemberRole(m.id, r); showToast(`${m.displayName ?? "Member"} is now ${ROLE_LABEL[r]}`); } }}
+                              className={PILL+" "+(m.role===r?PILL_ACTIVE:PILL_IDLE)}>
+                              {ROLE_LABEL[r]}
+                            </button>
+                          ))}
+                        </div>
+                        {m.status==="pending" && (
+                          <button type="button" onClick={() => copyInvite(m.id, m.displayName??"")} className={PILL+" "+PILL_INVITE}>
+                            Invite
                           </button>
-                        ))}
-                      </div>
-                      {m.status==="pending" && (
-                        <button type="button" onClick={() => copyInvite(m.id, m.displayName??"")} className={PILL+" "+PILL_INVITE}>
-                          Invite
+                        )}
+                        </>
+                      ) : (
+                        <span className={PILL+" "+(isManagerRole(m.role)?PILL_ACTIVE:"bg-white text-slate-500 border-slate-200 dark:bg-slate-900 dark:text-slate-400 dark:border-slate-700")}>{ROLE_LABEL[m.role]}</span>
+                      )}
+                          {canDrag && (
+                        <button type="button" aria-label={`Drag to reorder ${m.displayName ?? "member"}`} title="Drag to reorder"
+                          onPointerDown={(e) => startDrag(e, m.id)} onPointerMove={moveDrag} onPointerUp={endDrag} onPointerCancel={endDrag}
+                          onContextMenu={(e) => e.preventDefault()}
+                          style={{ touchAction: "none" }}
+                          className={"ml-auto sm:ml-1 w-8 h-7 -mr-1.5 shrink-0 rounded-lg flex items-center justify-center select-none text-slate-400 hover:text-[#6350ef] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors "+(dragId===m.id?"cursor-grabbing text-[#6350ef]":"cursor-grab")}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>
                         </button>
                       )}
+                    </div>
+                    {manageable && (
                       <button type="button" aria-label={`Remove ${m.displayName ?? "member"}`} onClick={() => setRemoveMemberTarget({ id: m.id, name: m.displayName ?? "this member" })}
-                        className="ml-auto sm:ml-1 w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-slate-300 dark:text-slate-600 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors">
+                        className="absolute top-2 right-3 sm:static sm:-ml-1 w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-slate-300 dark:text-slate-600 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                       </button>
-                    </div>
+                    )}
+                    </>
                   );
                 })()}
               </div>
