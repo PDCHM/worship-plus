@@ -4332,21 +4332,22 @@ function Sidebar({
   );
 }
 
-// Collapsible section header: chevron + label + count, and a + button that's
-// always visible on mobile but reveals on hover on desktop (min 32px target).
+// Collapsible section header on a lavender band (inset, rounded): purple
+// chevron + bold uppercase label + count, and a filled purple + circle on the
+// right (same look as the floating-nav +).
 function NavSection({ label, count, collapsed, onToggle, onAdd, addLabel }: {
   label: string; count: number; collapsed: boolean; onToggle: () => void; onAdd: () => void; addLabel: string;
 }) {
   return (
-    <div className="group flex items-center gap-0.5 mt-3 first:mt-0">
+    <div className="flex items-center gap-1 mx-1 mt-3 mb-1 first:mt-0 pl-0.5 pr-1.5 py-1 rounded-[11px] bg-[#f2eefe] dark:bg-[#231d38]">
       <button type="button" onClick={onToggle} aria-expanded={!collapsed}
-        className="flex-1 min-w-0 flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
+        className="flex-1 min-w-0 flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] font-bold uppercase tracking-[0.07em] text-[#8574f0] dark:text-[#b3a3ff] hover:text-[#6350ef] dark:hover:text-[#d9d0ff] transition-colors">
         <svg className={"shrink-0 transition-transform duration-200 " + (collapsed ? "-rotate-90" : "")} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         <span className="truncate">{label} ({count})</span>
       </button>
       <button type="button" onClick={onAdd} aria-label={addLabel} title={addLabel}
-        className="w-8 h-8 shrink-0 rounded-md flex items-center justify-center text-slate-500 hover:text-[#6350ef] dark:hover:text-[#b3a3ff] hover:bg-slate-100 dark:hover:bg-slate-800 transition-all opacity-100 md:opacity-0 md:group-hover:opacity-100 focus-visible:opacity-100">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        className="w-[26px] h-[26px] shrink-0 rounded-full flex items-center justify-center bg-[#8574f0] text-white shadow-sm shadow-violet-500/30 hover:bg-[#735fee] transition-colors">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       </button>
     </div>
   );
@@ -4380,7 +4381,7 @@ function SidebarItem({ active, onClick, icon, children }: {
     <button type="button" onClick={onClick}
       className={`w-full text-left h-9 px-2.5 rounded-lg text-sm flex items-center gap-2.5 transition-colors ${
         active
-          ? "bg-[#efe9fe] dark:bg-[#2a2440]/70 text-[#6350ef] dark:text-[#d9d0ff] font-semibold ring-1 ring-inset ring-[#e0d6fb]/70 dark:ring-[#2f2852]"
+          ? "bg-[#efe9fe] dark:bg-[#2a2440]/70 text-[#6350ef] dark:text-[#d9d0ff] font-medium ring-1 ring-inset ring-[#e0d6fb]/70 dark:ring-[#2f2852]"
           : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/70"
       }`}>
       <span className={`shrink-0 ${active ? "text-[#735fee] dark:text-[#b3a3ff]" : "text-slate-500 dark:text-slate-500"}`}>
