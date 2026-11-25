@@ -3857,7 +3857,7 @@ export default function SongEditor({
                   aria-label={presentUnlocked ? "Editing is on — tap to lock the chart" : "Chart is locked — tap to unlock editing"}
                   title={presentUnlocked ? "Editing on — tap to lock" : "Locked — tap to unlock editing"}
                   data-present-lock={presentUnlocked ? "unlocked" : "locked"}
-                  className={"h-7 pl-1.5 pr-2 rounded-full flex items-center gap-1 shrink-0 text-xs font-medium border transition-colors " + (presentUnlocked
+                  className={"h-7 pl-1.5 pr-2 max-[341px]:px-1.5 rounded-full flex items-center gap-1 shrink-0 text-xs font-medium border transition-colors " + (presentUnlocked
                     ? "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-700"
                     : "bg-slate-100/80 text-slate-500 border-transparent hover:bg-slate-200/70 dark:bg-slate-800/70 dark:text-slate-400 dark:hover:bg-slate-700/70")}>
                   {presentUnlocked ? (
@@ -3865,7 +3865,8 @@ export default function SongEditor({
                   ) : (
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                   )}
-                  {presentUnlocked ? "Editing" : "Locked"}
+                  {/* ≤340px: icon only (the word frees room for the song title). */}
+                  <span className="max-[341px]:hidden">{presentUnlocked ? "Editing" : "Locked"}</span>
                 </button>
               )}
             </div>
