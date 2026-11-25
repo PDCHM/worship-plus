@@ -1549,6 +1549,27 @@ export default function SongEditor({
               )}
             </div>
   );
+  // ✍️ Markup toggle — the toolbar (edit + read view) and the presenter header
+  // (the toolbar is hidden while presenting). Same handler/icon in both places.
+  const renderMarkupButton = (btnSize: string) => (
+            <button type="button"
+              onClick={() => {
+                if (!online && !markupMode) { showToast("Markup needs a connection"); return; }
+                setMarkupMode((m) => !m);
+              }}
+              disabled={!online && !markupMode}
+              title={!online && !markupMode ? "Markup needs a connection" : markupMode ? "Exit markup mode" : "Markup — draw on the chart"}
+              aria-pressed={markupMode}
+              aria-label={markupMode ? "Exit markup mode" : "Enter markup mode"}
+              className={
+                "shrink-0 " + btnSize + " border flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed " +
+                (markupMode
+                  ? TOOLBAR_BTN_ACTIVE
+                  : "rounded-lg border-transparent bg-slate-100 enabled:hover:bg-slate-200 dark:bg-slate-800 dark:enabled:hover:bg-slate-700 text-slate-600 dark:text-slate-300")
+              }>
+              <HighlighterIcon />
+            </button>
+  );
   const renderMoreButton = (btnSize: string) => (
           <button type="button" onClick={() => setMoreOpen(true)} title="More" aria-label="More actions"
             className={"shrink-0 " + btnSize + " rounded-lg flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors"}>
@@ -1663,9 +1684,12 @@ export default function SongEditor({
     return () => document.removeEventListener("mousedown", close);
   }, [keyPickerOpen, capoPickerOpen, tempoPanelOpen]);
 
-  // Markup is a play-view-only mode; leaving read-only exits it.
+  // Markup works in edit, read and present views; switching between edit and
+  // read (or the stage Lock) exits it so a session never spans a mode change.
+  const prevReadOnlyRef = useRef(readOnly);
   useEffect(() => {
-    if (!readOnly) setMarkupMode(false);
+    if (prevReadOnlyRef.current !== readOnly) setMarkupMode(false);
+    prevReadOnlyRef.current = readOnly;
   }, [readOnly]);
 
   // Report markup mode up so the app shell can hide the bottom nav while drawing.
@@ -3780,6 +3804,7 @@ export default function SongEditor({
                   the toggles, or (phones, where the toggles wrap below) in the
                   top row before the Lock. */}
               <div className="flex items-center gap-1.5 shrink-0">
+                {renderMarkupButton("h-7 w-7")}
                 {renderRefsButton("h-7 w-7")}
                 {renderMoreButton("h-7 w-7")}
               </div>
@@ -4173,10 +4198,10 @@ export default function SongEditor({
         </div>
       </div>
 
-      {/* ONE row at every width ≥320px: back · columns · play | edit · (markup)
-          … Save. (🔗 + ⋯ live on the Key · Tempo · Capo line.) ≤340px tightens gaps only. */}
-      <div className={"mb-3 sm:mb-5 flex flex-nowrap items-center gap-[7px] max-[340px]:gap-[3px] print:hidden" + (presenting ? " hidden" : "")}>
-        <div className="flex shrink-0 items-center gap-[7px] max-[340px]:gap-[3px]">
+      {/* ONE row at every width ≥320px: back · columns · play | edit · markup
+          … Save. (🔗 + ⋯ live on the Key · Tempo · Capo line.) <400px tightens gaps only. */}
+      <div className={"mb-3 sm:mb-5 flex flex-nowrap items-center gap-[7px] max-[399px]:gap-[3px] print:hidden" + (presenting ? " hidden" : "")}>
+        <div className="flex shrink-0 items-center gap-[7px] max-[399px]:gap-[3px]">
           <button type="button" onClick={onBack} title="Back" aria-label="Back"
             className="w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
@@ -4193,7 +4218,7 @@ export default function SongEditor({
           </button>
         </div>
         <span aria-hidden="true" className="shrink-0 w-px h-5 bg-slate-200 dark:bg-slate-700" />
-        <div className="flex flex-1 min-w-0 items-center gap-[7px] max-[340px]:gap-[3px]">
+        <div className="flex flex-1 min-w-0 items-center gap-[7px] max-[399px]:gap-[3px]">
           {canGenerateChords && (
             <button type="button" onClick={canUseAiChords ? openGenerate : onRequireUpgrade}
               title="Generate chords with AI"
@@ -4214,25 +4239,8 @@ export default function SongEditor({
               <PencilLineIcon />
             </button>
           )}
-          {readOnly && (
-            <button type="button"
-              onClick={() => {
-                if (!online && !markupMode) { showToast("Markup needs a connection"); return; }
-                setMarkupMode((m) => !m);
-              }}
-              disabled={!online && !markupMode}
-              title={!online && !markupMode ? "Markup needs a connection" : markupMode ? "Exit markup mode" : "Markup — draw on the chart"}
-              aria-pressed={markupMode}
-              aria-label={markupMode ? "Exit markup mode" : "Enter markup mode"}
-              className={
-                "h-8 w-8 sm:h-9 sm:w-9 border flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed " +
-                (markupMode
-                  ? TOOLBAR_BTN_ACTIVE
-                  : "rounded-lg border-transparent bg-slate-100 enabled:hover:bg-slate-200 dark:bg-slate-800 dark:enabled:hover:bg-slate-700 text-slate-600 dark:text-slate-300")
-              }>
-              <HighlighterIcon />
-            </button>
-          )}
+          {/* Markup — edit view AND read view (and the presenter header). */}
+          {renderMarkupButton("h-8 w-8 sm:h-9 sm:w-9")}
           {!canEdit ? (
             // View-only member: no direct Save on someone else's shared song,
             // but they can still duplicate it into their own library.
@@ -4386,7 +4394,9 @@ export default function SongEditor({
           className={"relative " + (effColumnView ? "" : "space-y-8 min-w-fit")}
           style={sectionsContainerStyle}
         >
-          {readOnly && (
+          {/* Display layer in read-only views; in edit view it mounts only while
+              Markup is on (so the editor itself is unchanged when it's off). */}
+          {(readOnly || markupMode) && (
             <MarkupOverlay
               enabled={markupMode}
               onDone={() => setMarkupMode(false)}

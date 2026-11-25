@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { FEATURE_AI_CHORDS } from "@/lib/flags";
 
 /* HelpModal — a scannable icon legend, not a tutorial: one line per control.
    Every glyph below is COPIED from the component that actually renders it
@@ -72,9 +73,56 @@ const ICON = {
       <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
     </svg>
   ),
+  // The toolbar's ▶ Present button: a purple framed "screen" with a filled play.
   present: (
+    <span className="w-[26px] h-[20px] rounded-[6px] shadow-[inset_0_0_0_1.5px_#8574f0] dark:shadow-[inset_0_0_0_1.5px_#b3a3ff] text-[#8574f0] dark:text-[#b3a3ff] flex items-center justify-center">
+      <svg width="12" height="12" viewBox="0 0 24 24">
+        <path d="M7.5 4.8v14.4a1.1 1.1 0 0 0 1.68.94l11.2-7.2a1.1 1.1 0 0 0 0-1.88l-11.2-7.2A1.1 1.1 0 0 0 7.5 4.8z" fill="currentColor" />
+      </svg>
+    </span>
+  ),
+  // Edit / Read toggle (SongEditor PencilLineIcon).
+  pencil: (
     <svg width="16" height="16" {...S} strokeWidth={2.2}>
-      <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" />
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+      <path d="m15 5 3 3" />
+    </svg>
+  ),
+  // Generate Chords (sparkles).
+  sparkle: (
+    <svg width="15" height="15" {...S}>
+      <path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z" />
+    </svg>
+  ),
+  // Save split button: floppy + ▾.
+  save: (
+    <span className="flex items-center gap-0.5" aria-hidden>
+      <svg width="14" height="14" {...S} strokeWidth={2.2}>
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+        <polyline points="17 21 17 13 7 13 7 21" />
+        <polyline points="7 3 7 8 15 8" />
+      </svg>
+      <svg width="9" height="9" {...S} strokeWidth={2.6}>
+        <polyline points="6 9 12 15 18 9" />
+      </svg>
+    </span>
+  ),
+  // Chord diagrams (grid).
+  diagrams: (
+    <svg width="15" height="15" {...S} strokeLinejoin={undefined}>
+      <line x1="4" y1="5" x2="20" y2="5" />
+      <line x1="4" y1="12" x2="20" y2="12" />
+      <line x1="4" y1="19" x2="20" y2="19" />
+      <line x1="9" y1="3" x2="9" y2="21" />
+      <line x1="15" y1="3" x2="15" y2="21" />
+    </svg>
+  ),
+  // Stage Lock (closed padlock).
+  lock: (
+    <svg width="15" height="15" {...S} strokeWidth={2.2}>
+      <rect x="3" y="11" width="18" height="11" rx="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
     </svg>
   ),
   more: (
@@ -90,21 +138,16 @@ const ICON = {
       <polyline points="7 13 12 18 17 13" />
     </svg>
   ),
-  // The two real chevrons from the present-mode Prev/Next buttons, side by side.
+  // The two real chevrons from the present-mode Prev / Next buttons, side by side.
   prevNext: (
     <span className="flex items-center gap-0.5" aria-hidden>
-      <svg width="12" height="12" {...S} strokeWidth={2.5}>
-        <polyline points="15 18 9 12 15 6" />
+      <svg width="12" height="12" {...S} strokeWidth={2.4}>
+        <polyline points="18 15 12 9 6 15" />
       </svg>
-      <svg width="12" height="12" {...S} strokeWidth={2.5}>
-        <polyline points="9 18 15 12 9 6" />
+      <svg width="12" height="12" {...S} strokeWidth={2.4}>
+        <polyline points="6 9 12 15 18 9" />
       </svg>
     </span>
-  ),
-  play: (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
-      <polygon points="6 4 20 12 6 20 6 4" />
-    </svg>
   ),
   sound: (
     <svg width="16" height="16" {...S}>
@@ -136,7 +179,7 @@ const chip = (label: string) => (
   <span className="text-[10px] font-semibold tracking-tight text-slate-600 dark:text-slate-300">{label}</span>
 );
 
-type Row = { icon: ReactNode; text: string };
+type Row = { icon: ReactNode; text: string; hidden?: boolean };
 type Group = { title: string; rows: Row[] };
 
 const GROUPS: Group[] = [
@@ -146,31 +189,36 @@ const GROUPS: Group[] = [
       { icon: ICON.camera, text: "Import from a photo of a chord chart — Claude reads it in." },
       { icon: ICON.file, text: "Import from a file, including SongBook Pro .sbp backups." },
       { icon: ICON.star, text: "Favourite a song, so it shows under Favourites." },
-      { icon: ICON.sort, text: "Sort the list by title, artist, key or most recent." },
+      { icon: ICON.sort, text: "Sort the list A–Z, by artist, by key or by recently used." },
       { icon: ICON.filter, text: "Filter the list by key." },
     ],
   },
   {
     title: "In a song",
     rows: [
-      { icon: ICON.markup, text: "Markup — draw freehand on the chart. Tap again to leave." },
-      { icon: ICON.tempo, text: "Tempo — set BPM and time signature, and start the metronome." },
-      { icon: chip("Capo"), text: "Capo — shifts the shapes you play; the sounding key stays put." },
-      { icon: ICON.columns, text: "Column layout — cycle one, two or three columns." },
-      { icon: ICON.link, text: "References — links to recordings and resources for the song." },
-      { icon: ICON.present, text: "Fullscreen performance mode." },
-      { icon: ICON.more, text: "More actions — print, export, section styles and quick actions." },
+      { icon: ICON.pencil, text: "Edit / Read — switch between editing the chart and the clean read view." },
+      { icon: ICON.markup, text: "Markup — draw freehand on the chart, in edit, read or performance mode. Tap again to leave." },
+      { icon: ICON.sparkle, text: "Generate Chords — AI suggests chords for a lyrics-only song.", hidden: !FEATURE_AI_CHORDS },
+      { icon: ICON.save, text: "Save — tap to save; the ▾ opens Save as… for a copy." },
+      { icon: chip("Auto"), text: "Column layout — Auto | 1 | 2 (| 3 on larger screens). Auto fits the screen." },
+      { icon: ICON.present, text: "Present — fullscreen performance mode." },
+      { icon: ICON.tempo, text: "Tempo — the clock chip on the Key · Tempo · Capo line (shows the BPM when set): BPM, time signature and the metronome." },
+      { icon: chip("Capo"), text: "Capo — on the Key line; shifts the shapes you play, the sounding key stays put." },
+      { icon: ICON.link, text: "References — links to recordings and resources. At the end of the Key line (in the header while performing)." },
+      { icon: ICON.more, text: "More actions — print, export, section styles and quick actions. Next to References." },
+      { icon: ICON.diagrams, text: "Chord diagrams — show the fingering for every chord in the song." },
     ],
   },
   {
     title: "Performance mode",
     rows: [
+      { icon: chip("Scroll"), text: "Layout — Scroll (one continuous chart) or Fit (swipeable pages that fit the screen)." },
+      { icon: ICON.lock, text: "Stage Lock — the chart is locked on stage; tap to unlock editing." },
       { icon: ICON.autoScroll, text: "Auto-scroll — scroll the chart hands-free; tap to pause." },
       { icon: chip("A A"), text: "Text size — smaller or larger lyrics." },
       { icon: chip("V1"), text: "Section chips — jump straight to a verse, chorus or bridge." },
-      { icon: ICON.prevNext, text: "Previous / next song in the setlist." },
-      { icon: ICON.play, text: "Metronome pill — start and stop; it shows the current BPM." },
-      { icon: ICON.beatBar, text: "Beat bar — one block per beat, the downbeat in amber." },
+      { icon: ICON.prevNext, text: "Prev / Next — move a section (or a page in Fit); at the top or bottom of the chart they go to the previous / next song." },
+      { icon: ICON.beatBar, text: "Metronome — on stage it's the beat bar: one block per beat, the downbeat in amber. (The ▶ BPM pill is only in the normal song view.)" },
       { icon: ICON.sound, text: "Sound — the metronome clicks, accenting the downbeat." },
       { icon: ICON.silent, text: "Silent — the beat bar blinks and nothing is heard." },
     ],
@@ -224,7 +272,7 @@ export default function HelpModal({ onClose }: { onClose: () => void }) {
                 {group.title}
               </h2>
               <ul className="space-y-1">
-                {group.rows.map((row, i) => (
+                {group.rows.filter((row) => !row.hidden).map((row, i) => (
                   <li key={i} className="flex items-center gap-3">
                     <span
                       aria-hidden
