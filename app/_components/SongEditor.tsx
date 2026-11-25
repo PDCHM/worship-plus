@@ -4529,34 +4529,16 @@ export default function SongEditor({
                     const visibleChords = line.chords.filter(
                       (ch) => ch.chord.trim() !== "" || editingChord === ch.id,
                     );
-                    // A line needs chord room when it has any chord (or one is being
-                    // added to it). Two things then key off this, per LINE:
-                    //  1. chord slot height above the words — full (room for the
-                    //     chord, no overlap) vs collapsed to 0 (no empty reserved row).
-                    //  2. the gap ABOVE this line — the real driver of vertical space.
-                    //     It was a uniform space-y on the container, so chord-less
-                    //     lines still showed a full gap even with the slot collapsed.
-                    //     Making it chord-aware is what actually tightens them: a
-                    //     chord-less line tucks right under the previous line; a chord
-                    //     line keeps the normal gap (its chord room comes from the slot).
-                    const lineHasChordRoom =
-                      visibleChords.length > 0 || addingChord?.lineId === line.id;
+                    // UNIFORM rhythm: whenever chords are shown, EVERY line reserves
+                    // the same chord row above its words — filled or empty — with
+                    // the same gap and the same text leading. All lines (and every
+                    // wrapped row) are the same height, so lines sit evenly and
+                    // columns stay in step row-to-row. Kept compact: a small fixed
+                    // gap, and the chord row is just the chord's own height.
+                    const lineHasChordRoom = showChords;
                     const lineChordSlot = lineHasChordRoom ? chordSlotHeight : "0px";
-                    const lineTopGap =
-                      lIdx === 0
-                        ? "0px"
-                        : lineHasChordRoom
-                          ? effColumnView
-                            ? "0.3rem"
-                            : "0.4rem"
-                          : "0px";
-                    // A chord-less line carries no chord row, so it should NOT get
-                    // the loose reading line-height either — that leaves half-leading
-                    // above the text. Tighten the line-height for chord-less lines so
-                    // they tuck right under the previous line; chord lines keep the
-                    // reader's chosen spacing. Applied to BOTH the word row and the
-                    // word span (whichever's line-height wins is now tight).
-                    const lineTextLeading = lineHasChordRoom ? lineHeight : 1.1;
+                    const lineTopGap = lIdx === 0 ? "0px" : "0.2rem";
+                    const lineTextLeading = lineHeight;
                     // Each unit: a draggable slot index, the word text below, and
                     // the chords sitting above it.
                     type WordUnit = { key: string; dragIndex: number; text: string; chords: Chord[]; tappable: boolean; gapAfter: boolean };
@@ -4875,7 +4857,7 @@ export default function SongEditor({
                                           ? ""
                                           : "cursor-pointer hover:bg-[#f3f0ff]/70 dark:hover:bg-[#2a2440]/40")
                                       }
-                                      style={{ ...(u.tappable ? {} : { minWidth: "1ch" }), ...(lineHasChordRoom ? {} : { lineHeight: lineTextLeading }) }}
+                                      style={{ ...(u.tappable ? {} : { minWidth: "1ch" }), lineHeight: lineTextLeading }}
                                     >
                                       {u.text}
                                     </span>
