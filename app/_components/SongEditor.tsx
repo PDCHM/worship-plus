@@ -418,71 +418,58 @@ function useMediaQuery(query: string): boolean {
   );
 }
 
-function ViewToggle({
+/** Toolbar columns control: ONE button that cycles Auto → 1 → 2 (→ 3 on wide
+ *  screens) → Auto, showing the CURRENT mode as its icon: Auto = an "A" in a
+ *  frame, 1 = one column, 2 = two columns, 3 = three. Same size/style as the
+ *  toolbar's other buttons. */
+function ColumnCycleButton({
   pref,
   effective,
   onChange,
   allowThree = true,
 }: {
-  pref: ColumnPref;            // the reader's choice for this orientation
-  effective: ViewMode;         // what's on screen (Auto's resolved count)
+  pref: ColumnPref;
+  effective: ViewMode;
   onChange: (m: ViewMode | "auto") => void;
-  // false on narrow screens: 3 columns don't fit, so the option is hidden.
   allowThree?: boolean;
 }) {
-  const btn = (mode: ViewMode | "auto", label: string, icon: React.ReactNode) => {
-    const active = mode === "auto" ? pref === "auto" : pref !== "auto" && viewModeFor(pref) === mode;
-    return (
-      <button
-        key={mode}
-        type="button"
-        onClick={() => onChange(mode)}
-        title={label}
-        aria-label={label}
-        aria-pressed={active}
-        className={`${mode === "auto" ? "px-2 sm:px-2.5 text-[11px] font-semibold" : "w-8 sm:w-10"} h-8 sm:h-9 flex items-center justify-center transition-colors ${
-          active
-            ? SELECTED
-            : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-        }`}
-      >
-        {icon}
-      </button>
-    );
-  };
+  const order: ColumnPref[] = allowThree ? ["auto", 1, 2, 3] : ["auto", 1, 2];
+  const cur: ColumnPref = !allowThree && pref === 3 ? 2 : pref;
+  const next = order[(order.indexOf(cur) + 1) % order.length] ?? "auto";
   const autoCount = effective === "split-3" ? 3 : effective === "split-2" ? 2 : 1;
+  const name = (v: ColumnPref) => (v === "auto" ? "Auto" : v === 1 ? "1 column" : `${v} columns`);
+  const label = `Columns: ${cur === "auto" ? `Auto (now ${autoCount})` : name(cur)} — tap for ${name(next)}`;
   return (
-    <div
-      className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 seg-group"
-      role="group"
-      aria-label="View mode"
+    <button
+      type="button"
+      onClick={() => onChange(next === "auto" ? "auto" : viewModeFor(next))}
+      title={label}
+      aria-label={label}
+      data-column-cycle={String(cur)}
+      className="w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center transition-colors bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
     >
-      {btn("auto", `Auto columns (fits the screen — now ${autoCount})`, "Auto")}
-      {btn(
-        "standard",
-        "Standard view (1 column)",
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      {cur === "auto" ? (
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="3" />
+          <path d="M8.5 16.5 12 7.5l3.5 9M9.8 13.4h4.4" />
+        </svg>
+      ) : cur === 1 ? (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <rect x="5" y="3" width="14" height="18" rx="1.5" />
-        </svg>,
-      )}
-      {btn(
-        "split-2",
-        "Split 2 columns",
-        <svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        </svg>
+      ) : cur === 2 ? (
+        <svg width="18" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <rect x="3" y="3" width="8" height="18" rx="1.5" />
           <rect x="13" y="3" width="8" height="18" rx="1.5" />
-        </svg>,
-      )}
-      {allowThree && btn(
-        "split-3",
-        "Split 3 columns",
-        <svg width="18" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        </svg>
+      ) : (
+        <svg width="20" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <rect x="2" y="3" width="5.5" height="18" rx="1.5" />
           <rect x="9.25" y="3" width="5.5" height="18" rx="1.5" />
           <rect x="16.5" y="3" width="5.5" height="18" rx="1.5" />
-        </svg>,
+        </svg>
       )}
-    </div>
+    </button>
   );
 }
 
@@ -4105,13 +4092,15 @@ export default function SongEditor({
         </div>
       </div>
 
-      <div className={"mb-3 sm:mb-5 flex items-center justify-between gap-x-1.5 gap-y-1.5 sm:gap-3 flex-wrap print:hidden" + (presenting ? " hidden" : "")}>
-        <div className="flex items-center gap-1 sm:gap-2">
+      {/* ONE row at every width ≥320px: back · columns · play | edit · (markup)
+          · link · more … Save. ≤360px tightens gaps only. */}
+      <div className={"mb-3 sm:mb-5 flex flex-nowrap items-center gap-1 sm:gap-2 max-[360px]:gap-0.5 print:hidden" + (presenting ? " hidden" : "")}>
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2 max-[360px]:gap-0.5">
           <button type="button" onClick={onBack} title="Back" aria-label="Back"
             className="w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
           </button>
-          <ViewToggle pref={columnPref} effective={viewMode} onChange={switchView} allowThree={!narrowScreen} />
+          <ColumnCycleButton pref={columnPref} effective={viewMode} onChange={switchView} allowThree={!narrowScreen} />
           {/* Present: an outlined purple "screen" with a filled play triangle.
               The 1.6px outline is an inset ring (box-shadow) — Chromium rounds
               fractional border widths down to whole pixels. The visible shape is
@@ -4122,9 +4111,8 @@ export default function SongEditor({
             <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 4.8v14.4a1.1 1.1 0 0 0 1.68.94l11.2-7.2a1.1 1.1 0 0 0 0-1.88l-11.2-7.2A1.1 1.1 0 0 0 7.5 4.8z" fill="currentColor"/></svg>
           </button>
         </div>
-        {/* Phones: a deliberate second row — actions left-aligned with Back,
-            Save pinned to the right edge. sm+: one row, right-aligned. */}
-        <div className="flex items-center gap-1 sm:gap-2 max-sm:w-full sm:flex-wrap sm:justify-end">
+        <span aria-hidden="true" className="shrink-0 w-px h-5 mx-0.5 bg-slate-200 dark:bg-slate-700" />
+        <div className="flex flex-1 min-w-0 items-center gap-1 sm:gap-2 max-[360px]:gap-0.5">
           {canGenerateChords && (
             <button type="button" onClick={canUseAiChords ? openGenerate : onRequireUpgrade}
               title="Generate chords with AI"
@@ -4207,13 +4195,13 @@ export default function SongEditor({
             <button
               type="button"
               onClick={() => { setCopyTitle((song.title.trim() || "Untitled Song") + " (copy)"); setSaveAsCopyOpen(true); }}
-              className={"h-8 sm:h-9 px-3 max-sm:ml-auto rounded-lg text-sm font-medium flex items-center gap-1.5 " + SAVE_BTN}
+              className={"h-8 sm:h-9 px-3 ml-auto shrink-0 rounded-lg text-sm font-medium flex items-center gap-1.5 " + SAVE_BTN}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
               <span className="hidden sm:inline">Save copy</span>
             </button>
           ) : !readOnly ? (
-          <div ref={saveMenuRef} className="relative flex max-sm:ml-auto">
+          <div ref={saveMenuRef} className="relative flex ml-auto shrink-0">
             <button
               type="button"
               onClick={onSave}
