@@ -43,6 +43,10 @@ type Props = {
   columnsOrientation?: "portrait" | "landscape";
   allowThreeColumns?: boolean;
   onColumnsChange?: (c: "auto" | 1 | 2 | 3) => void;
+  // Paged Fit: Auto-fit sizes text to fill each page (default on); off = the
+  // reader's own font size. Shown only in Fit layout.
+  fitAuto?: boolean;
+  onFitAutoChange?: (on: boolean) => void;
   onScrollSpeedChange: (speed: number) => void;
   onToggleAutoScroll: () => void;
   onClose: () => void;
@@ -55,6 +59,7 @@ export default function QuickActionsPanel({
   readOnly = false, playLayout = "scroll", onPlayLayoutChange,
   onTranspose, onCapoChange, onSettingsChange, onZoomChange,
   columns, columnsShowing, columnsOrientation, allowThreeColumns = true, onColumnsChange,
+  fitAuto, onFitAutoChange,
   onScrollSpeedChange, onToggleAutoScroll, onClose,
 }: Props) {
   const keyIndex = KEYS.indexOf(song.key);
@@ -188,12 +193,21 @@ export default function QuickActionsPanel({
                 Scroll
               </button>
               <button type="button" onClick={() => onPlayLayoutChange("fit")} aria-pressed={playLayout === "fit"}
-                title="Fit to screen (columns)"
+                title="Fit — screen-sized pages (swipe to turn)"
                 className={"h-7 px-2.5 text-xs font-semibold flex items-center gap-1 transition-colors " + (playLayout === "fit" ? SELECTED : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800")}>
                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="8" height="16" rx="1"/><rect x="13" y="4" width="8" height="16" rx="1"/></svg>
                 Fit
               </button>
             </div>
+          </QARow>
+        )}
+        {fitMode && fitAuto !== undefined && onFitAutoChange && (
+          <QARow label="Auto-fit">
+            <button type="button" role="switch" aria-checked={fitAuto} aria-label="Auto-fit text to each page"
+              onClick={() => onFitAutoChange(!fitAuto)}
+              className={"relative w-10 h-6 rounded-full transition-colors " + (fitAuto ? SWITCH_ON : "bg-slate-200 dark:bg-slate-600")}>
+              <span className={"absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform " + (fitAuto ? "translate-x-4" : "translate-x-0")} />
+            </button>
           </QARow>
         )}
         {fsSupported && (

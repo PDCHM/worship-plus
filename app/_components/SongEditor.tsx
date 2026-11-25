@@ -30,6 +30,7 @@ import {
   PREFER_FLAT_KEYS,
   SECTION_PRESETS,
   chunkSectionsForColumns,
+  type ColumnBlock,
   collectStyleKeys,
   cloneSection,
   defaultStyleForKey,
@@ -67,6 +68,27 @@ import {
 } from "@/lib/song";
 
 type ViewMode = "standard" | "split-2" | "split-3";
+
+// Paged Fit mode. A page block is a ColumnBlock (a section, or a line-boundary
+// slice of one) plus: `cont` = a continuation of a section begun on an earlier
+// column/page (gets a "LABEL (cont.)" header); `breakBefore` = starts a new
+// column within the page (forced column break, so the browser's flow matches
+// the measured packing exactly).
+type FitPageBlock = ColumnBlock & { cont: boolean; breakBefore: boolean };
+type FitLayout = {
+  key: string;            // inputs this layout was measured for (see fitKey)
+  pages: FitPageBlock[][];
+  font: number;           // lyric font px used for every page
+  cols: number;           // columns per page
+  height: number;         // card (viewport) height
+  pageH: number;          // usable column height
+  startPage: number;      // page to show first (keeps the reader's place on re-pagination)
+};
+// Auto-fit never shrinks below this; past it, Fit adds pages instead.
+const MIN_PAGE_FONT = 14;
+// Room reserved at the bottom of the card for the "Page x / n" indicator.
+const FIT_INDICATOR_H = 26;
+const FIT_AUTO_KEY = "wp-fit-auto-v1";
 type Complexity = "simple" | "standard" | "complex";
 
 // Show-once new-user coachmarks. Each tip id is tracked in localStorage so it
@@ -1245,11 +1267,26 @@ export default function SongEditor({
   // unchanged) vs "fit" (fit-to-screen multi-column). Only relevant in read-only
   // performance mode; persisted per user in localStorage.
   const [playLayout, setPlayLayout] = useState<"scroll" | "fit">("scroll");
-  // Fit-mode measured layout: responsive column count, the binary-searched font
-  // size (px) that makes the song fit the viewport, and the scrollable height.
-  const [fitColumns, setFitColumns] = useState(1);
-  const [fitFont, setFitFont] = useState(LYRIC_FONT_SIZE_PX.large);
-  const [fitHeight, setFitHeight] = useState<number | null>(null);
+  // Paged Fit mode: the measured page layout (one object, set once per
+  // measurement), the page being shown ({layout key, page} so a re-pagination
+  // falls back to the layout's anchored startPage), and the Auto-fit toggle
+  // (default ON; persisted per device).
+  const [fitLayout, setFitLayout] = useState<FitLayout | null>(null);
+  const [fitPageState, setFitPageState] = useState<{ key: string; page: number } | null>(null);
+  const [fitAuto, setFitAutoState] = useState<boolean>(() => {
+    try { return localStorage.getItem(FIT_AUTO_KEY) !== "false"; } catch { return true; }
+  });
+  const setFitAuto = (on: boolean) => {
+    setFitAutoState(on);
+    try { localStorage.setItem(FIT_AUTO_KEY, String(on)); } catch { /* not persisted */ }
+  };
+  // Extra packing safety margin, bumped if a rendered page ever overflows —
+  // scoped to the layout inputs it was bumped for (rotate / font / columns /
+  // edits start again from 0).
+  const [fitShrinkState, setFitShrinkState] = useState<{ base: string; n: number }>({ base: "", n: 0 });
+  // Where the reader is (section index + line), so re-pagination (rotate, font,
+  // columns, edits) reopens on the page holding that line.
+  const fitAnchorRef = useRef<{ s: number; line: number } | null>(null);
   // Bumped on resize / orientationchange to re-run the fit measurement.
   const [resizeTick, setResizeTick] = useState(0);
   const fitWrapRef = useRef<HTMLDivElement>(null);
@@ -1372,12 +1409,9 @@ export default function SongEditor({
     if (activeTip === "performance" && (quickActionsOpen || autoScrolling)) dismissTip("performance");
   }, [activeTip, quickActionsOpen, autoScrolling]);
 
-  // Fit-to-screen play view: opt-in, read-only only. Reuses the column-flow used
-  // by split view / print, but auto-sizes the font and scrolls only when needed.
+  // Fit (paged) play view: opt-in, read-only only (so it works while the
+  // presenter is Locked). See "Paged Fit mode" below.
   const fitMode = readOnly && playLayout === "fit";
-  // Lowest font size the fit pass will shrink to before it gives up and lets the
-  // columns scroll. ~12px keeps lyrics legible at arm's length on a stage.
-  const MIN_FIT_FONT = 12;
   const columnView = viewMode !== "standard";
   // Whichever path drives a multi-column flow: the editor's split view OR the
   // performance fit-to-screen mode. Section break-inside/spacing keys off this.
@@ -1440,8 +1474,12 @@ export default function SongEditor({
   const lyricBase = LYRIC_FONT_SIZE_PX[prefs.lyricFontSize];
   const zoomMin = FONT_MIN_PX - lyricBase;
   const zoomMax = FONT_MAX_PX - lyricBase;
-  const adjustZoom = (dir: 1 | -1) =>
+  // In paged Fit with Auto-fit on, a manual size change (A−/A+) switches
+  // Auto-fit off so the chosen size is what's shown (otherwise it'd do nothing).
+  const adjustZoom = (dir: 1 | -1) => {
+    if (fitMode && fitAuto) setFitAuto(false);
     setZoomOffset((z) => Math.min(zoomMax, Math.max(zoomMin, z + dir * FONT_ZOOM_STEP)));
+  };
 
   // Persist this song's column layout + font zoom whenever they change (and on
   // mount, re-saving the loaded values is harmless). Keyed by song id, so opening
@@ -1672,138 +1710,204 @@ export default function SongEditor({
     };
   }, [fitMode]);
 
-  // The fit-to-screen pass. Runs synchronously before paint (no flicker) and
-  // fits BOTH dimensions — a chord chart must never scroll horizontally:
-  //   1. Reserve the viewport height below the song so any overflow scrolls
-  //      inside the card, not the whole page.
-  //   2. For each candidate column count, binary-search the largest font
-  //      (≤ the user's preferred size, ≥ the legibility floor) at which the
-  //      whole song fits the available HEIGHT *and* no line is wider than its
-  //      column (no horizontal overflow). The binding constraint is the widest
-  //      line at that column count.
-  //   3. Pick the arrangement with the largest readable font. Column count is
-  //      therefore adaptive: if more columns would force the font below the
-  //      floor to fit width, fewer/wider columns win; ties go to more columns so
-  //      wide screens use their space.
-  //   4. If nothing fits even at the floor, fall back to 1 column at the floor
-  //      and let the wrapper scroll VERTICALLY (overflow-x stays hidden).
-  // Manual zoom overrides auto-fit: honor the chosen size, keep as many columns
-  // as fit the width, and let it scroll vertically.
+  // ── Paged Fit mode ──────────────────────────────────────────────────────────
+  // Fit splits the song into screen-sized PAGES (swipe / Prev·Next / chips).
+  // Two-phase, all before paint (no flicker):
+  //   1. MEASURE — when any input changes (see fitKey) the chart renders once,
+  //      invisibly, as whole sections in ONE column at the real column width.
+  //      The layout effect reads each section's header height and each line's
+  //      height at a candidate font.
+  //   2. PACK — greedily fill columns of the page height, N columns per page.
+  //      A section that doesn't fit breaks only at a LINE boundary; its
+  //      continuation carries a "LABEL (cont.)" header. A section starts in a
+  //      new column if its header + first line don't fit.
+  // Auto-fit ON: the fewest pages achievable at the MIN_PAGE_FONT floor, then
+  // the largest font (≤ FONT_MAX_PX) that keeps that page count — text fills
+  // the pages and never shrinks below the floor (more pages instead).
+  // Auto-fit OFF: the reader's own size (A−/A+), paginated as-is.
+  // Columns follow the column setting (Auto = the width-based count).
+  const fitCols = Math.max(1, columnPref === "auto" ? autoCols : Math.min(columnPref, maxColsForScreen));
+  const fitContentKey = useMemo(() => JSON.stringify(song.sections), [song.sections]);
+  const fitBaseKey = fitMode
+    ? [fitCols, fitAuto ? "auto" : `px${baseFontSize}`, lineHeight, lyricFontFamily, showChords ? 1 : 0, resizeTick, presenting ? 1 : 0, fitContentKey].join("|")
+    : "";
+  const fitShrink = fitShrinkState.base === fitBaseKey ? fitShrinkState.n : 0;
+  const fitKey = fitMode ? `${fitShrink}|${fitBaseKey}` : "";
+  const fitMeasuring = fitMode && fitLayout?.key !== fitKey;
+  const fitPaged = fitMode && !fitMeasuring && !!fitLayout;
+  const fitPageCount = fitPaged ? fitLayout!.pages.length : 1;
+  const fitPage = fitPaged
+    ? Math.min(fitPageCount - 1, Math.max(0, fitPageState?.key === fitLayout!.key ? fitPageState.page : fitLayout!.startPage))
+    : 0;
+  const fitFont = fitLayout?.font ?? LYRIC_FONT_SIZE_PX.large;
+  const fitColumns = fitLayout?.cols ?? 1;
+  const fitHeight = fitMode ? (fitLayout?.height ?? null) : null;
+
   useLayoutEffect(() => {
-    if (!fitMode) return;
+    if (!fitMeasuring) return;
     const wrap = fitWrapRef.current;
     const inner = sectionsRef.current;
     if (!wrap || !inner) return;
 
-    // Reserve the height so overflow scrolls inside the card, not the page.
     const top = wrap.getBoundingClientRect().top;
     const avail = Math.max(220, Math.round(window.innerHeight - top - 16));
-    wrap.style.height = `${avail}px`; // apply now so clientHeight is correct below
-    setFitHeight(avail);
-    const wrapH = wrap.clientHeight;
+    wrap.style.height = `${avail}px`;
+    const ws = getComputedStyle(wrap);
+    const padY = parseFloat(ws.paddingTop) + parseFloat(ws.paddingBottom);
+    // A small safety margin (grown by fitShrink if a page ever overflows).
+    const pageH = Math.max(120, Math.floor((avail - padY - FIT_INDICATOR_H) * (0.97 - 0.03 * fitShrink)));
+    const n = fitCols;
+    const gap = n === 3 ? 16 : 24;
+    const colW = Math.max(120, Math.floor((inner.clientWidth - gap * (n - 1)) / n));
+    inner.style.width = `${colW}px`;
 
-    const setCols = (n: number) => { inner.style.columnCount = String(n); };
-    const setFont = (px: number) => { inner.style.setProperty("--fit-font", `${px}px`); };
-    // Per-line width check — NOT the multicol container's scrollWidth. In a
-    // multi-column flow a line that's wider than its column bleeds sideways into
-    // the *adjacent* column's space, which does not grow the container's
-    // scrollWidth, so a container-level check misses it entirely. Each line's
-    // content lives in a [data-fit-line] box that's flex-shrunk to the column
-    // width, so its own scrollWidth > clientWidth is the true overflow signal.
-    const lineEls = Array.from(inner.querySelectorAll<HTMLElement>("[data-fit-line]"));
-    const widthFits = () => {
-      for (const el of lineEls) {
-        if (el.scrollWidth > el.clientWidth + 1) return false;
+    type Unit = { s: number; header: number; lines: number[]; gap: number };
+    const idIndex = new Map(song.sections.map((sec, i) => [sec.id, i]));
+    const measure = (px: number): Unit[] => {
+      inner.style.setProperty("--fit-font", `${px}px`);
+      const units: Unit[] = [];
+      for (const secEl of Array.from(inner.querySelectorAll<HTMLElement>("section[data-section-id]"))) {
+        const si = idIndex.get(secEl.dataset.sectionId ?? "");
+        if (si == null) continue;
+        const sr = secEl.getBoundingClientRect();
+        const lineEls = Array.from(secEl.querySelectorAll<HTMLElement>("[data-line-id]"));
+        const tops = lineEls.map((el) => el.getBoundingClientRect().top);
+        const header = lineEls.length ? tops[0] - sr.top : sr.height;
+        const lines = tops.map((t, i) => (i < tops.length - 1 ? tops[i + 1] : sr.bottom) - t);
+        units.push({ s: si, header, lines, gap: parseFloat(getComputedStyle(secEl).marginBottom) || 0 });
       }
-      return true;
+      return units;
     };
-    const heightFits = () => inner.scrollHeight <= wrapH + 1;
-    const bothFit = () => widthFits() && heightFits();
+    const pack = (units: Unit[]): FitPageBlock[][] => {
+      const columns: FitPageBlock[][] = [[]];
+      let used = 0;
+      const newCol = () => { columns.push([]); used = 0; };
+      for (const u of units) {
+        const sec = song.sections[u.s];
+        if (used > 0 && used + u.header + (u.lines[0] ?? 0) > pageH) newCol();
+        let start = 0;
+        let cont = false;
+        used += u.header;
+        const flush = (end: number, last: boolean) => {
+          columns[columns.length - 1].push({
+            key: `${sec.id}@${start}`, section: sec, sectionIndex: u.s,
+            lines: sec.lines.slice(start, end), lineStart: start,
+            first: start === 0, last, cont, breakBefore: false,
+          });
+        };
+        for (let i = 0; i < u.lines.length; i++) {
+          // Break only BETWEEN lines (never mid-line); a lone over-tall line stays put.
+          if (i > start && used + u.lines[i] > pageH) {
+            flush(i, false);
+            newCol();
+            start = i;
+            cont = true;
+            used += u.header;
+          }
+          used += u.lines[i];
+        }
+        flush(u.lines.length, true);
+        used += u.gap;
+      }
+      return columns.filter((c) => c.length > 0);
+    };
+    const pagesOf = (columns: FitPageBlock[][]) => {
+      const pages: FitPageBlock[][] = [];
+      for (let c = 0; c < columns.length; c += n) {
+        pages.push(columns.slice(c, c + n).flatMap((col, ci) => col.map((blk, bi) => ({ ...blk, breakBefore: ci > 0 && bi === 0 }))));
+      }
+      return pages.length ? pages : [[]];
+    };
 
-    // Don't try more columns than the width can sensibly carry — measured as a
-    // minimum readable COLUMN width, not as desktop device-class breakpoints.
-    // The old 640/1024 gates were laptop-shaped: an Android tablet (roughly
-    // 600–800 CSS px in portrait) was pinned to 1–2 columns however short the
-    // song's lines were, while any laptop cleared 1024 and always got the full 3.
-    // That alone made columns look like a desktop-only feature. Past this floor
-    // the per-line width test below is the real judge, so a column is only ever
-    // used when the chart genuinely fits it.
-    const MIN_COL_PX = 260;
-    const w = wrap.clientWidth;
-    const maxCols = Math.max(1, Math.min(3, Math.floor(w / MIN_COL_PX)));
-
-    const userPref = Math.max(MIN_FIT_FONT, LYRIC_FONT_SIZE_PX[prefs.lyricFontSize]);
-    // Largest font (<= the reader's preference, >= the floor) at which the whole
-    // song fits BOTH dimensions at column count n. Returns null when even the
-    // floor doesn't fit.
-    const bestFontAt = (n: number): number | null => {
-      setCols(n);
-      setFont(userPref);
-      if (bothFit()) return userPref;
-      setFont(MIN_FIT_FONT);
-      if (!bothFit()) return null;
-      let lo = MIN_FIT_FONT, hi = userPref, b = MIN_FIT_FONT;
-      for (let i = 0; i < 8; i++) {
+    let font = baseFontSize;
+    if (fitAuto) {
+      const pageCount = (px: number) => Math.ceil(pack(measure(px)).length / n);
+      const target = pageCount(MIN_PAGE_FONT);
+      let lo = MIN_PAGE_FONT;
+      let hi = Math.max(MIN_PAGE_FONT, FONT_MAX_PX);
+      if (pageCount(hi) <= target) lo = hi;
+      else for (let i = 0; i < 9; i++) {
         const mid = (lo + hi) / 2;
-        setFont(mid);
-        if (bothFit()) { b = mid; lo = mid; } else { hi = mid; }
+        if (pageCount(mid) <= target) lo = mid; else hi = mid;
       }
-      return b;
-    };
-
-    if (columnsPinned) {
-      // The reader used the 1/2/3 switcher: that count is the answer, full stop.
-      // Fit mode's job here is only to size the TEXT for it. Deliberately NOT
-      // clamped to maxCols — an explicit ask is never silently downgraded; if the
-      // chart can't be shrunk into that many columns it renders at the legibility
-      // floor and scrolls, which is visible and recoverable (tap 1 or 2).
-      const cols = numCols;
-      const f = zoomOffset !== 0
-        ? Math.max(MIN_FIT_FONT, baseFontSize)   // manual zoom outranks auto-size
-        : bestFontAt(cols) ?? MIN_FIT_FONT;
-      setCols(cols);
-      setFont(f);
-      setFitColumns(cols);
-      setFitFont(f);
-      return;
+      font = Math.max(MIN_PAGE_FONT, Math.floor(lo * 2) / 2);
     }
+    const pages = pagesOf(pack(measure(font)));
+    inner.style.width = "";
+    inner.style.removeProperty("--fit-font");
 
-    if (zoomOffset !== 0) {
-      // User has taken manual control of the size — honor it. Keep the most
-      // columns whose width the zoomed font fits (so it never spills sideways);
-      // vertical overflow scrolls.
-      const f = Math.max(MIN_FIT_FONT, baseFontSize);
-      let cols = 1;
-      for (let n = maxCols; n >= 1; n--) {
-        setCols(n); setFont(f);
-        if (widthFits()) { cols = n; break; }
-      }
-      setCols(cols); setFont(f);
-      setFitColumns(cols);
-      setFitFont(f);
-      return;
+    // Reopen on the page holding the reader's current line.
+    const anchor = fitAnchorRef.current;
+    let startPage = 0;
+    if (anchor) {
+      const hit = pages.findIndex((pg) => pg.some((blk) => blk.sectionIndex === anchor.s && anchor.line >= blk.lineStart && anchor.line < blk.lineStart + Math.max(1, blk.lines.length)));
+      if (hit >= 0) startPage = hit;
     }
-
-    let chosen = { cols: 1, font: MIN_FIT_FONT, fits: false };
-    for (let n = 1; n <= maxCols; n++) {
-      const best = bestFontAt(n);
-      // Maximize readable font; tie → more columns (better use of wide screens).
-      if (best != null && (best > chosen.font + 0.01 || (Math.abs(best - chosen.font) <= 0.01 && n > chosen.cols))) {
-        chosen = { cols: n, font: best, fits: true };
-      }
-    }
-
-    const cols = chosen.fits ? chosen.cols : 1;
-    const font = chosen.fits ? Math.max(MIN_FIT_FONT, Math.round(chosen.font * 2) / 2) : MIN_FIT_FONT;
-    setCols(cols);
-    setFont(font);
-    setFitColumns(cols);
-    setFitFont(font);
-    // columnsPinned/numCols MUST be here: without them a tap on the 1/2/3
-    // switcher never re-runs the pass, so fit mode keeps the count it measured
-    // earlier — the switcher would look dead all over again.
+    setFitLayout({ key: fitKey, pages, font, cols: n, height: avail, pageH, startPage });
+    // fitKey captures every input that changes the layout.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fitMode, columnsPinned, numCols, zoomOffset, baseFontSize, prefs.lyricFontSize, lineHeight, lyricFontFamily, showChords, song, resizeTick]);
+  }, [fitMeasuring, fitKey]);
+
+  // Guard: if a rendered page ever overflows its columns (a measurement edge
+  // case), re-pack with a slightly larger safety margin (max 3 steps).
+  useLayoutEffect(() => {
+    if (!fitPaged) return;
+    const inner = sectionsRef.current;
+    const wrap = fitWrapRef.current;
+    if (!inner || !wrap) return;
+    // The page viewport must still match the space below the card's top: things
+    // above it can settle AFTER the measure (the present header sizes itself a
+    // frame later; toolbars wrap) — then the card would run past the bottom of
+    // the screen. Re-paginate if it's off by more than a few px.
+    const expected = Math.max(220, Math.round(window.innerHeight - wrap.getBoundingClientRect().top - 16));
+    if (Math.abs(expected - fitLayout!.height) > 4) {
+      const raf = requestAnimationFrame(() => setResizeTick((t) => t + 1));
+      return () => cancelAnimationFrame(raf);
+    }
+    if (fitShrink >= 3) return;
+    if (inner.scrollWidth > inner.clientWidth + 2 || inner.scrollHeight > inner.clientHeight + 2) {
+      const raf = requestAnimationFrame(() => setFitShrinkState({ base: fitBaseKey, n: Math.min(3, fitShrink + 1) }));
+      return () => cancelAnimationFrame(raf);
+    }
+  }, [fitPaged, fitPage, fitLayout, fitShrink, fitBaseKey, presentHeaderH]);
+
+  // Page navigation (Fit mode only). Remembers the reader's place for re-pagination.
+  const showFitPage = (page: number) => {
+    if (!fitPaged) return;
+    const p = Math.min(fitPageCount - 1, Math.max(0, page));
+    const first = fitLayout!.pages[p]?.[0];
+    if (first) fitAnchorRef.current = { s: first.sectionIndex, line: first.lineStart };
+    setFitPageState({ key: fitLayout!.key, page: p });
+  };
+  // Swipe (Fit mode): only in the chart body, never within 24px of the screen
+  // edges (OS back gesture), never with 2+ fingers (pinch-zoom), and only a
+  // clearly horizontal move (≥ 60px and well beyond the vertical movement).
+  const fitSwipeRef = useRef<{ id: number; x: number; y: number } | null>(null);
+  const fitPointersRef = useRef<Set<number>>(new Set());
+  const onFitPointerDown = (e: React.PointerEvent) => {
+    if (!fitPaged) return;
+    fitPointersRef.current.add(e.pointerId);
+    const edge = 24;
+    if (fitPointersRef.current.size > 1 || e.clientX < edge || e.clientX > window.innerWidth - edge) { fitSwipeRef.current = null; return; }
+    fitSwipeRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
+  };
+  const onFitPointerEnd = (e: React.PointerEvent) => {
+    fitPointersRef.current.delete(e.pointerId);
+    const st = fitSwipeRef.current;
+    if (!st || st.id !== e.pointerId) return;
+    fitSwipeRef.current = null;
+    if (e.type === "pointercancel") return;
+    const dx = e.clientX - st.x, dy = e.clientY - st.y;
+    if (Math.abs(dx) >= 60 && Math.abs(dx) > Math.abs(dy) * 1.6) {
+      e.stopPropagation();
+      if (presenting) {
+        // Pages first; past the first/last page, cross setlist songs (as before).
+        if (dx < 0) goNext(); else goPrev();
+      } else if (dx < 0) {
+        if (fitPage < fitPageCount - 1) showFitPage(fitPage + 1); else setlistContext?.onNext?.();
+      } else if (fitPage > 0) showFitPage(fitPage - 1); else setlistContext?.onPrev?.();
+    }
+  };
 
   // Column control (edit toolbar, present header, Quick Actions): Auto or a
   // manual 1/2/3, saved for the CURRENT orientation only. Display-only — it
@@ -1929,6 +2033,12 @@ export default function SongEditor({
   // `allowCross` = false keeps a HELD pedal (key auto-repeat) scrolling within
   // the song without tumbling through the setlist at the end.
   const goNext = (allowCross = true) => {
+    // Fit (paged): Prev/Next turn PAGES; past the last page, cross songs as before.
+    if (fitPaged) {
+      if (fitPage < fitPageCount - 1) showFitPage(fitPage + 1);
+      else if (allowCross && setlistContext?.onNext) setlistContext.onNext();
+      return;
+    }
     const el = rootRef.current;
     if (!el) return;
     const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 4;
@@ -1936,6 +2046,11 @@ export default function SongEditor({
     el.scrollBy({ top: Math.round(el.clientHeight * 0.85), behavior: "smooth" });
   };
   const goPrev = (allowCross = true) => {
+    if (fitPaged) {
+      if (fitPage > 0) showFitPage(fitPage - 1);
+      else if (allowCross && setlistContext?.onPrev) setlistContext.onPrev();
+      return;
+    }
     const el = rootRef.current;
     if (!el) return;
     const atTop = el.scrollTop <= 4;
@@ -2073,7 +2188,7 @@ export default function SongEditor({
   // Corner section indicator: the last section whose top has passed a reference
   // line near the top of the present viewport.
   useEffect(() => {
-    if (!presenting) return;
+    if (!presenting || fitMode) return; // Fit (paged): the page drives the label
     const el = rootRef.current;
     if (!el) return;
     const compute = () => {
@@ -2088,7 +2203,7 @@ export default function SongEditor({
     compute();
     el.addEventListener("scroll", compute, { passive: true });
     return () => el.removeEventListener("scroll", compute);
-  }, [presenting, song.sections]);
+  }, [presenting, fitMode, song.sections]);
 
   // In-place song swap: when present mode crosses to another setlist song, the
   // parent keeps THIS instance mounted (pinned key) and just hands us a new `song`.
@@ -3157,6 +3272,12 @@ export default function SongEditor({
   };
 
   const scrollToSection = (id: string) => {
+    // Fit (paged): jump to the page the section starts on.
+    if (fitPaged) {
+      const hit = fitLayout!.pages.findIndex((pg) => pg.some((blk) => blk.section.id === id && blk.first));
+      if (hit >= 0) showFitPage(hit);
+      return;
+    }
     const el = sectionRefs.current.get(id);
     if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -3301,19 +3422,27 @@ export default function SongEditor({
   // as height-constrained fills column 1 to the brim before starting column 2 —
   // which looks exactly like "it didn't split".
   const sectionsContainerStyle: React.CSSProperties = fitMode
-    ? ({
+    ? (fitMeasuring
+      // Measure pass: whole sections, one column; the layout effect sets the
+      // column width + candidate fonts imperatively. Never painted (the effect
+      // re-renders before paint) — hidden anyway as a belt-and-braces.
+      ? ({ visibility: "hidden" } as React.CSSProperties)
+      // A page: N fixed-height columns filled top-down (column-fill:auto) with
+      // forced breaks where each measured column starts. overflow hidden — the
+      // guard effect re-packs if anything ever spills.
+      : ({
         columnCount: fitColumns,
         WebkitColumnCount: fitColumns,
         columnGap: `${fitColumns === 3 ? 16 : 24}px`,
         WebkitColumnGap: `${fitColumns === 3 ? 16 : 24}px`,
-        columnFill: "balance",
-        WebkitColumnFill: "balance",
-        // Locked to the available width so columns can never push the layout
-        // wider than the viewport (the hard stop against sideways scroll).
+        columnFill: "auto",
+        WebkitColumnFill: "auto",
+        height: `${fitLayout?.pageH ?? 0}px`,
+        overflow: "hidden",
         width: "100%",
         maxWidth: "100%",
         "--fit-font": `${fitFont}px`,
-      } as React.CSSProperties)
+      } as React.CSSProperties))
     : columnView
     ? ({
         columnCount: numCols,
@@ -3334,7 +3463,9 @@ export default function SongEditor({
   // feeding the measured count back in would make the pass depend on its own
   // output. A pinned choice is a fixed number, so it can be used directly.
   const flowCols = fitMode && !columnsPinned ? 3 : numCols;
-  const columnBlocks = effColumnView
+  const columnBlocks: (ColumnBlock & Partial<Pick<FitPageBlock, "cont" | "breakBefore">>)[] = fitMode
+    ? (fitPaged ? (fitLayout!.pages[fitPage] ?? []) : chunkSectionsForColumns(song.sections, 1))
+    : effColumnView
     ? chunkSectionsForColumns(song.sections, flowCols)
     : chunkSectionsForColumns(song.sections, 1);
   // Word-block lines wrap within the column on their own, so chords can never
@@ -3376,6 +3507,10 @@ export default function SongEditor({
     const start = swipeStartRef.current;
     swipeStartRef.current = null;
     if (!start) return;
+    // Paged Fit has its own swipe (chart body only, edge- and pinch-safe) that
+    // also does the song crossing — this one stands down so a swipe never
+    // counts twice or fires from the screen edge. Scroll mode: unchanged.
+    if (fitPaged) return;
     const t = e.changedTouches[0];
     const dx = t.clientX - start.x;
     const dy = t.clientY - start.y;
@@ -3577,7 +3712,7 @@ export default function SongEditor({
                 readOnly
                 sections={song.sections}
                 sectionStyles={sectionStyles}
-                activeId={activeFlowId}
+                activeId={fitPaged ? (fitLayout!.pages[fitPage]?.[0]?.section.id ?? null) : activeFlowId}
                 onScrollTo={scrollToSection}
                 onReorder={reorderSections}
                 onRename={renameSection}
@@ -3629,6 +3764,8 @@ export default function SongEditor({
                 Prev
               </button>
               <div className="flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-2">
+                {/* Auto-scroll is a Scroll-mode tool — hidden in paged Fit. */}
+                {!fitMode && (<>
                 {/* Auto-scroll — distinct "scroll down" icon (never mistaken for
                     the metronome play); lavender while running. */}
                 <button type="button" onClick={() => { setAutoScrolling((o) => !o); revealControls(); }}
@@ -3639,12 +3776,13 @@ export default function SongEditor({
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="text-[#8574f0] dark:text-[#b3a3ff]"><polyline points="7 5 12 10 17 5"/><polyline points="7 13 12 18 17 13"/></svg>
                   <span className="hidden sm:inline">{autoScrolling ? "Scrolling" : "Auto-scroll"}</span>
                 </button>
+                </>)}
                 {/* Current section (+ setlist position on wider screens). */}
                 {/* Empty at the very top (nothing scrolled past yet) → the first section. */}
                 {song.sections.length > 0 && (
                   <span className="min-w-0 max-w-[9rem] sm:max-w-[14rem] h-7 px-2 sm:px-2.5 inline-flex items-center gap-1 rounded-full bg-[#efe9fe] dark:bg-[#2a2440] border border-[#d3c7f7] dark:border-[#4b3f80] text-[#8574f0] dark:text-[#b3a3ff] text-xs font-semibold"
                     aria-live="polite" data-present-section>
-                    <span className="truncate">{presentSection || song.sections[0]?.label || ""}</span>
+                    <span className="truncate">{fitPaged ? (fitLayout!.pages[fitPage]?.[0]?.section.label ?? "") : (presentSection || song.sections[0]?.label || "")}</span>
                     {setlistContext && (
                       <span className="hidden sm:inline shrink-0 font-normal opacity-75">· {setlistContext.currentIndex + 1}/{setlistContext.total}</span>
                     )}
@@ -4136,8 +4274,20 @@ export default function SongEditor({
         // dismiss-fullscreen gesture. Scroll mode deliberately keeps chaining —
         // the card has no scroll room there and MUST hand the gesture upward
         // (containing it is what once froze scrolling on Chrome/Android).
-        style={fitMode ? { height: fitHeight ?? undefined, overflowY: "auto", overflowX: "hidden", overscrollBehavior: "contain" } : undefined}
+        // Paged Fit: a fixed page viewport (no internal scroll); touch-action
+        // keeps vertical page scroll + pinch-zoom native while horizontal moves
+        // come to the swipe handlers below.
+        style={fitMode ? { height: fitHeight ?? undefined, overflow: "hidden", overscrollBehavior: "contain", position: "relative", touchAction: "pan-y pinch-zoom" } : undefined}
+        onPointerDown={fitMode ? onFitPointerDown : undefined}
+        onPointerUp={fitMode ? onFitPointerEnd : undefined}
+        onPointerCancel={fitMode ? onFitPointerEnd : undefined}
       >
+        {fitPaged && fitPageCount > 1 && (
+          <div aria-live="polite" data-fit-page
+            className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 z-[1] flex items-center gap-1.5 px-2.5 h-6 rounded-full bg-white/90 dark:bg-slate-900/90 border border-[#e7e2f7] dark:border-slate-700 text-[11px] font-semibold text-[#8574f0] dark:text-[#b3a3ff] tabular-nums shadow-sm">
+            Page {fitPage + 1} / {fitPageCount}
+          </div>
+        )}
         <div
           ref={sectionsRef}
           data-bubble-skip
@@ -4167,7 +4317,12 @@ export default function SongEditor({
             const labelWeightClass = sectionStyle.bold ? "font-extrabold" : "font-semibold";
             const sectionClassName = "group/section";
             const blockStyle: React.CSSProperties = effColumnView
-              ? { ...sectionInColumnStyle, marginBottom: block.last ? "1.5rem" : 0 }
+              ? {
+                  ...sectionInColumnStyle,
+                  marginBottom: block.last ? "1.5rem" : 0,
+                  // Paged Fit: start of a measured column.
+                  ...(block.breakBefore ? { breakBefore: "column", WebkitColumnBreakBefore: "always" } as React.CSSProperties : {}),
+                }
               : sectionInColumnStyle;
             return (
               <Fragment key={block.key}>
@@ -4191,7 +4346,7 @@ export default function SongEditor({
                     section that was pre-split for the column flow shows its name
                     once — and consecutive chunks in one column read as one
                     section, exactly as they did before any splitting. */}
-                {block.first && (
+                {(block.first || block.cont) && (
                 <div className="flex items-center gap-2 mb-3 flex-wrap">
                   {editingSection === section.id && !readOnly ? (
                     <input
@@ -4219,7 +4374,7 @@ export default function SongEditor({
                       className={`px-2.5 py-1 rounded-md text-xs uppercase tracking-wider ${labelWeightClass}`}
                       style={{ background: c.bg, color: c.fg }}
                     >
-                      {section.label}
+                      {section.label}{block.cont && <span className="normal-case font-normal opacity-80"> (cont.)</span>}
                     </span>
                   ) : (
                     <button
@@ -5087,7 +5242,9 @@ export default function SongEditor({
           onTranspose={handleTranspose}
           onCapoChange={handleCapoChange}
           onSettingsChange={onSettingsChange}
-          onZoomChange={setZoomOffset}
+          onZoomChange={(z) => { if (fitMode && fitAuto) setFitAuto(false); setZoomOffset(z); }}
+          fitAuto={fitAuto}
+          onFitAutoChange={setFitAuto}
           columns={columnPref}
           columnsShowing={fitMode && !columnsPinned ? fitColumns : (viewMode === "split-3" ? 3 : viewMode === "split-2" ? 2 : 1)}
           columnsOrientation={orientation}
