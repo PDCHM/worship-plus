@@ -418,58 +418,71 @@ function useMediaQuery(query: string): boolean {
   );
 }
 
-/** Toolbar columns control: ONE button that cycles Auto → 1 → 2 (→ 3 on wide
- *  screens) → Auto, showing the CURRENT mode as its icon: Auto = an "A" in a
- *  frame, 1 = one column, 2 = two columns, 3 = three. Same size/style as the
- *  toolbar's other buttons. */
-function ColumnCycleButton({
+function ViewToggle({
   pref,
   effective,
   onChange,
   allowThree = true,
 }: {
-  pref: ColumnPref;
-  effective: ViewMode;
+  pref: ColumnPref;            // the reader's choice for this orientation
+  effective: ViewMode;         // what's on screen (Auto's resolved count)
   onChange: (m: ViewMode | "auto") => void;
+  // false on narrow screens: 3 columns don't fit, so the option is hidden.
   allowThree?: boolean;
 }) {
-  const order: ColumnPref[] = allowThree ? ["auto", 1, 2, 3] : ["auto", 1, 2];
-  const cur: ColumnPref = !allowThree && pref === 3 ? 2 : pref;
-  const next = order[(order.indexOf(cur) + 1) % order.length] ?? "auto";
+  const btn = (mode: ViewMode | "auto", label: string, icon: React.ReactNode) => {
+    const active = mode === "auto" ? pref === "auto" : pref !== "auto" && viewModeFor(pref) === mode;
+    return (
+      <button
+        key={mode}
+        type="button"
+        onClick={() => onChange(mode)}
+        title={label}
+        aria-label={label}
+        aria-pressed={active}
+        className={`${mode === "auto" ? "text-[12px] font-semibold" : ""} px-[7px] h-8 sm:h-9 flex items-center justify-center transition-colors ${
+          active
+            ? SELECTED
+            : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+        }`}
+      >
+        {icon}
+      </button>
+    );
+  };
   const autoCount = effective === "split-3" ? 3 : effective === "split-2" ? 2 : 1;
-  const name = (v: ColumnPref) => (v === "auto" ? "Auto" : v === 1 ? "1 column" : `${v} columns`);
-  const label = `Columns: ${cur === "auto" ? `Auto (now ${autoCount})` : name(cur)} — tap for ${name(next)}`;
   return (
-    <button
-      type="button"
-      onClick={() => onChange(next === "auto" ? "auto" : viewModeFor(next))}
-      title={label}
-      aria-label={label}
-      data-column-cycle={String(cur)}
-      className="w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-lg border border-slate-200 dark:border-slate-700 flex items-center justify-center transition-colors bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+    <div
+      className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 seg-group"
+      role="group"
+      aria-label="View mode"
     >
-      {cur === "auto" ? (
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <rect x="3" y="3" width="18" height="18" rx="3" />
-          <path d="M8.5 16.5 12 7.5l3.5 9M9.8 13.4h4.4" />
-        </svg>
-      ) : cur === 1 ? (
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {btn("auto", `Auto columns (fits the screen — now ${autoCount})`, "Auto")}
+      {btn(
+        "standard",
+        "Standard view (1 column)",
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <rect x="5" y="3" width="14" height="18" rx="1.5" />
-        </svg>
-      ) : cur === 2 ? (
-        <svg width="18" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        </svg>,
+      )}
+      {btn(
+        "split-2",
+        "Split 2 columns",
+        <svg width="16" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <rect x="3" y="3" width="8" height="18" rx="1.5" />
           <rect x="13" y="3" width="8" height="18" rx="1.5" />
-        </svg>
-      ) : (
-        <svg width="20" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        </svg>,
+      )}
+      {allowThree && btn(
+        "split-3",
+        "Split 3 columns",
+        <svg width="18" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <rect x="2" y="3" width="5.5" height="18" rx="1.5" />
           <rect x="9.25" y="3" width="5.5" height="18" rx="1.5" />
           <rect x="16.5" y="3" width="5.5" height="18" rx="1.5" />
-        </svg>
+        </svg>,
       )}
-    </button>
+    </div>
   );
 }
 
@@ -1109,6 +1122,8 @@ export default function SongEditor({
   const [moreOpen, setMoreOpen] = useState(false);
   // Header 🔗 references dropdown (relocated from the old bottom section).
   const [refsOpen, setRefsOpen] = useState(false);
+  // Links popover placement (px, relative to its button wrapper) — keeps it on-screen.
+  const [refsPop, setRefsPop] = useState<{ left: number; width: number } | null>(null);
   const refsMenuRef = useRef<HTMLDivElement>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   // Split Save button dropdown + the "Save as copy" title modal.
@@ -1488,6 +1503,59 @@ export default function SongEditor({
   const lyricBase = LYRIC_FONT_SIZE_PX[prefs.lyricFontSize];
   const zoomMin = FONT_MIN_PX - lyricBase;
   const zoomMax = FONT_MAX_PX - lyricBase;
+  // 🔗 References + ⋯ More — rendered on the Key · Tempo · Capo line (edit /
+  // read view) and in the presenter header (that line is hidden while
+  // presenting). Only one of the two places is ever mounted, so refsMenuRef
+  // (outside-tap close for the links popover) has a single owner.
+  // References: badge with the link count when present; muted (add-only) for
+  // owner/editor when there are none; hidden entirely for members with no links
+  // to view. Tapping toggles a dropdown popover anchored below.
+  const renderRefsButton = (btnSize: string) => (songLinks.length > 0 || canEdit) && (
+            <div ref={refsMenuRef} className="relative shrink-0">
+              <button type="button" onClick={(e) => {
+                  // Place the popover under the button, right-aligned to it but
+                  // clamped inside the viewport (8px margins) at any width.
+                  const r = (e.currentTarget.parentElement ?? e.currentTarget).getBoundingClientRect();
+                  const width = Math.min(320, window.innerWidth - 16);
+                  const left = Math.max(8, Math.min(r.right - width, window.innerWidth - 8 - width));
+                  setRefsPop({ left: left - r.left, width });
+                  setRefsOpen((o) => !o);
+                }}
+                title="References" aria-label="References" aria-haspopup="menu" aria-expanded={refsOpen}
+                className={"relative " + btnSize + " rounded-lg flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors " +
+                  (songLinks.length > 0 ? "text-slate-600 dark:text-slate-300" : "text-slate-500 dark:text-slate-500")}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                {songLinks.length > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#735fee] text-white text-[10px] font-bold leading-none flex items-center justify-center">{songLinks.length}</span>
+                )}
+              </button>
+              {refsOpen && (
+                <div role="menu"
+                  style={refsPop ? { left: refsPop.left, width: refsPop.width } : undefined}
+                  className="absolute top-full mt-1 z-40 max-h-[70vh] overflow-y-auto rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/20 p-3">
+                  <SongReferences
+                    variant="popover"
+                    songId={song.id}
+                    links={songLinks}
+                    canEdit={canEdit}
+                    online={online}
+                    onAdd={onAddLink}
+                    onUpdate={onUpdateLink}
+                    onDelete={onDeleteLink}
+                    onReorder={onReorderLinks}
+                    showToast={showToast}
+                  />
+                </div>
+              )}
+            </div>
+  );
+  const renderMoreButton = (btnSize: string) => (
+          <button type="button" onClick={() => setMoreOpen(true)} title="More" aria-label="More actions"
+            className={"shrink-0 " + btnSize + " rounded-lg flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors"}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+          </button>
+  );
+
   // In paged Fit with Auto-fit on, a manual size change (A−/A+) switches
   // Auto-fit off so the chosen size is what's shown (otherwise it'd do nothing).
   const adjustZoom = (dir: 1 | -1) => {
@@ -3707,6 +3775,14 @@ export default function SongEditor({
                   options={[{ value: "scroll", label: "Scroll" }, { value: "fit", label: "Fit" }]}
                   onChange={(v) => changePlayLayout(v as "scroll" | "fit")} />
               </div>
+              {/* 🔗 + ⋯ — the Key · Tempo · Capo line (their home in the editor)
+                  is hidden while presenting, so they live here instead: after
+                  the toggles, or (phones, where the toggles wrap below) in the
+                  top row before the Lock. */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                {renderRefsButton("h-7 w-7")}
+                {renderMoreButton("h-7 w-7")}
+              </div>
               {/* Stage Lock — ALWAYS visible (not tap-gated) so the leader can
                   always see whether edits are live. Only for people who can edit
                   this chart; for everyone else present is permanently read-only. */}
@@ -4089,18 +4165,23 @@ export default function SongEditor({
               </button>
             </span>
           )}
+          {/* 🔗 + ⋯ ride the right end of this line (moved out of the toolbar). */}
+          <span className="ml-auto flex items-center gap-1.5 print:hidden">
+            {renderRefsButton("h-8 w-8 sm:h-9 sm:w-9")}
+            {renderMoreButton("h-8 w-8 sm:h-9 sm:w-9")}
+          </span>
         </div>
       </div>
 
       {/* ONE row at every width ≥320px: back · columns · play | edit · (markup)
-          · link · more … Save. ≤360px tightens gaps only. */}
-      <div className={"mb-3 sm:mb-5 flex flex-nowrap items-center gap-1 sm:gap-2 max-[360px]:gap-0.5 print:hidden" + (presenting ? " hidden" : "")}>
-        <div className="flex shrink-0 items-center gap-1 sm:gap-2 max-[360px]:gap-0.5">
+          … Save. (🔗 + ⋯ live on the Key · Tempo · Capo line.) ≤340px tightens gaps only. */}
+      <div className={"mb-3 sm:mb-5 flex flex-nowrap items-center gap-[7px] max-[340px]:gap-[3px] print:hidden" + (presenting ? " hidden" : "")}>
+        <div className="flex shrink-0 items-center gap-[7px] max-[340px]:gap-[3px]">
           <button type="button" onClick={onBack} title="Back" aria-label="Back"
             className="w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
           </button>
-          <ColumnCycleButton pref={columnPref} effective={viewMode} onChange={switchView} allowThree={!narrowScreen} />
+          <ViewToggle pref={columnPref} effective={viewMode} onChange={switchView} allowThree={!narrowScreen} />
           {/* Present: an outlined purple "screen" with a filled play triangle.
               The 1.6px outline is an inset ring (box-shadow) — Chromium rounds
               fractional border widths down to whole pixels. The visible shape is
@@ -4111,8 +4192,8 @@ export default function SongEditor({
             <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 4.8v14.4a1.1 1.1 0 0 0 1.68.94l11.2-7.2a1.1 1.1 0 0 0 0-1.88l-11.2-7.2A1.1 1.1 0 0 0 7.5 4.8z" fill="currentColor"/></svg>
           </button>
         </div>
-        <span aria-hidden="true" className="shrink-0 w-px h-5 mx-0.5 bg-slate-200 dark:bg-slate-700" />
-        <div className="flex flex-1 min-w-0 items-center gap-1 sm:gap-2 max-[360px]:gap-0.5">
+        <span aria-hidden="true" className="shrink-0 w-px h-5 bg-slate-200 dark:bg-slate-700" />
+        <div className="flex flex-1 min-w-0 items-center gap-[7px] max-[340px]:gap-[3px]">
           {canGenerateChords && (
             <button type="button" onClick={canUseAiChords ? openGenerate : onRequireUpgrade}
               title="Generate chords with AI"
@@ -4152,43 +4233,6 @@ export default function SongEditor({
               <HighlighterIcon />
             </button>
           )}
-          {/* References 🔗 — badge with the link count when present; muted (add-only)
-              for owner/editor when there are none; hidden entirely for members with
-              no links to view. Tapping toggles a dropdown popover anchored below. */}
-          {(songLinks.length > 0 || canEdit) && (
-            <div ref={refsMenuRef} className="relative">
-              <button type="button" onClick={() => setRefsOpen((o) => !o)}
-                title="References" aria-label="References" aria-haspopup="menu" aria-expanded={refsOpen}
-                className={"relative h-8 w-8 sm:h-9 sm:w-9 rounded-lg flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors " +
-                  (songLinks.length > 0 ? "text-slate-600 dark:text-slate-300" : "text-slate-500 dark:text-slate-500")}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
-                {songLinks.length > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-[#735fee] text-white text-[10px] font-bold leading-none flex items-center justify-center">{songLinks.length}</span>
-                )}
-              </button>
-              {refsOpen && (
-                <div role="menu"
-                  className="absolute right-0 top-full mt-1 z-40 w-80 max-w-[88vw] max-h-[70vh] overflow-y-auto rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/20 p-3">
-                  <SongReferences
-                    variant="popover"
-                    songId={song.id}
-                    links={songLinks}
-                    canEdit={canEdit}
-                    online={online}
-                    onAdd={onAddLink}
-                    onUpdate={onUpdateLink}
-                    onDelete={onDeleteLink}
-                    onReorder={onReorderLinks}
-                    showToast={showToast}
-                  />
-                </div>
-              )}
-            </div>
-          )}
-          <button type="button" onClick={() => setMoreOpen(true)} title="More" aria-label="More actions"
-            className="h-8 w-8 sm:h-9 sm:w-9 rounded-lg flex items-center justify-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-colors">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
-          </button>
           {!canEdit ? (
             // View-only member: no direct Save on someone else's shared song,
             // but they can still duplicate it into their own library.
