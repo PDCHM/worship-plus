@@ -88,9 +88,11 @@ type FitLayout = {
 const MIN_PAGE_FONT = 14;
 // Room reserved at the bottom of the card for the "Page x / n" indicator.
 const FIT_INDICATOR_H = 26;
-// Auto-fit ceiling (px): pages are packed tight, so text never balloons on a
-// short song. Column-count search floor for Columns: Auto.
-const FIT_AUTO_MAX_FONT = 28;
+// Auto-fit ceiling (px). Auto-fit MINIMISES PAGES: it never inflates text to
+// fill a page — at the fewest-pages count it uses at most this compact size
+// (empty space at a page's bottom is fine). A+ is how a reader goes bigger.
+// FIT_MIN_COL_W: the narrowest column the Columns: Auto search will use.
+const FIT_AUTO_MAX_FONT = 16;
 const FIT_MIN_COL_W = 240;
 // Bottom edge of the Fit page: the viewport bottom, or — presenting — just
 // above the always-visible presenter bottom bar.
@@ -1502,7 +1504,16 @@ export default function SongEditor({
   // In paged Fit with Auto-fit on, a manual size change (A−/A+) switches
   // Auto-fit off so the chosen size is what's shown (otherwise it'd do nothing).
   const adjustZoom = (dir: 1 | -1) => {
-    if (fitMode && fitAuto) setFitAuto(false);
+    if (fitMode) {
+      // Fit: step from the size ON SCREEN (A− always smaller, A+ always
+      // bigger) — leaving Auto-fit seeds the manual size from the auto size —
+      // and never below the Fit floor.
+      const current = fitAuto && fitLayout ? Math.round(fitLayout.font) : Math.max(MIN_PAGE_FONT, baseFontSize);
+      if (fitAuto) setFitAuto(false);
+      const target = Math.max(MIN_PAGE_FONT, current + dir * FONT_ZOOM_STEP);
+      setZoomOffset(Math.min(zoomMax, Math.max(zoomMin, target - lyricBase)));
+      return;
+    }
     setZoomOffset((z) => Math.min(zoomMax, Math.max(zoomMin, z + dir * FONT_ZOOM_STEP)));
   };
 
@@ -1746,10 +1757,11 @@ export default function SongEditor({
   //      A section that doesn't fit breaks only at a LINE boundary; its
   //      continuation carries a "LABEL (cont.)" header. A section starts in a
   //      new column if its header + first line don't fit.
-  // Auto-fit ON: the fewest pages achievable at the MIN_PAGE_FONT floor, then
-  // the largest font (≤ FIT_AUTO_MAX_FONT) that keeps that page count — text fills
-  // the pages and never shrinks below the floor (more pages instead).
-  // Auto-fit OFF: the reader's own size (A−/A+), paginated as-is.
+  // Auto-fit ON: FEWEST PAGES first — the page count at the MIN_PAGE_FONT
+  // floor (with Columns: Auto, the column count that gives the fewest) — then
+  // the largest font up to the compact FIT_AUTO_MAX_FONT that keeps that count.
+  // Text is never grown to fill a page and never shrinks below the floor.
+  // Auto-fit OFF: the reader's own size (A−/A+, ≥ MIN_PAGE_FONT), paginated as-is.
   // Columns follow the column setting (Auto = the width-based count).
   const fitCols = Math.max(1, columnPref === "auto" ? autoCols : Math.min(columnPref, maxColsForScreen));
   const fitContentKey = useMemo(() => JSON.stringify(song.sections), [song.sections]);
@@ -1780,7 +1792,7 @@ export default function SongEditor({
     const ws = getComputedStyle(wrap);
     const padY = parseFloat(ws.paddingTop) + parseFloat(ws.paddingBottom);
     // A small safety margin (grown by fitShrink if a page ever overflows).
-    const pageH = Math.max(120, Math.floor((avail - padY - (presenting ? 0 : FIT_INDICATOR_H)) * (0.97 - 0.03 * fitShrink)));
+    const pageH = Math.max(120, Math.floor((avail - padY - (presenting ? 0 : FIT_INDICATOR_H)) * (0.985 - 0.03 * fitShrink)));
     const fullW = inner.clientWidth;
     const colWidthFor = (cols: number) => Math.max(120, Math.floor((fullW - (cols === 3 ? 16 : 24) * (cols - 1)) / cols));
     let n = fitCols;
@@ -1845,7 +1857,7 @@ export default function SongEditor({
       return pages.length ? pages : [[]];
     };
 
-    let font = baseFontSize;
+    let font = Math.max(MIN_PAGE_FONT, baseFontSize);
     if (fitAuto) {
       const pageCount = (px: number) => Math.ceil(pack(measure(px)).length / n);
       // Columns on Auto: use the column space to pack the song down — try every
@@ -4366,7 +4378,8 @@ export default function SongEditor({
             const blockStyle: React.CSSProperties = effColumnView
               ? {
                   ...sectionInColumnStyle,
-                  marginBottom: block.last ? "1.5rem" : 0,
+                  // Paged Fit packs tighter between sections (fewer pages).
+                  marginBottom: block.last ? (fitMode ? "0.625rem" : "1.5rem") : 0,
                   // Paged Fit: start of a measured column.
                   ...(block.breakBefore ? { breakBefore: "column", WebkitColumnBreakBefore: "always" } as React.CSSProperties : {}),
                 }
@@ -4394,7 +4407,7 @@ export default function SongEditor({
                     once — and consecutive chunks in one column read as one
                     section, exactly as they did before any splitting. */}
                 {(block.first || block.cont) && (
-                <div className="flex items-center gap-2 mb-3 flex-wrap">
+                <div className={"flex items-center gap-2 flex-wrap " + (fitMode ? "mb-1" : "mb-3")}>
                   {editingSection === section.id && !readOnly ? (
                     <input
                       autoFocus
