@@ -3640,11 +3640,8 @@ export default function SongEditor({
           <div ref={presentHeaderRef} onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}
             className="fixed inset-x-0 top-0 z-[2] flex flex-col gap-1 bg-white/85 dark:bg-slate-950/85 backdrop-blur-md border-b border-slate-200/70 dark:border-slate-800/70"
             style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.35rem)", paddingBottom: "0.3rem", paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.6rem)", paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.6rem)" }}>
-            {/* Short landscape (phones on their side): the title row and the
-                chips / toggles row merge into ONE row — vertical space is what
-                decides how many pages a song takes there. */}
-            <div className="flex flex-col gap-1 [@media(orientation:landscape)_and_(max-height:520px)]:flex-row [@media(orientation:landscape)_and_(max-height:520px)]:items-center [@media(orientation:landscape)_and_(max-height:520px)]:gap-2">
-            <div className="flex items-center gap-2 min-h-[1.75rem] [@media(orientation:landscape)_and_(max-height:520px)]:contents">
+            {/* Controls bar: back · title · # · Columns · Layout · Lock. */}
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-h-[1.75rem]" data-present-controls>
               {/* Back / exit: a 44px white circle with a purple chevron — the
                   same look as the floating ⚙️ / ▶ / zoom circles — identical in
                   portrait and landscape, phone and tablet. The header already
@@ -3667,7 +3664,7 @@ export default function SongEditor({
                   "Capo N" survives on a narrow phone. Display only: the chart's
                   chords already come through capoChord(). Key = the song's
                   (sounding) key, as on a printed chart: "Capo 3 · Key G". */}
-              <span className="flex-1 min-w-0 flex items-center justify-center gap-2 [@media(orientation:landscape)_and_(max-height:520px)]:flex-none [@media(orientation:landscape)_and_(max-height:520px)]:max-w-[9rem]">
+              <span className="flex-1 min-w-0 flex items-center justify-center gap-2">
                 <span className="min-w-0 truncate text-sm font-semibold text-slate-500 dark:text-slate-400">{song.title || "Untitled Song"}</span>
                 {(song.capo ?? 0) > 0 && (
                   <span className="shrink-0 px-1.5 py-px rounded-md bg-slate-200/70 dark:bg-slate-800/80 text-[11px] font-semibold leading-4 tabular-nums text-slate-600 dark:text-slate-300 whitespace-nowrap"
@@ -3686,6 +3683,16 @@ export default function SongEditor({
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="4" y1="5" x2="20" y2="5"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="19" x2="20" y2="19"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
                 </button>
               )}
+              {/* Columns · Layout — compact view toggles; never blocked by the Lock.
+                  Narrow phones: they wrap to their own line under the title. */}
+              <div className="flex items-center justify-center gap-2.5 shrink-0 max-sm:order-last max-sm:basis-full" data-present-toggles>
+                <PresentSegmented label="Columns" value={String(columnPref)}
+                  options={(narrowScreen ? ["auto", "1", "2"] : ["auto", "1", "2", "3"]).map((v) => ({ value: v, label: v === "auto" ? "Auto" : v }))}
+                  onChange={(v) => switchView(v === "auto" ? "auto" : viewModeFor(Number(v) as 1 | 2 | 3))} />
+                <PresentSegmented label="Layout" value={playLayout}
+                  options={[{ value: "scroll", label: "Scroll" }, { value: "fit", label: "Fit" }]}
+                  onChange={(v) => changePlayLayout(v as "scroll" | "fit")} />
+              </div>
               {/* Stage Lock — ALWAYS visible (not tap-gated) so the leader can
                   always see whether edits are live. Only for people who can edit
                   this chart; for everyone else present is permanently read-only. */}
@@ -3695,7 +3702,7 @@ export default function SongEditor({
                   aria-label={presentUnlocked ? "Editing is on — tap to lock the chart" : "Chart is locked — tap to unlock editing"}
                   title={presentUnlocked ? "Editing on — tap to lock" : "Locked — tap to unlock editing"}
                   data-present-lock={presentUnlocked ? "unlocked" : "locked"}
-                  className={"h-7 pl-1.5 pr-2 rounded-full flex items-center gap-1 shrink-0 text-xs font-medium border transition-colors [@media(orientation:landscape)_and_(max-height:520px)]:order-last " + (presentUnlocked
+                  className={"h-7 pl-1.5 pr-2 rounded-full flex items-center gap-1 shrink-0 text-xs font-medium border transition-colors " + (presentUnlocked
                     ? "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-700"
                     : "bg-slate-100/80 text-slate-500 border-transparent hover:bg-slate-200/70 dark:bg-slate-800/70 dark:text-slate-400 dark:hover:bg-slate-700/70")}>
                   {presentUnlocked ? (
@@ -3707,41 +3714,26 @@ export default function SongEditor({
                 </button>
               )}
             </div>
-            {/* Read-only section flow-bar — navigation only. Reuses the shared
-                scrollToSection (sections carry a present-mode scroll-margin-top so
-                the target lands below this header). Updates automatically when
-                present mode crosses to the next setlist song (song.sections change). */}
-            {/* Flow chips + compact view toggles (Columns · Layout) share one
-                row when there's room and wrap below the chips on narrow
-                phones. Always visible. View settings, never blocked by the Lock. */}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 [@media(orientation:landscape)_and_(max-height:520px)]:flex-1 [@media(orientation:landscape)_and_(max-height:520px)]:min-w-0 [@media(orientation:landscape)_and_(max-height:520px)]:flex-nowrap">
+            {/* Section chips — their OWN full-width row under the controls, like a
+                tab strip (navigation only; scrolls sideways so long songs are
+                never cut off or covered). */}
             {song.sections.length > 0 && (
-              <div className="flex-1 min-w-[min(100%,16rem)] [@media(orientation:landscape)_and_(max-height:520px)]:min-w-0">
-              <SongFlowBar
-          isDark={isDark}
-                compact
-                readOnly
-                sections={song.sections}
-                sectionStyles={sectionStyles}
-                activeId={fitPaged ? (fitLayout!.pages[fitPage]?.[0]?.section.id ?? null) : activeFlowId}
-                onScrollTo={scrollToSection}
-                onReorder={reorderSections}
-                onRename={renameSection}
-                onDuplicate={duplicateSection}
-                onDelete={deleteSection}
-              />
+              <div className="w-full min-w-0" data-present-chips>
+                <SongFlowBar
+                  isDark={isDark}
+                  compact
+                  readOnly
+                  sections={song.sections}
+                  sectionStyles={sectionStyles}
+                  activeId={fitPaged ? (fitLayout!.pages[fitPage]?.[0]?.section.id ?? null) : activeFlowId}
+                  onScrollTo={scrollToSection}
+                  onReorder={reorderSections}
+                  onRename={renameSection}
+                  onDuplicate={duplicateSection}
+                  onDelete={deleteSection}
+                />
               </div>
             )}
-              <div className="flex items-center gap-2.5 shrink-0 mx-auto sm:mx-0" data-present-toggles>
-                <PresentSegmented label="Columns" value={String(columnPref)}
-                  options={(narrowScreen ? ["auto", "1", "2"] : ["auto", "1", "2", "3"]).map((v) => ({ value: v, label: v === "auto" ? "Auto" : v }))}
-                  onChange={(v) => switchView(v === "auto" ? "auto" : viewModeFor(Number(v) as 1 | 2 | 3))} />
-                <PresentSegmented label="Layout" value={playLayout}
-                  options={[{ value: "scroll", label: "Scroll" }, { value: "fit", label: "Fit" }]}
-                  onChange={(v) => changePlayLayout(v as "scroll" | "fit")} />
-              </div>
-            </div>
-            </div>
             {/* Visual metronome — pinned in the ALWAYS-visible header (not the
                 tap-to-reveal controls), so the beat stays readable on stage
                 without touching the screen. Full width for distance
