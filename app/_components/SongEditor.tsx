@@ -1415,6 +1415,21 @@ export default function SongEditor({
   useEffect(() => {
     if (activeTip === "line-toolbar" && activeLine) dismissTip("line-toolbar");
   }, [activeTip, activeLine]);
+  // Tap elsewhere → the focused line lets go (its delete × and tool row hide).
+  // Taps inside that line, or in a menu / picker / dialog it opened, keep it.
+  useEffect(() => {
+    if (!activeLine) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Element | null;
+      if (!t?.closest) return;
+      if (t.closest(`[data-line-id="${CSS.escape(activeLine)}"]`)) return;
+      if (t.closest('[role="menu"], [role="dialog"], [data-picker-popover]')) return;
+      if (contextMenuRef.current?.contains(t)) return;
+      setActiveLine(null);
+    };
+    document.addEventListener("pointerdown", onDown);
+    return () => document.removeEventListener("pointerdown", onDown);
+  }, [activeLine]);
   useEffect(() => {
     if (activeTip === "performance" && (quickActionsOpen || autoScrolling)) dismissTip("performance");
   }, [activeTip, quickActionsOpen, autoScrolling]);
@@ -3601,7 +3616,7 @@ export default function SongEditor({
             // the header's own safe-area inset, so env() is NOT added again
             // here; the calc() is only the pre-measurement fallback.
             paddingTop: presentHeaderH != null
-              ? `${presentHeaderH + 10}px`
+              ? `${presentHeaderH + 6}px`
               : `calc(env(safe-area-inset-top, 0px) + ${showPresentBeatBar ? "7rem" : "5rem"})`,
             // Clear the always-visible bottom bar (~52px incl. its inset).
             paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 4rem)",
@@ -3638,10 +3653,10 @@ export default function SongEditor({
               toggling controls. Subtle surface background (matches the chart, never
               a dark tab). The root's paddingTop clears this fixed header. */}
           <div ref={presentHeaderRef} onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}
-            className="fixed inset-x-0 top-0 z-[2] flex flex-col gap-1 bg-white/85 dark:bg-slate-950/85 backdrop-blur-md border-b border-slate-200/70 dark:border-slate-800/70"
-            style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.35rem)", paddingBottom: "0.3rem", paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.6rem)", paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.6rem)" }}>
+            className="fixed inset-x-0 top-0 z-[2] flex flex-col gap-0.5 bg-white/85 dark:bg-slate-950/85 backdrop-blur-md border-b border-slate-200/70 dark:border-slate-800/70"
+            style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.25rem)", paddingBottom: "0.2rem", paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.6rem)", paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.6rem)" }}>
             {/* Controls bar: back · title · # · Columns · Layout · Lock. */}
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-h-[1.75rem]" data-present-controls>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 min-h-[1.75rem]" data-present-controls>
               {/* Back / exit: a 44px white circle with a purple chevron — the
                   same look as the floating ⚙️ / ▶ / zoom circles — identical in
                   portrait and landscape, phone and tablet. The header already
@@ -3718,7 +3733,7 @@ export default function SongEditor({
                 tab strip (navigation only; scrolls sideways so long songs are
                 never cut off or covered). */}
             {song.sections.length > 0 && (
-              <div className="w-full min-w-0" data-present-chips>
+              <div className="w-full min-w-0 -mb-1" data-present-chips>
                 <SongFlowBar
                   isDark={isDark}
                   compact
@@ -3740,7 +3755,7 @@ export default function SongEditor({
                 legibility; the Sound/Silent toggle sits inline so the mode can
                 be flipped without leaving present mode. */}
             {showPresentBeatBar && (
-              <div className="flex items-center gap-2 pt-0.5">
+              <div className="flex items-center gap-2">
                 <BeatBar metronome={metronome} playing={metronome.playing} beats={beatsPerBarCount} variant="present" className="flex-1 min-w-0" />
                 <SoundToggle silent={metronomeSilent} onChange={setMetronomeSilent} variant="present" />
               </div>
@@ -3769,8 +3784,10 @@ export default function SongEditor({
               and the chip truncates so it all stays on one row. Inset from the
               safe areas on every side. */}
           <div data-present-bar onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}
-              className="fixed z-[2] mx-auto max-w-[560px] flex items-center gap-1 sm:gap-1.5 px-1 py-1 rounded-[14px] bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-[#e7e2f7] dark:border-slate-700 shadow-lg shadow-violet-900/10 dark:shadow-black/40"
-              style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.6rem)", left: "calc(env(safe-area-inset-left, 0px) + 0.6rem)", right: "calc(env(safe-area-inset-right, 0px) + 0.6rem)" }}>
+              // Narrow screens: the bar stops short of the right edge so the
+              // gear sits beside it (same row), never over the chart.
+              className="fixed z-[2] mx-auto max-w-[560px] max-[700px]:[--gear-room:2.6rem] flex items-center gap-1 sm:gap-1.5 px-1 py-1 rounded-[14px] bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-[#e7e2f7] dark:border-slate-700 shadow-lg shadow-violet-900/10 dark:shadow-black/40"
+              style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.6rem)", left: "calc(env(safe-area-inset-left, 0px) + 0.6rem)", right: "calc(env(safe-area-inset-right, 0px) + 0.6rem + var(--gear-room, 0px))" }}>
               <button type="button" onClick={() => { goPrev(); revealControls(); }} aria-label="Previous section"
                 className="shrink-0 flex items-center gap-0.5 h-8 pl-1 pr-2 sm:pl-1.5 sm:pr-2.5 rounded-[10px] bg-[#efe9fe] dark:bg-[#2a2440] text-[#8574f0] dark:text-[#b3a3ff] text-[13px] font-medium hover:bg-[#e6defd] dark:hover:bg-[#332b4f] transition-colors">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
@@ -4294,7 +4311,7 @@ export default function SongEditor({
         // adds) tells Blink to swallow that scroll instead of chaining — which
         // froze scrolling on Chrome/Android (WebKit/iOS chained anyway). Keep only
         // the x-axis contained so horizontal scroll of wide charts doesn't bounce.
-        className={"rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-x-auto overscroll-x-none print:border-0 print:shadow-none print:p-0 " + (fitMode && presenting ? "p-3" : "p-4 sm:p-6 md:p-8")}
+        className={"rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-x-auto overscroll-x-none print:border-0 print:shadow-none print:p-0 " + (presenting ? (fitMode ? "p-2.5 sm:p-3" : "p-3 sm:p-4") : "p-4 sm:p-6 md:p-8")}
         // Fit mode turns this card into the scroll viewport: fixed height with
         // vertical overflow, so the song scrolls inside it only when it can't be
         // shrunk to fit. Scroll mode keeps the card's natural auto height.
@@ -4664,6 +4681,10 @@ export default function SongEditor({
                         onClick={readOnly ? undefined : () => setActiveLine(line.id)}
                       >
                         <div className="flex-1 min-w-0" data-fit-line>
+                        {/* Chord + lyric block and its delete × on one row, so the ×
+                            centres on the lyric itself (not on the tool row below). */}
+                        <div className="flex items-center gap-1">
+                        <div className="flex-1 min-w-0">
                         {editingLine === line.id && !readOnly ? (
                           <input
                             autoFocus
@@ -4901,6 +4922,24 @@ export default function SongEditor({
                             )}
                           </>
                         )}
+                        </div>
+                        {!readOnly && (
+                          <button
+                            type="button"
+                            onClick={() => deleteEmptyLineOrSection(section.id, line.id)}
+                            title="Delete line"
+                            aria-label="Delete line"
+                            // Shown only for the line being worked on (tapped / focused; desktop
+                            // also on hover). Its slot is always reserved, so the
+                            // lyrics never reflow when it appears.
+                            className={"shrink-0 self-center w-7 h-7 rounded-md flex items-center justify-center text-slate-400 dark:text-slate-500 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-opacity focus-visible:opacity-100 focus-visible:pointer-events-auto print:hidden " + (activeLine === line.id
+                              ? "opacity-100"
+                              : "opacity-0 pointer-events-none sm:group-hover/line:opacity-100 sm:group-hover/line:pointer-events-auto")}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                          </button>
+                        )}
+                        </div>
                         {!readOnly && (
                           <div
                             className={
@@ -5013,17 +5052,6 @@ export default function SongEditor({
                         )}
                         <LineBubbles sectionId={section.id} lineIndex={lIdx} api={bubbles} readOnly={readOnly} hideTrigger />
                         </div>
-                        {!readOnly && (
-                          <button
-                            type="button"
-                            onClick={() => deleteEmptyLineOrSection(section.id, line.id)}
-                            title="Delete line"
-                            aria-label="Delete line"
-                            className="shrink-0 self-center w-7 h-7 rounded-md flex items-center justify-center text-slate-300 dark:text-slate-600 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-all opacity-60 sm:opacity-0 sm:group-hover/line:opacity-100 focus-visible:opacity-100 print:hidden"
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                          </button>
-                        )}
                       </div>
                     );
                   })}
@@ -5178,20 +5206,21 @@ export default function SongEditor({
         </div>
       )}
 
-      <div data-coach="quick-actions" className={"fixed right-4 z-30 flex-col gap-2 print:hidden " + (presenting
-          // Presenting: the ONE settings gear on every screen size, parked
-          // just above the always-visible bottom bar.
-          ? "flex bottom-[calc(4.25rem+env(safe-area-inset-bottom,0px))]"
-          : "bottom-[calc(6rem+env(safe-area-inset-bottom,0px))] md:bottom-8 hidden sm:flex")}>
+      <div data-coach="quick-actions" className={"fixed z-30 flex-col gap-2 print:hidden " + (presenting
+          // Presenting: the ONE settings gear on every screen size — small,
+          // translucent, tucked bottom-right on the bottom bar's row (never
+          // over the chart).
+          ? "flex right-[calc(env(safe-area-inset-right,0px)+0.6rem)] bottom-[calc(env(safe-area-inset-bottom,0px)+0.6rem+3px)]"
+          : "right-4 bottom-[calc(6rem+env(safe-area-inset-bottom,0px))] md:bottom-8 hidden sm:flex")}>
         <button type="button" onClick={() => setQuickActionsOpen(o => !o)} title="Quick Actions"
-          className={"w-11 h-11 rounded-full shadow-lg border flex items-center justify-center transition-colors " + (quickActionsOpen ? "bg-[#efe9fe] text-[#6350ef] border-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:border-[#3a3358]" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-[#f3f0ff] dark:hover:bg-slate-700")}>
+          className={"rounded-full border flex items-center justify-center transition-[color,background-color,opacity] " + (presenting ? "w-9 h-9 shadow-sm opacity-60 hover:opacity-100 focus-visible:opacity-100 " + (quickActionsOpen ? "!opacity-100 " : "") : "w-11 h-11 shadow-lg ") + (quickActionsOpen ? "bg-[#efe9fe] text-[#6350ef] border-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:border-[#3a3358]" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-[#f3f0ff] dark:hover:bg-slate-700")}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
         {/* Auto-scroll has nothing to drive in fit mode — hide it there. */}
         {!fitMode && (
           <button type="button" onClick={() => setAutoScrolling(o => !o)} title={autoScrolling ? "Pause" : "Auto-scroll"}
-            // Phones while presenting: the bar's Auto-scroll is the one control.
-            className={"w-11 h-11 rounded-full shadow-lg border items-center justify-center transition-colors " + (presenting ? "hidden sm:flex " : "flex ") + (autoScrolling ? "bg-[#efe9fe] text-[#6350ef] border-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:border-[#3a3358]" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-[#f3f0ff] dark:hover:bg-slate-700")}>
+            // While presenting the bar's Auto-scroll is the one control.
+            className={"w-11 h-11 rounded-full shadow-lg border items-center justify-center transition-colors " + (presenting ? "hidden " : "flex ") + (autoScrolling ? "bg-[#efe9fe] text-[#6350ef] border-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:border-[#3a3358]" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-[#f3f0ff] dark:hover:bg-slate-700")}>
             {autoScrolling
               ? <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
               : <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>}
