@@ -370,7 +370,8 @@ export default function Library({
           ) : null}
           {!selectMode && songs.length > 0 && (
             <div ref={controlsRef} className="flex items-center gap-2">
-              {/* Sort — A–Z (default) / Recently used. Applies to grid AND list. */}
+              {/* Sort — A–Z (default) / Artist / Key / Recently used. Applies to grid AND list
+                  (list-view column headers drive the same sort). */}
               <div className="relative">
                 <button type="button" onClick={() => setPanel((p) => (p === "sort" ? null : "sort"))}
                   aria-haspopup="menu" aria-expanded={panel === "sort"}
@@ -384,7 +385,15 @@ export default function Library({
                   <div role="menu" className="fixed inset-x-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom,0px))] z-50 py-1 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-2xl shadow-slate-900/20 sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-full sm:mt-1 sm:w-48 sm:rounded-lg sm:shadow-xl sm:z-40">
                     <button type="button" role="menuitem" onClick={() => { setSortRecent(false); setSortCol("title"); setSortDir("asc"); setPanel(null); }}
                       className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
-                      A–Z {!sortRecent && <CheckMark />}
+                      A–Z {!sortRecent && (sortCol === "title" || sortCol === null) && <CheckMark />}
+                    </button>
+                    <button type="button" role="menuitem" onClick={() => { setSortRecent(false); setSortCol("artist"); setSortDir("asc"); setPanel(null); }}
+                      className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
+                      Artist {!sortRecent && sortCol === "artist" && <CheckMark />}
+                    </button>
+                    <button type="button" role="menuitem" onClick={() => { setSortRecent(false); setSortCol("key"); setSortDir("asc"); setPanel(null); }}
+                      className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">
+                      Key {!sortRecent && sortCol === "key" && <CheckMark />}
                     </button>
                     <button type="button" role="menuitem" onClick={() => { setSortRecent(true); setPanel(null); }}
                       className="w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200">

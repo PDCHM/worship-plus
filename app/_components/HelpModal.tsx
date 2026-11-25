@@ -5,7 +5,8 @@ import type { ReactNode } from "react";
 /* HelpModal — a scannable icon legend, not a tutorial: one line per control.
    Every glyph below is COPIED from the component that actually renders it
    (Library, SongEditor, AddSongSheet, PhotoImportModal), so the legend can't
-   drift into describing buttons that don't exist. Display only — this file has
+   drift into describing buttons that don't exist. When a control's look or
+   place changes in the app, update its row here too. Display only — this file has
    no logic and no callbacks beyond onClose. */
 
 // Shared stroke settings, matching the icons as drawn in the app.
@@ -72,10 +73,11 @@ const ICON = {
       <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
     </svg>
   ),
+  // The toolbar's Present button: an outlined frame with a filled play triangle.
   present: (
-    <svg width="16" height="16" {...S} strokeWidth={2.2}>
-      <path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3" />
-    </svg>
+    <span className="w-[26px] h-[20px] rounded-[6px] shadow-[inset_0_0_0_1.5px_#8574f0] dark:shadow-[inset_0_0_0_1.5px_#b3a3ff] text-[#8574f0] dark:text-[#b3a3ff] flex items-center justify-center" aria-hidden>
+      <svg width="12" height="12" viewBox="0 0 24 24"><path d="M7.5 4.8v14.4a1.1 1.1 0 0 0 1.68.94l11.2-7.2a1.1 1.1 0 0 0 0-1.88l-11.2-7.2A1.1 1.1 0 0 0 7.5 4.8z" fill="currentColor" /></svg>
+    </span>
   ),
   more: (
     <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
@@ -120,6 +122,60 @@ const ICON = {
       <line x1="16" y1="9" x2="22" y2="15" />
     </svg>
   ),
+  pencil: (
+    <svg width="16" height="16" {...S} strokeWidth={2.2}>
+      <path d="M12 20h9" />
+      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+      <path d="m15 5 3 3" />
+    </svg>
+  ),
+  sparkle: (
+    <svg width="16" height="16" {...S}>
+      <path d="M5 3v4M3 5h4M6 17v4M4 19h4M13 3l2.5 6.5L22 12l-6.5 2.5L13 21l-2.5-6.5L4 12l6.5-2.5L13 3z" />
+    </svg>
+  ),
+  save: (
+    <span className="flex items-center gap-0.5 text-[#735fee] dark:text-[#b3a3ff]" aria-hidden>
+      <svg width="13" height="13" {...S} strokeWidth={2.2}>
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+        <polyline points="17 21 17 13 7 13 7 21" />
+        <polyline points="7 3 7 8 15 8" />
+      </svg>
+      <svg width="9" height="9" {...S} strokeWidth={2.6}><polyline points="6 9 12 15 18 9" /></svg>
+    </span>
+  ),
+  diagrams: (
+    <svg width="15" height="15" {...S}>
+      <line x1="4" y1="5" x2="20" y2="5" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="4" y1="19" x2="20" y2="19" />
+      <line x1="9" y1="3" x2="9" y2="21" /><line x1="15" y1="3" x2="15" y2="21" />
+    </svg>
+  ),
+  lock: (
+    <svg width="15" height="15" {...S} strokeWidth={2.2}>
+      <rect x="3" y="11" width="18" height="11" rx="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  ),
+  // Read view: the floating play/pause circle. Fullscreen bar: the chevrons.
+  autoScrollBoth: (
+    <span className="flex items-center gap-0.5" aria-hidden>
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3" /></svg>
+      <svg width="13" height="13" {...S} strokeWidth={2.2}><polyline points="7 5 12 10 17 5" /><polyline points="7 13 12 18 17 13" /></svg>
+    </span>
+  ),
+  // Read view: magnifier + (and −). Fullscreen bar: A− / A+.
+  zoom: (
+    <svg width="15" height="15" {...S} strokeWidth={2.2}>
+      <circle cx="11" cy="11" r="7" /><line x1="11" y1="8" x2="11" y2="14" /><line x1="8" y1="11" x2="14" y2="11" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  ),
+  // Fullscreen bar Prev / Next: up and down chevrons.
+  sectionPrevNext: (
+    <span className="flex flex-col items-center -space-y-0.5" aria-hidden>
+      <svg width="11" height="11" {...S} strokeWidth={2.6}><polyline points="18 15 12 9 6 15" /></svg>
+      <svg width="11" height="11" {...S} strokeWidth={2.6}><polyline points="6 9 12 15 18 9" /></svg>
+    </span>
+  ),
   // Static snapshot of the beat bar, drawn mid-downbeat.
   beatBar: (
     <span className="flex items-center gap-[3px]" aria-hidden>
@@ -146,31 +202,38 @@ const GROUPS: Group[] = [
       { icon: ICON.camera, text: "Import from a photo of a chord chart — Claude reads it in." },
       { icon: ICON.file, text: "Import from a file, including SongBook Pro .sbp backups." },
       { icon: ICON.star, text: "Favourite a song, so it shows under Favourites." },
-      { icon: ICON.sort, text: "Sort the list by title, artist, key or most recent." },
-      { icon: ICON.filter, text: "Filter the list by key." },
+      { icon: ICON.sort, text: "Sort the list A–Z, by artist, by key or by recently used. In list view, the Song / Artist / Key headers sort too." },
+      { icon: ICON.filter, text: "Filter the list by key (or favourites)." },
     ],
   },
   {
     title: "In a song",
     rows: [
-      { icon: ICON.markup, text: "Markup — draw freehand on the chart. Tap again to leave." },
-      { icon: ICON.tempo, text: "Tempo — set BPM and time signature, and start the metronome." },
-      { icon: chip("Capo"), text: "Capo — shifts the shapes you play; the sounding key stays put." },
-      { icon: ICON.columns, text: "Column layout — cycle one, two or three columns." },
-      { icon: ICON.link, text: "References — links to recordings and resources for the song." },
-      { icon: ICON.present, text: "Fullscreen performance mode." },
-      { icon: ICON.more, text: "More actions — print, export, section styles and quick actions." },
+      { icon: ICON.pencil, text: "Edit / read — switch between editing the chart and the read view." },
+      { icon: ICON.markup, text: "Markup — draw freehand on the chart; tap again to leave. Beside ✏️ in the toolbar (edit and read view) and in the fullscreen header. From edit mode or an unlocked stage it switches to the read view first." },
+      { icon: ICON.columns, text: "Column layout — Auto, 1 or 2 columns (plus 3 on wide screens)." },
+      { icon: ICON.present, text: "Present — open fullscreen performance mode." },
+      { icon: ICON.save, text: "Save — tap to save; the ▾ menu has more save options." },
+      { icon: ICON.sparkle, text: "Generate Chords — add chords with AI (when available)." },
+      { icon: ICON.tempo, text: "Tempo — the BPM chip on the Key line: BPM, time signature and the metronome. In fullscreen: ⋯ → Tempo & metronome." },
+      { icon: chip("Capo"), text: "Capo — on the Key line; shifts the shapes you play, the sounding key stays put. In fullscreen: tap the Capo chip, or ⋯ → Capo." },
+      { icon: ICON.link, text: "References — links to recordings and resources. On the right of the Key · Tempo · Capo line; in fullscreen, in the header." },
+      { icon: ICON.more, text: "More actions — print, export, section styles and quick actions. Next to References." },
+      { icon: ICON.diagrams, text: "Chord diagrams — show the shapes for the chords in this song." },
     ],
   },
   {
     title: "Performance mode",
     rows: [
-      { icon: ICON.autoScroll, text: "Auto-scroll — scroll the chart hands-free; tap to pause." },
-      { icon: chip("A A"), text: "Text size — smaller or larger lyrics." },
+      { icon: ICON.autoScrollBoth, text: "Auto-scroll — read view: the ▶ / ❚❚ button (phones: ⋯ → Auto-scroll). Fullscreen: the chevrons button in the bottom bar." },
+      { icon: ICON.zoom, text: "Text size — read view: the + / − magnifier buttons (phones: ⋯ → Larger / Smaller text). Fullscreen: A− / A+ in the bottom bar." },
       { icon: chip("V1"), text: "Section chips — jump straight to a verse, chorus or bridge." },
-      { icon: ICON.prevNext, text: "Previous / next song in the setlist." },
-      { icon: ICON.play, text: "Metronome pill — start and stop; it shows the current BPM." },
-      { icon: ICON.beatBar, text: "Beat bar — one block per beat, the downbeat in amber." },
+      { icon: ICON.prevNext, text: "Previous / next song in the setlist (read view)." },
+      { icon: ICON.sectionPrevNext, text: "Fullscreen Prev / Next — step through sections; at either end they move to the previous / next song." },
+      { icon: ICON.lock, text: "Stage Lock — fullscreen opens locked; unlock to edit on stage." },
+      { icon: chip("Fit"), text: "Layout (fullscreen) — Scroll, or Fit: whole pages you swipe through." },
+      { icon: ICON.play, text: "Metronome pill (edit and read view) — start and stop; it shows the current BPM." },
+      { icon: ICON.beatBar, text: "Beat bar (fullscreen) — one block per beat, the downbeat in amber. No separate pill there." },
       { icon: ICON.sound, text: "Sound — the metronome clicks, accenting the downbeat." },
       { icon: ICON.silent, text: "Silent — the beat bar blinks and nothing is heard." },
     ],

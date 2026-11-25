@@ -440,7 +440,7 @@ function ViewToggle({
         title={label}
         aria-label={label}
         aria-pressed={active}
-        className={`${mode === "auto" ? "text-[12px] font-semibold" : ""} px-[7px] h-8 sm:h-9 flex items-center justify-center transition-colors ${
+        className={`${mode === "auto" ? "text-[12px] font-semibold" : ""} px-[7px] max-[341px]:px-[5px] h-8 sm:h-9 flex items-center justify-center transition-colors ${
           active
             ? SELECTED
             : "bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
@@ -1555,6 +1555,58 @@ export default function SongEditor({
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
           </button>
   );
+
+  // Tempo panel + Capo wheel: one definition each, shown from the Key line
+  // (edit / read view) or, while presenting (that line is hidden), from the
+  // stage — under the presenter header. Same components and handlers.
+  const renderTempoPanel = () => (
+                  <TempoPanel
+                    bpm={bpm}
+                    playing={metronome.playing}
+                    onBpmChange={changeBpm}
+                    onToggle={metronome.toggle}
+                    metronome={metronome}
+                    silent={metronomeSilent}
+                    onSilentChange={setMetronomeSilent}
+                    timeSignature={timeSig}
+                    onTimeSignatureChange={changeTimeSignature}
+                  />
+  );
+  const renderCapoPicker = () => (
+              <div data-picker-popover onMouseDown={(e) => e.stopPropagation()} className="fixed inset-x-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom,0px))] z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 sm:w-44 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
+                <div className="text-[10px] text-slate-500 uppercase tracking-wider text-center mb-1.5">Capo</div>
+                {/* Rolling wheel → the centred fret is applied via the EXISTING
+                    reshape path: handleCapoChange → update() → song.capo, read back
+                    by the pill (playKey) and the chart (capoChord/displayChord). */}
+                <WheelPicker
+                  values={CAPO_VALUES}
+                  value={song.capo ?? 0}
+                  onChange={(f) => handleCapoChange(f === 0 ? null : f)}
+                  ariaLabel="Capo fret"
+                />
+                <div className="mt-2 text-[10px] text-slate-500 dark:text-slate-500 text-center">0 = no capo</div>
+              </div>
+  );
+
+  // Markup toggle. Drawing happens on the read view (in edit mode / an unlocked
+  // stage a touch edits chords), so turning it ON from there first returns to
+  // the read view — leaves edit mode, or re-locks the stage — then draws.
+  const toggleMarkup = () => {
+    if (!online && !markupMode) { showToast("Markup needs a connection"); return; }
+    if (!markupMode && !readOnly) {
+      if (presenting) {
+        setPresentUnlocked(false);
+        setEditingChord(null); setAddingChord(null); setEditingLine(null); setActiveLine(null);
+        setContextMenu(null); setSectionPickerLine(null); setEditingSection(null);
+      } else {
+        setEditMode(false);
+        try { localStorage.setItem("wp-edit-mode-v1", "false"); } catch {}
+      }
+      setMarkupMode(true);
+      return;
+    }
+    setMarkupMode((m) => !m);
+  };
 
   // In paged Fit with Auto-fit on, a manual size change (A−/A+) switches
   // Auto-fit off so the chosen size is what's shown (otherwise it'd do nothing).
@@ -3749,10 +3801,12 @@ export default function SongEditor({
               <span className="flex-1 min-w-0 flex items-center justify-center gap-2">
                 <span className="min-w-0 truncate text-sm font-semibold text-slate-500 dark:text-slate-400">{song.title || "Untitled Song"}</span>
                 {(song.capo ?? 0) > 0 && (
-                  <span className="shrink-0 px-1.5 py-px rounded-md bg-slate-200/70 dark:bg-slate-800/80 text-[11px] font-semibold leading-4 tabular-nums text-slate-600 dark:text-slate-300 whitespace-nowrap"
-                    title={`Sounding key ${song.key} · chords shown as ${playKey(song.key, song.capo)} shapes`}>
+                  <button type="button" onClick={() => { setCapoPickerOpen((o) => !o); setTempoPanelOpen(false); setKeyPickerOpen(false); }}
+                    aria-label={`Capo ${song.capo} — tap to change`}
+                    className="shrink-0 px-1.5 py-px rounded-md bg-slate-200/70 dark:bg-slate-800/80 text-[11px] font-semibold leading-4 tabular-nums text-slate-600 dark:text-slate-300 whitespace-nowrap"
+                    title={`Sounding key ${song.key} · chords shown as ${playKey(song.key, song.capo)} shapes — tap to change the capo`}>
                     Capo {song.capo}<span className="font-normal text-slate-500 dark:text-slate-500"> · Key {song.key}</span>
-                  </span>
+                  </button>
                 )}
               </span>
               {diagramSymbols.length > 0 && (
@@ -3780,6 +3834,17 @@ export default function SongEditor({
                   the toggles, or (phones, where the toggles wrap below) in the
                   top row before the Lock. */}
               <div className="flex items-center gap-1.5 shrink-0">
+                {/* Markup (draw) on stage — same toggle as the toolbar's. */}
+                <button type="button" onClick={toggleMarkup}
+                  disabled={!online && !markupMode}
+                  title={!online && !markupMode ? "Markup needs a connection" : markupMode ? "Exit markup mode" : "Markup — draw on the chart"}
+                  aria-pressed={markupMode}
+                  aria-label={markupMode ? "Exit markup mode" : "Enter markup mode"}
+                  className={"w-7 h-7 rounded-lg flex items-center justify-center shrink-0 disabled:opacity-40 " + (markupMode
+                    ? SELECTED
+                    : "text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60")}>
+                  <HighlighterIcon />
+                </button>
                 {renderRefsButton("h-7 w-7")}
                 {renderMoreButton("h-7 w-7")}
               </div>
@@ -3850,6 +3915,18 @@ export default function SongEditor({
               </div>
             )}
           </div>
+          {/* Stage Tempo / Capo: the Key line (their usual home) is hidden while
+              presenting, so they open here, under the header — phones get the
+              same bottom sheet as everywhere else. */}
+          {(tempoPanelOpen || capoPickerOpen) && (
+            <div className="fixed inset-x-0 z-[3] pointer-events-none"
+              style={{ top: presentHeaderH ?? 64, paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.6rem)" }}>
+              <div className="relative w-fit pointer-events-auto">
+                {tempoPanelOpen && renderTempoPanel()}
+                {capoPickerOpen && renderCapoPicker()}
+              </div>
+            </div>
+          )}
           {/* Bottom bar — revealed on tap, auto-hides. ONE compact light row
               in the app's floating-nav language (translucent white, soft blur,
               #e7e2f7 border, 18px radius, soft shadow): Prev pinned left, Next
@@ -4101,19 +4178,7 @@ export default function SongEditor({
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 13.8"/></svg>
                   {song.bpm != null ? `${song.bpm} BPM` : "Tempo"}
                 </button>
-                {tempoPanelOpen && (
-                  <TempoPanel
-                    bpm={bpm}
-                    playing={metronome.playing}
-                    onBpmChange={changeBpm}
-                    onToggle={metronome.toggle}
-                    metronome={metronome}
-                    silent={metronomeSilent}
-                    onSilentChange={setMetronomeSilent}
-                    timeSignature={timeSig}
-                    onTimeSignatureChange={changeTimeSignature}
-                  />
-                )}
+                {tempoPanelOpen && !presenting && renderTempoPanel()}
               </div>
             </span>
           )}
@@ -4135,21 +4200,7 @@ export default function SongEditor({
                 Capo
               </button>
             )}
-            {capoPickerOpen && (
-              <div data-picker-popover onMouseDown={(e) => e.stopPropagation()} className="fixed inset-x-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom,0px))] z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 sm:w-44 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider text-center mb-1.5">Capo</div>
-                {/* Rolling wheel → the centred fret is applied via the EXISTING
-                    reshape path: handleCapoChange → update() → song.capo, read back
-                    by the pill (playKey) and the chart (capoChord/displayChord). */}
-                <WheelPicker
-                  values={CAPO_VALUES}
-                  value={song.capo ?? 0}
-                  onChange={(f) => handleCapoChange(f === 0 ? null : f)}
-                  ariaLabel="Capo fret"
-                />
-                <div className="mt-2 text-[10px] text-slate-500 dark:text-slate-500 text-center">0 = no capo</div>
-              </div>
-            )}
+            {capoPickerOpen && !presenting && renderCapoPicker()}
           </div>
           </span>
           </span>
@@ -4173,12 +4224,14 @@ export default function SongEditor({
         </div>
       </div>
 
-      {/* ONE row at every width ≥320px: back · columns · play | edit · (markup)
-          … Save. (🔗 + ⋯ live on the Key · Tempo · Capo line.) ≤340px tightens gaps only. */}
-      <div className={"mb-3 sm:mb-5 flex flex-nowrap items-center gap-[7px] max-[340px]:gap-[3px] print:hidden" + (presenting ? " hidden" : "")}>
-        <div className="flex shrink-0 items-center gap-[7px] max-[340px]:gap-[3px]">
+      {/* ONE row at every width ≥320px: back · columns · play | edit · markup
+          … Save. (🔗 + ⋯ live on the Key · Tempo · Capo line.) ≤360px: 4px gaps;
+          ≤340px: 2px gaps + slightly narrower Columns / Back / Play / Save
+          (tap areas unchanged). */}
+      <div className={"mb-3 sm:mb-5 flex flex-nowrap items-center gap-[7px] max-[361px]:gap-1 max-[341px]:gap-0.5 print:hidden" + (presenting ? " hidden" : "")}>
+        <div className="flex shrink-0 items-center gap-[7px] max-[361px]:gap-1 max-[341px]:gap-0.5">
           <button type="button" onClick={onBack} title="Back" aria-label="Back"
-            className="w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+            className="w-8 max-[341px]:w-7 h-8 sm:w-9 sm:h-9 shrink-0 rounded-lg flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
           </button>
           <ViewToggle pref={columnPref} effective={viewMode} onChange={switchView} allowThree={!narrowScreen} />
@@ -4188,12 +4241,12 @@ export default function SongEditor({
               38×29; on touch screens the global coarse-pointer rule pads its hit
               area to ≥44×44. */}
           <button type="button" onClick={enterPresent} title="Fullscreen performance mode" aria-label="Fullscreen performance mode"
-            className="w-[38px] h-[29px] shrink-0 rounded-[9px] shadow-[inset_0_0_0_1.6px_#8574f0] dark:shadow-[inset_0_0_0_1.6px_#b3a3ff] bg-white dark:bg-transparent text-[#8574f0] dark:text-[#b3a3ff] hover:bg-[#f6f3ff] dark:hover:bg-[#2a2440]/60 flex items-center justify-center transition-colors">
+            className="w-[38px] max-[341px]:w-[34px] h-[29px] shrink-0 rounded-[9px] shadow-[inset_0_0_0_1.6px_#8574f0] dark:shadow-[inset_0_0_0_1.6px_#b3a3ff] bg-white dark:bg-transparent text-[#8574f0] dark:text-[#b3a3ff] hover:bg-[#f6f3ff] dark:hover:bg-[#2a2440]/60 flex items-center justify-center transition-colors">
             <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 4.8v14.4a1.1 1.1 0 0 0 1.68.94l11.2-7.2a1.1 1.1 0 0 0 0-1.88l-11.2-7.2A1.1 1.1 0 0 0 7.5 4.8z" fill="currentColor"/></svg>
           </button>
         </div>
         <span aria-hidden="true" className="shrink-0 w-px h-5 bg-slate-200 dark:bg-slate-700" />
-        <div className="flex flex-1 min-w-0 items-center gap-[7px] max-[340px]:gap-[3px]">
+        <div className="flex flex-1 min-w-0 items-center gap-[7px] max-[361px]:gap-1 max-[341px]:gap-0.5">
           {canGenerateChords && (
             <button type="button" onClick={canUseAiChords ? openGenerate : onRequireUpgrade}
               title="Generate chords with AI"
@@ -4214,25 +4267,23 @@ export default function SongEditor({
               <PencilLineIcon />
             </button>
           )}
-          {readOnly && (
+          {/* Markup (draw) — right beside ✏️ in BOTH edit and read view. */}
+          {
             <button type="button"
-              onClick={() => {
-                if (!online && !markupMode) { showToast("Markup needs a connection"); return; }
-                setMarkupMode((m) => !m);
-              }}
+              onClick={toggleMarkup}
               disabled={!online && !markupMode}
               title={!online && !markupMode ? "Markup needs a connection" : markupMode ? "Exit markup mode" : "Markup — draw on the chart"}
               aria-pressed={markupMode}
               aria-label={markupMode ? "Exit markup mode" : "Enter markup mode"}
               className={
-                "h-8 w-8 sm:h-9 sm:w-9 border flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed " +
+                "h-8 w-8 sm:h-9 sm:w-9 shrink-0 border flex items-center justify-center transition-colors disabled:opacity-40 disabled:cursor-not-allowed " +
                 (markupMode
                   ? TOOLBAR_BTN_ACTIVE
                   : "rounded-lg border-transparent bg-slate-100 enabled:hover:bg-slate-200 dark:bg-slate-800 dark:enabled:hover:bg-slate-700 text-slate-600 dark:text-slate-300")
               }>
               <HighlighterIcon />
             </button>
-          )}
+          }
           {!canEdit ? (
             // View-only member: no direct Save on someone else's shared song,
             // but they can still duplicate it into their own library.
@@ -4249,7 +4300,7 @@ export default function SongEditor({
             <button
               type="button"
               onClick={onSave}
-              className={"h-8 sm:h-9 pl-3 pr-2.5 rounded-l-lg text-sm font-medium flex items-center gap-1.5 " + SAVE_BTN}
+              className={"h-8 sm:h-9 pl-3 pr-2.5 max-[341px]:pl-2 max-[341px]:pr-1.5 rounded-l-lg text-sm font-medium flex items-center gap-1.5 " + SAVE_BTN}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
@@ -4264,7 +4315,7 @@ export default function SongEditor({
               aria-label="Save options"
               aria-haspopup="menu"
               aria-expanded={saveMenuOpen}
-              className={"h-8 sm:h-9 px-1.5 rounded-r-lg flex items-center justify-center border-l border-white/35 " + SAVE_BTN}
+              className={"h-8 sm:h-9 px-1.5 max-[341px]:px-1 rounded-r-lg flex items-center justify-center border-l border-white/35 " + SAVE_BTN}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
             </button>
@@ -5393,6 +5444,7 @@ export default function SongEditor({
             <div className="py-1">
               {([
                 { label: "Tempo & metronome", onClick: () => { setTempoPanelOpen(true); setKeyPickerOpen(false); setCapoPickerOpen(false); }, icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 13.8"/></svg> },
+                ...(presenting ? [{ label: "Capo", onClick: () => { setCapoPickerOpen(true); setKeyPickerOpen(false); setTempoPanelOpen(false); }, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="9" width="18" height="6" rx="2"/><path d="M8 5v4M12 5v4M16 5v4M8 15v4M12 15v4M16 15v4"/></svg> }] : []),
                 { label: "Section styles", onClick: () => setStylesPanelOpen(true), icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg> },
                 { label: "Print", onClick: () => setPreviewOpen(true), icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> },
                 { label: "Export / Share", onClick: onExport, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> },
