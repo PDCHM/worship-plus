@@ -3959,16 +3959,21 @@ export default function SongEditor({
         )}
         <div className="text-[13px] sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5 sm:mt-1 px-0.5 flex items-center gap-x-2 gap-y-0.5 sm:gap-2 flex-wrap">
           {readOnly ? (
-            <span className="px-1.5 py-0.5">{song.artist || "Unknown artist"}</span>
+            <span className="px-1.5 py-0.5 max-sm:basis-full max-sm:-ml-1.5">{song.artist || "Unknown artist"}</span>
           ) : (
             <input
               value={song.artist}
               onChange={(e) => update((s) => ({ ...s, artist: e.target.value }))}
               placeholder="Artist"
-              className="bg-transparent outline-none focus:bg-slate-50 dark:focus:bg-slate-900 rounded px-1.5 py-0.5"
+              // Sized to its text (no fixed ~20ch gap before Key); on phones
+              // the artist gets its own line and Key · Tempo · Capo the next.
+              className="bg-transparent outline-none focus:bg-slate-50 dark:focus:bg-slate-900 rounded px-1.5 py-0.5 [field-sizing:content] min-w-[6ch] max-w-full max-sm:basis-full max-sm:-ml-1.5"
             />
           )}
-          <span className="text-slate-300 dark:text-slate-600">·</span>
+          <span className="text-slate-300 dark:text-slate-600 max-sm:hidden">·</span>
+          {/* Key · Tempo · Capo — each item keeps its leading dot, so a wrap
+              never strands a lone "Capo" or "·". */}
+          <span className="flex items-center gap-x-2 gap-y-0.5 sm:gap-2 flex-wrap">
           <span className="flex items-center gap-1">
             Key
             <div className="relative">
@@ -3995,7 +4000,7 @@ export default function SongEditor({
               view whenever bpm is set; in edit mode also shows a "Tempo" entry when
               unset so a value can be added. Tapping opens the local metronome panel. */}
           {(song.bpm != null || !readOnly || tempoPanelOpen) && (
-            <>
+            <span className="flex items-center gap-2">
               <span className="text-slate-300 dark:text-slate-600">·</span>
               <div className="relative">
                 <button type="button" onClick={() => { setTempoPanelOpen(o => !o); setKeyPickerOpen(false); setCapoPickerOpen(false); }}
@@ -4018,8 +4023,9 @@ export default function SongEditor({
                   />
                 )}
               </div>
-            </>
+            </span>
           )}
+          <span className="flex items-center gap-2">
           <span className="text-slate-300 dark:text-slate-600">·</span>
           {/* Capo stated ONCE: when set, the "Sounding … · Capo N · Play Y" pill IS
               the control (tap to change); when unset, a compact "Capo" button to add
@@ -4053,6 +4059,8 @@ export default function SongEditor({
               </div>
             )}
           </div>
+          </span>
+          </span>
           {clipboard && !readOnly && (
             <span className="inline-flex items-center gap-2 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-xs border border-amber-200 dark:border-amber-900 print:hidden">
               <span className="font-medium">{clipboard.label}</span> copied
@@ -4085,7 +4093,9 @@ export default function SongEditor({
             <svg width="17" height="17" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 4.8v14.4a1.1 1.1 0 0 0 1.68.94l11.2-7.2a1.1 1.1 0 0 0 0-1.88l-11.2-7.2A1.1 1.1 0 0 0 7.5 4.8z" fill="currentColor"/></svg>
           </button>
         </div>
-        <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-end">
+        {/* Phones: a deliberate second row — actions left-aligned with Back,
+            Save pinned to the right edge. sm+: one row, right-aligned. */}
+        <div className="flex items-center gap-1 sm:gap-2 max-sm:w-full sm:flex-wrap sm:justify-end">
           {canGenerateChords && (
             <button type="button" onClick={canUseAiChords ? openGenerate : onRequireUpgrade}
               title="Generate chords with AI"
@@ -4168,17 +4178,17 @@ export default function SongEditor({
             <button
               type="button"
               onClick={() => { setCopyTitle((song.title.trim() || "Untitled Song") + " (copy)"); setSaveAsCopyOpen(true); }}
-              className={"h-9 px-3 rounded-lg text-sm font-medium flex items-center gap-1.5 " + SAVE_BTN}
+              className={"h-8 sm:h-9 px-3 max-sm:ml-auto rounded-lg text-sm font-medium flex items-center gap-1.5 " + SAVE_BTN}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
               <span className="hidden sm:inline">Save copy</span>
             </button>
           ) : !readOnly ? (
-          <div ref={saveMenuRef} className="relative flex">
+          <div ref={saveMenuRef} className="relative flex max-sm:ml-auto">
             <button
               type="button"
               onClick={onSave}
-              className={"h-9 pl-3 pr-2.5 rounded-l-lg text-sm font-medium flex items-center gap-1.5 " + SAVE_BTN}
+              className={"h-8 sm:h-9 pl-3 pr-2.5 rounded-l-lg text-sm font-medium flex items-center gap-1.5 " + SAVE_BTN}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
@@ -4193,7 +4203,7 @@ export default function SongEditor({
               aria-label="Save options"
               aria-haspopup="menu"
               aria-expanded={saveMenuOpen}
-              className={"h-9 px-1.5 rounded-r-lg flex items-center justify-center border-l border-white/35 " + SAVE_BTN}
+              className={"h-8 sm:h-9 px-1.5 rounded-r-lg flex items-center justify-center border-l border-white/35 " + SAVE_BTN}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
             </button>
@@ -4695,7 +4705,7 @@ export default function SongEditor({
                                 // lyric actually had whitespace. Latin is
                                 // unchanged (its words are space-separated).
                                 columnGap: 0,
-                                rowGap: "0.15em",
+                                rowGap: "0.05em",
                                 fontSize: lyricFontSize,
                                 fontFamily: lyricFontFamily,
                                 lineHeight: lineTextLeading,
@@ -5009,7 +5019,7 @@ export default function SongEditor({
                             onClick={() => deleteEmptyLineOrSection(section.id, line.id)}
                             title="Delete line"
                             aria-label="Delete line"
-                            className="shrink-0 w-7 h-7 mt-0.5 rounded-md flex items-center justify-center text-slate-300 dark:text-slate-600 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-all opacity-60 sm:opacity-0 sm:group-hover/line:opacity-100 focus-visible:opacity-100 print:hidden"
+                            className="shrink-0 self-center w-7 h-7 rounded-md flex items-center justify-center text-slate-300 dark:text-slate-600 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-all opacity-60 sm:opacity-0 sm:group-hover/line:opacity-100 focus-visible:opacity-100 print:hidden"
                           >
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                           </button>
