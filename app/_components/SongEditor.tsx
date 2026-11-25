@@ -88,6 +88,16 @@ type FitLayout = {
 const MIN_PAGE_FONT = 14;
 // Room reserved at the bottom of the card for the "Page x / n" indicator.
 const FIT_INDICATOR_H = 26;
+// Auto-fit ceiling (px): pages are packed tight, so text never balloons on a
+// short song. Column-count search floor for Columns: Auto.
+const FIT_AUTO_MAX_FONT = 28;
+const FIT_MIN_COL_W = 240;
+// Bottom edge of the Fit page: the viewport bottom, or — presenting — just
+// above the always-visible presenter bottom bar.
+function fitBottomLimit(root: HTMLElement | null, presenting: boolean): number {
+  const bar = presenting ? root?.querySelector<HTMLElement>("[data-present-bar]") : null;
+  return bar ? bar.getBoundingClientRect().top - 8 : window.innerHeight - 16;
+}
 const FIT_AUTO_KEY = "wp-fit-auto-v1";
 type Complexity = "simple" | "standard" | "complex";
 
@@ -1507,8 +1517,8 @@ export default function SongEditor({
   // Height reserved for the chord slot above every word so word baselines stay
   // aligned across a line whether or not a given word carries a chord.
   const chordSlotHeight = fitMode
-    ? "calc(var(--fit-font, 16px) - 2px + 4px)"
-    : `calc(${CHORD_FONT_CLAMP} + 4px)`;
+    ? "calc(var(--fit-font, 16px) - 2px + 1px)"
+    : `calc(${CHORD_FONT_CLAMP} + 1px)`;
 
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -1722,7 +1732,7 @@ export default function SongEditor({
   //      continuation carries a "LABEL (cont.)" header. A section starts in a
   //      new column if its header + first line don't fit.
   // Auto-fit ON: the fewest pages achievable at the MIN_PAGE_FONT floor, then
-  // the largest font (≤ FONT_MAX_PX) that keeps that page count — text fills
+  // the largest font (≤ FIT_AUTO_MAX_FONT) that keeps that page count — text fills
   // the pages and never shrinks below the floor (more pages instead).
   // Auto-fit OFF: the reader's own size (A−/A+), paginated as-is.
   // Columns follow the column setting (Auto = the width-based count).
@@ -1750,16 +1760,17 @@ export default function SongEditor({
     if (!wrap || !inner) return;
 
     const top = wrap.getBoundingClientRect().top;
-    const avail = Math.max(220, Math.round(window.innerHeight - top - 16));
+    const avail = Math.max(140, Math.round(fitBottomLimit(rootRef.current, presenting) - top));
     wrap.style.height = `${avail}px`;
     const ws = getComputedStyle(wrap);
     const padY = parseFloat(ws.paddingTop) + parseFloat(ws.paddingBottom);
     // A small safety margin (grown by fitShrink if a page ever overflows).
-    const pageH = Math.max(120, Math.floor((avail - padY - FIT_INDICATOR_H) * (0.97 - 0.03 * fitShrink)));
-    const n = fitCols;
-    const gap = n === 3 ? 16 : 24;
-    const colW = Math.max(120, Math.floor((inner.clientWidth - gap * (n - 1)) / n));
-    inner.style.width = `${colW}px`;
+    const pageH = Math.max(120, Math.floor((avail - padY - (presenting ? 0 : FIT_INDICATOR_H)) * (0.97 - 0.03 * fitShrink)));
+    const fullW = inner.clientWidth;
+    const colWidthFor = (cols: number) => Math.max(120, Math.floor((fullW - (cols === 3 ? 16 : 24) * (cols - 1)) / cols));
+    let n = fitCols;
+    const setCols = (cols: number) => { n = cols; inner.style.width = `${colWidthFor(cols)}px`; };
+    setCols(n);
 
     type Unit = { s: number; header: number; lines: number[]; gap: number };
     const idIndex = new Map(song.sections.map((sec, i) => [sec.id, i]));
@@ -1822,9 +1833,23 @@ export default function SongEditor({
     let font = baseFontSize;
     if (fitAuto) {
       const pageCount = (px: number) => Math.ceil(pack(measure(px)).length / n);
+      // Columns on Auto: use the column space to pack the song down — try every
+      // count that keeps columns readable (≥ FIT_MIN_COL_W), keep the one with
+      // the fewest pages at the floor font (tie → the one that allows the
+      // larger font, i.e. fewer columns).
+      if (columnPref === "auto") {
+        let best = { cols: n, pages: Infinity };
+        for (let c = 1; c <= Math.min(3, maxColsForScreen); c++) {
+          if (c > 1 && colWidthFor(c) < FIT_MIN_COL_W) break;
+          setCols(c);
+          const pc = pageCount(MIN_PAGE_FONT);
+          if (pc < best.pages) best = { cols: c, pages: pc };
+        }
+        setCols(best.cols);
+      }
       const target = pageCount(MIN_PAGE_FONT);
       let lo = MIN_PAGE_FONT;
-      let hi = Math.max(MIN_PAGE_FONT, FONT_MAX_PX);
+      let hi = Math.max(MIN_PAGE_FONT, FIT_AUTO_MAX_FONT);
       if (pageCount(hi) <= target) lo = hi;
       else for (let i = 0; i < 9; i++) {
         const mid = (lo + hi) / 2;
@@ -1859,7 +1884,7 @@ export default function SongEditor({
     // above it can settle AFTER the measure (the present header sizes itself a
     // frame later; toolbars wrap) — then the card would run past the bottom of
     // the screen. Re-paginate if it's off by more than a few px.
-    const expected = Math.max(220, Math.round(window.innerHeight - wrap.getBoundingClientRect().top - 16));
+    const expected = Math.max(140, Math.round(fitBottomLimit(rootRef.current, presenting) - wrap.getBoundingClientRect().top));
     if (Math.abs(expected - fitLayout!.height) > 4) {
       const raf = requestAnimationFrame(() => setResizeTick((t) => t + 1));
       return () => cancelAnimationFrame(raf);
@@ -1869,7 +1894,7 @@ export default function SongEditor({
       const raf = requestAnimationFrame(() => setFitShrinkState({ base: fitBaseKey, n: Math.min(3, fitShrink + 1) }));
       return () => cancelAnimationFrame(raf);
     }
-  }, [fitPaged, fitPage, fitLayout, fitShrink, fitBaseKey, presentHeaderH]);
+  }, [fitPaged, fitPage, fitLayout, fitShrink, fitBaseKey, presentHeaderH, presenting]);
 
   // Page navigation (Fit mode only). Remembers the reader's place for re-pagination.
   const showFitPage = (page: number) => {
@@ -3578,7 +3603,8 @@ export default function SongEditor({
             paddingTop: presentHeaderH != null
               ? `${presentHeaderH + 10}px`
               : `calc(env(safe-area-inset-top, 0px) + ${showPresentBeatBar ? "7rem" : "5rem"})`,
-            paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)",
+            // Clear the always-visible bottom bar (~52px incl. its inset).
+            paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 4rem)",
             paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.75rem)",
             paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.75rem)",
             // Declare vertical dragging as THIS element's scroll, so the engine
@@ -3614,7 +3640,11 @@ export default function SongEditor({
           <div ref={presentHeaderRef} onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}
             className="fixed inset-x-0 top-0 z-[2] flex flex-col gap-1 bg-white/85 dark:bg-slate-950/85 backdrop-blur-md border-b border-slate-200/70 dark:border-slate-800/70"
             style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.35rem)", paddingBottom: "0.3rem", paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.6rem)", paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.6rem)" }}>
-            <div className="flex items-center gap-2 min-h-[1.75rem]">
+            {/* Short landscape (phones on their side): the title row and the
+                chips / toggles row merge into ONE row — vertical space is what
+                decides how many pages a song takes there. */}
+            <div className="flex flex-col gap-1 [@media(orientation:landscape)_and_(max-height:520px)]:flex-row [@media(orientation:landscape)_and_(max-height:520px)]:items-center [@media(orientation:landscape)_and_(max-height:520px)]:gap-2">
+            <div className="flex items-center gap-2 min-h-[1.75rem] [@media(orientation:landscape)_and_(max-height:520px)]:contents">
               {/* Back / exit: a 44px white circle with a purple chevron — the
                   same look as the floating ⚙️ / ▶ / zoom circles — identical in
                   portrait and landscape, phone and tablet. The header already
@@ -3637,7 +3667,7 @@ export default function SongEditor({
                   "Capo N" survives on a narrow phone. Display only: the chart's
                   chords already come through capoChord(). Key = the song's
                   (sounding) key, as on a printed chart: "Capo 3 · Key G". */}
-              <span className="flex-1 min-w-0 flex items-center justify-center gap-2">
+              <span className="flex-1 min-w-0 flex items-center justify-center gap-2 [@media(orientation:landscape)_and_(max-height:520px)]:flex-none [@media(orientation:landscape)_and_(max-height:520px)]:max-w-[9rem]">
                 <span className="min-w-0 truncate text-sm font-semibold text-slate-500 dark:text-slate-400">{song.title || "Untitled Song"}</span>
                 {(song.capo ?? 0) > 0 && (
                   <span className="shrink-0 px-1.5 py-px rounded-md bg-slate-200/70 dark:bg-slate-800/80 text-[11px] font-semibold leading-4 tabular-nums text-slate-600 dark:text-slate-300 whitespace-nowrap"
@@ -3646,7 +3676,7 @@ export default function SongEditor({
                   </span>
                 )}
               </span>
-              {presentControls && diagramSymbols.length > 0 && (
+              {diagramSymbols.length > 0 && (
                 <button type="button" title="Chord diagrams" aria-label="Toggle chord diagrams"
                   aria-pressed={presentDiagrams}
                   onClick={() => { setPresentDiagrams((v) => !v); revealControls(); }}
@@ -3656,30 +3686,6 @@ export default function SongEditor({
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="4" y1="5" x2="20" y2="5"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="19" x2="20" y2="19"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
                 </button>
               )}
-              {presentControls ? (
-                <>
-                {/* Columns: one tap cycles Auto → 1 → 2 → (3) → Auto for THIS
-                    orientation. A view setting — never blocked by the Lock. */}
-                <button type="button" title="Columns" aria-label={`Columns: ${columnPref === "auto" ? "Auto" : columnPref} — tap to change`}
-                  onClick={() => {
-                    const order: ColumnPref[] = narrowScreen ? ["auto", 1, 2] : ["auto", 1, 2, 3];
-                    const next = order[(order.indexOf(columnPref) + 1) % order.length] ?? "auto";
-                    switchView(next === "auto" ? "auto" : viewModeFor(next)); revealControls();
-                  }}
-                  className="h-7 pl-1.5 pr-2 rounded-lg flex items-center gap-1 text-xs font-semibold tabular-nums text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60 shrink-0">
-                  <svg width="15" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="8" height="18" rx="1.5"/><rect x="13" y="3" width="8" height="18" rx="1.5"/></svg>
-                  {columnPref === "auto" ? "Auto" : columnPref}
-                </button>
-                {/* View settings (Quick Actions: columns, font, transpose …).
-                    The floating gear is hidden on phones, so present exposes it
-                    here for every screen size. */}
-                <button type="button" title="View settings" aria-label="View settings" aria-pressed={quickActionsOpen}
-                  onClick={() => { setQuickActionsOpen((o) => !o); revealControls(); }}
-                  className={"w-7 h-7 rounded-lg flex items-center justify-center shrink-0 " + (quickActionsOpen ? SELECTED : "text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800/60")}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                </button>
-                </>
-              ) : <span className="w-7 shrink-0" aria-hidden />}
               {/* Stage Lock — ALWAYS visible (not tap-gated) so the leader can
                   always see whether edits are live. Only for people who can edit
                   this chart; for everyone else present is permanently read-only. */}
@@ -3689,7 +3695,7 @@ export default function SongEditor({
                   aria-label={presentUnlocked ? "Editing is on — tap to lock the chart" : "Chart is locked — tap to unlock editing"}
                   title={presentUnlocked ? "Editing on — tap to lock" : "Locked — tap to unlock editing"}
                   data-present-lock={presentUnlocked ? "unlocked" : "locked"}
-                  className={"h-7 pl-1.5 pr-2 rounded-full flex items-center gap-1 shrink-0 text-xs font-medium border transition-colors " + (presentUnlocked
+                  className={"h-7 pl-1.5 pr-2 rounded-full flex items-center gap-1 shrink-0 text-xs font-medium border transition-colors [@media(orientation:landscape)_and_(max-height:520px)]:order-last " + (presentUnlocked
                     ? "bg-amber-50 text-amber-700 border-amber-300 dark:bg-amber-950/50 dark:text-amber-300 dark:border-amber-700"
                     : "bg-slate-100/80 text-slate-500 border-transparent hover:bg-slate-200/70 dark:bg-slate-800/70 dark:text-slate-400 dark:hover:bg-slate-700/70")}>
                   {presentUnlocked ? (
@@ -3705,7 +3711,12 @@ export default function SongEditor({
                 scrollToSection (sections carry a present-mode scroll-margin-top so
                 the target lands below this header). Updates automatically when
                 present mode crosses to the next setlist song (song.sections change). */}
+            {/* Flow chips + compact view toggles (Columns · Layout) share one
+                row when there's room and wrap below the chips on narrow
+                phones. Always visible. View settings, never blocked by the Lock. */}
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 [@media(orientation:landscape)_and_(max-height:520px)]:flex-1 [@media(orientation:landscape)_and_(max-height:520px)]:min-w-0 [@media(orientation:landscape)_and_(max-height:520px)]:flex-nowrap">
             {song.sections.length > 0 && (
+              <div className="flex-1 min-w-[min(100%,16rem)] [@media(orientation:landscape)_and_(max-height:520px)]:min-w-0">
               <SongFlowBar
           isDark={isDark}
                 compact
@@ -3719,7 +3730,18 @@ export default function SongEditor({
                 onDuplicate={duplicateSection}
                 onDelete={deleteSection}
               />
+              </div>
             )}
+              <div className="flex items-center gap-2.5 shrink-0 mx-auto sm:mx-0" data-present-toggles>
+                <PresentSegmented label="Columns" value={String(columnPref)}
+                  options={(narrowScreen ? ["auto", "1", "2"] : ["auto", "1", "2", "3"]).map((v) => ({ value: v, label: v === "auto" ? "Auto" : v }))}
+                  onChange={(v) => switchView(v === "auto" ? "auto" : viewModeFor(Number(v) as 1 | 2 | 3))} />
+                <PresentSegmented label="Layout" value={playLayout}
+                  options={[{ value: "scroll", label: "Scroll" }, { value: "fit", label: "Fit" }]}
+                  onChange={(v) => changePlayLayout(v as "scroll" | "fit")} />
+              </div>
+            </div>
+            </div>
             {/* Visual metronome — pinned in the ALWAYS-visible header (not the
                 tap-to-reveal controls), so the beat stays readable on stage
                 without touching the screen. Full width for distance
@@ -3754,13 +3776,12 @@ export default function SongEditor({
               a slab on tablets. On narrow phones Auto-scroll drops to its icon
               and the chip truncates so it all stays on one row. Inset from the
               safe areas on every side. */}
-          {presentControls && (
-            <div onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}
-              className="fixed z-[2] mx-auto max-w-[640px] flex items-center gap-1 sm:gap-2 px-1 sm:px-1.5 py-1.5 rounded-[18px] bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-[#e7e2f7] dark:border-slate-700 shadow-lg shadow-violet-900/10 dark:shadow-black/40"
+          <div data-present-bar onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}
+              className="fixed z-[2] mx-auto max-w-[560px] flex items-center gap-1 sm:gap-1.5 px-1 py-1 rounded-[14px] bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-[#e7e2f7] dark:border-slate-700 shadow-lg shadow-violet-900/10 dark:shadow-black/40"
               style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.6rem)", left: "calc(env(safe-area-inset-left, 0px) + 0.6rem)", right: "calc(env(safe-area-inset-right, 0px) + 0.6rem)" }}>
               <button type="button" onClick={() => { goPrev(); revealControls(); }} aria-label="Previous section"
-                className="shrink-0 flex items-center gap-0.5 sm:gap-1 h-9 pl-1.5 pr-2.5 sm:pl-2 sm:pr-3 rounded-xl bg-[#efe9fe] dark:bg-[#2a2440] text-[#8574f0] dark:text-[#b3a3ff] text-sm font-semibold hover:bg-[#e6defd] dark:hover:bg-[#332b4f] transition-colors">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
+                className="shrink-0 flex items-center gap-0.5 h-8 pl-1 pr-2 sm:pl-1.5 sm:pr-2.5 rounded-[10px] bg-[#efe9fe] dark:bg-[#2a2440] text-[#8574f0] dark:text-[#b3a3ff] text-[13px] font-medium hover:bg-[#e6defd] dark:hover:bg-[#332b4f] transition-colors">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
                 Prev
               </button>
               <div className="flex-1 min-w-0 flex items-center justify-center gap-1 sm:gap-2">
@@ -3770,7 +3791,7 @@ export default function SongEditor({
                     the metronome play); lavender while running. */}
                 <button type="button" onClick={() => { setAutoScrolling((o) => !o); revealControls(); }}
                   aria-pressed={autoScrolling} aria-label={autoScrolling ? "Stop auto-scroll" : "Auto-scroll"}
-                  className={"shrink-0 flex items-center gap-1.5 h-9 px-2 sm:px-2.5 rounded-xl border text-sm font-medium transition-colors " + (autoScrolling
+                  className={"shrink-0 flex items-center gap-1 h-8 px-2 rounded-[10px] border text-[13px] font-medium transition-colors " + (autoScrolling
                     ? "bg-[#efe9fe] border-[#d3c7f7] text-[#6350ef] dark:bg-[#2a2440] dark:border-[#4b3f80] dark:text-[#b3a3ff]"
                     : "bg-white border-[#e7e2f7] text-slate-600 hover:bg-[#f6f3ff] dark:bg-slate-900 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800")}>
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="text-[#8574f0] dark:text-[#b3a3ff]"><polyline points="7 5 12 10 17 5"/><polyline points="7 13 12 18 17 13"/></svg>
@@ -3780,7 +3801,7 @@ export default function SongEditor({
                 {/* Current section (+ setlist position on wider screens). */}
                 {/* Empty at the very top (nothing scrolled past yet) → the first section. */}
                 {song.sections.length > 0 && (
-                  <span className="min-w-0 max-w-[9rem] sm:max-w-[14rem] h-7 px-2 sm:px-2.5 inline-flex items-center gap-1 rounded-full bg-[#efe9fe] dark:bg-[#2a2440] border border-[#d3c7f7] dark:border-[#4b3f80] text-[#8574f0] dark:text-[#b3a3ff] text-xs font-semibold"
+                  <span className="min-w-0 max-w-[9rem] sm:max-w-[14rem] h-6 px-2 inline-flex items-center gap-1 rounded-full bg-[#efe9fe] dark:bg-[#2a2440] border border-[#d3c7f7] dark:border-[#4b3f80] text-[#8574f0] dark:text-[#b3a3ff] text-xs font-medium"
                     aria-live="polite" data-present-section>
                     <span className="truncate">{fitPaged ? (fitLayout!.pages[fitPage]?.[0]?.section.label ?? "") : (presentSection || song.sections[0]?.label || "")}</span>
                     {setlistContext && (
@@ -3788,27 +3809,34 @@ export default function SongEditor({
                     )}
                   </span>
                 )}
+                {/* Fit: the page counter lives here while presenting (no
+                    in-card indicator), so the page gets that height back. */}
+                {fitPaged && fitPageCount > 1 && (
+                  <span aria-live="polite" data-fit-page
+                    className="shrink-0 text-[12px] font-medium tabular-nums text-slate-500 dark:text-slate-400">
+                    <span className="sr-only">Page </span>{fitPage + 1} / {fitPageCount}
+                  </span>
+                )}
                 {/* Text size (A− / A+) — the presenter's text-size control. */}
-                <div className="shrink-0 flex items-center h-9 rounded-xl overflow-hidden border border-[#e7e2f7] dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300">
+                <div className="shrink-0 flex items-center h-8 rounded-[10px] overflow-hidden border border-[#e7e2f7] dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300">
                   <button type="button" onClick={() => { adjustZoom(-1); revealControls(); }}
                     disabled={zoomOffset <= zoomMin} aria-label="Smaller text" title="Smaller text"
                     className="h-full px-2 sm:px-2.5 flex items-center hover:bg-[#f6f3ff] dark:hover:bg-slate-800 disabled:opacity-40 disabled:hover:bg-transparent">
-                    <span className="text-xs font-bold">A</span><span className="text-xs">−</span>
+                    <span className="text-xs font-semibold">A</span><span className="text-xs">−</span>
                   </button>
                   <button type="button" onClick={() => { adjustZoom(1); revealControls(); }}
                     disabled={zoomOffset >= zoomMax} aria-label="Larger text" title="Larger text"
                     className="h-full px-2 sm:px-2.5 flex items-center border-l border-[#e7e2f7] dark:border-slate-700 hover:bg-[#f6f3ff] dark:hover:bg-slate-800 disabled:opacity-40 disabled:hover:bg-transparent">
-                    <span className="text-base font-bold leading-none">A</span><span className="text-xs">+</span>
+                    <span className="text-[15px] font-semibold leading-none">A</span><span className="text-xs">+</span>
                   </button>
                 </div>
               </div>
               <button type="button" onClick={() => { goNext(); revealControls(); }} aria-label="Next section"
-                className="shrink-0 flex items-center gap-0.5 sm:gap-1 h-9 pl-2.5 pr-1.5 sm:pl-3 sm:pr-2 rounded-xl bg-[#efe9fe] dark:bg-[#2a2440] text-[#8574f0] dark:text-[#b3a3ff] text-sm font-semibold hover:bg-[#e6defd] dark:hover:bg-[#332b4f] transition-colors">
+                className="shrink-0 flex items-center gap-0.5 h-8 pl-2 pr-1 sm:pl-2.5 sm:pr-1.5 rounded-[10px] bg-[#efe9fe] dark:bg-[#2a2440] text-[#8574f0] dark:text-[#b3a3ff] text-[13px] font-medium hover:bg-[#e6defd] dark:hover:bg-[#332b4f] transition-colors">
                 Next
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
               </button>
             </div>
-          )}
         </>
       )}
       {/* Persistent metronome control — fixed bottom-LEFT, reachable at any scroll
@@ -4264,7 +4292,7 @@ export default function SongEditor({
         // adds) tells Blink to swallow that scroll instead of chaining — which
         // froze scrolling on Chrome/Android (WebKit/iOS chained anyway). Keep only
         // the x-axis contained so horizontal scroll of wide charts doesn't bounce.
-        className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-4 sm:p-6 md:p-8 overflow-x-auto overscroll-x-none print:border-0 print:shadow-none print:p-0"
+        className={"rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-x-auto overscroll-x-none print:border-0 print:shadow-none print:p-0 " + (fitMode && presenting ? "p-3" : "p-4 sm:p-6 md:p-8")}
         // Fit mode turns this card into the scroll viewport: fixed height with
         // vertical overflow, so the song scrolls inside it only when it can't be
         // shrunk to fit. Scroll mode keeps the card's natural auto height.
@@ -4282,7 +4310,7 @@ export default function SongEditor({
         onPointerUp={fitMode ? onFitPointerEnd : undefined}
         onPointerCancel={fitMode ? onFitPointerEnd : undefined}
       >
-        {fitPaged && fitPageCount > 1 && (
+        {fitPaged && fitPageCount > 1 && !presenting && (
           <div aria-live="polite" data-fit-page
             className="pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 z-[1] flex items-center gap-1.5 px-2.5 h-6 rounded-full bg-white/90 dark:bg-slate-900/90 border border-[#e7e2f7] dark:border-slate-700 text-[11px] font-semibold text-[#8574f0] dark:text-[#b3a3ff] tabular-nums shadow-sm">
             Page {fitPage + 1} / {fitPageCount}
@@ -4487,8 +4515,8 @@ export default function SongEditor({
                         ? "0px"
                         : lineHasChordRoom
                           ? effColumnView
-                            ? "0.5rem"
-                            : "0.75rem"
+                            ? "0.3rem"
+                            : "0.4rem"
                           : "0px";
                     // A chord-less line carries no chord row, so it should NOT get
                     // the loose reading line-height either — that leaves half-leading
@@ -5148,7 +5176,11 @@ export default function SongEditor({
         </div>
       )}
 
-      <div data-coach="quick-actions" className="fixed right-4 bottom-[calc(6rem+env(safe-area-inset-bottom,0px))] md:bottom-8 z-30 hidden sm:flex flex-col gap-2 print:hidden">
+      <div data-coach="quick-actions" className={"fixed right-4 z-30 flex-col gap-2 print:hidden " + (presenting
+          // Presenting: the ONE settings gear on every screen size, parked
+          // just above the always-visible bottom bar.
+          ? "flex bottom-[calc(4.25rem+env(safe-area-inset-bottom,0px))]"
+          : "bottom-[calc(6rem+env(safe-area-inset-bottom,0px))] md:bottom-8 hidden sm:flex")}>
         <button type="button" onClick={() => setQuickActionsOpen(o => !o)} title="Quick Actions"
           className={"w-11 h-11 rounded-full shadow-lg border flex items-center justify-center transition-colors " + (quickActionsOpen ? "bg-[#efe9fe] text-[#6350ef] border-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:border-[#3a3358]" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-[#f3f0ff] dark:hover:bg-slate-700")}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
@@ -5156,7 +5188,8 @@ export default function SongEditor({
         {/* Auto-scroll has nothing to drive in fit mode — hide it there. */}
         {!fitMode && (
           <button type="button" onClick={() => setAutoScrolling(o => !o)} title={autoScrolling ? "Pause" : "Auto-scroll"}
-            className={"w-11 h-11 rounded-full shadow-lg border flex items-center justify-center transition-colors " + (autoScrolling ? "bg-[#efe9fe] text-[#6350ef] border-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:border-[#3a3358]" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-[#f3f0ff] dark:hover:bg-slate-700")}>
+            // Phones while presenting: the bar's Auto-scroll is the one control.
+            className={"w-11 h-11 rounded-full shadow-lg border items-center justify-center transition-colors " + (presenting ? "hidden sm:flex " : "flex ") + (autoScrolling ? "bg-[#efe9fe] text-[#6350ef] border-[#e0d6fb] dark:bg-[#2a2440] dark:text-[#b3a3ff] dark:border-[#3a3358]" : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-[#f3f0ff] dark:hover:bg-slate-700")}>
             {autoScrolling
               ? <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
               : <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>}
@@ -6363,6 +6396,34 @@ function PrivateVersionBar({ pv, onAction }: {
             className={btn + " text-slate-500 dark:text-slate-400 hover:bg-amber-100 dark:hover:bg-amber-900/40"}>{pv.inLibrary ? "Use shared" : "Discard"}</button>
         </span>
       )}
+    </div>
+  );
+}
+
+/** Presenter header: a tiny captioned segmented toggle (Columns / Layout). */
+function PresentSegmented({ label, value, options, onChange }: {
+  label: string;
+  value: string;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1" role="group" aria-label={label}>
+      <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">{label}</span>
+      <div className="flex items-center h-7 p-0.5 rounded-md bg-slate-100 dark:bg-slate-800/80">
+        {options.map((o) => {
+          const on = o.value === value;
+          return (
+            <button key={o.value} type="button" aria-pressed={on} data-seg={o.value}
+              onClick={() => onChange(o.value)}
+              className={"h-6 px-2 rounded-[5px] text-[12px] leading-none font-medium tabular-nums transition-colors " + (on
+                ? "bg-white text-[#6350ef] shadow-sm dark:bg-[#2a2440] dark:text-[#c9bdfb]"
+                : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200")}>
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

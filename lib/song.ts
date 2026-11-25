@@ -834,7 +834,7 @@ export const CHORD_FONT_CLAMP = `clamp(${FONT_MIN_PX - 1}px, calc(var(--lyric-fo
 // lyric's top half-leading = (lineHeight − 1) × fontSize / 2), which stays > 0 at
 // every font size, so the chord row never touches the lyric row. compact/relaxed
 // keep the same relative range for users who pick them.
-export const LINE_SPACING: Record<EditorPrefs["lineSpacing"], number> = { compact: 1.25, normal: 1.4, relaxed: 1.95 };
+export const LINE_SPACING: Record<EditorPrefs["lineSpacing"], number> = { compact: 1.1, normal: 1.2, relaxed: 1.5 };
 export const EDITOR_FONT_FAMILY: Record<EditorPrefs["fontFamily"], string> = {
   mono: "ui-monospace, Menlo, Consolas, 'Courier New', monospace",
   sans: "ui-sans-serif, system-ui, -apple-system, sans-serif",
