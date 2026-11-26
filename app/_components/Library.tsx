@@ -1193,7 +1193,7 @@ function SongCard({
           {[song.capo ? `Capo ${song.capo}` : null, song.bpm ? `${song.bpm} bpm` : null].filter(Boolean).join(" · ")}
         </span>
         {!selectMode && (
-          <div className="ml-auto -mr-2 flex items-center shrink-0">
+          <div className="tap-vert ml-auto -mr-2 flex items-center shrink-0">
             <StarButton favorite={song.favorite} onClick={onToggleFavorite} />
             <DotsButton onClick={onMenu} />
           </div>
