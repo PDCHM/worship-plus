@@ -363,7 +363,7 @@ function ToolBtn({
     tone === "accent"
       ? "text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/60"
       : tone === "danger"
-        ? "text-slate-500 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+        ? "text-slate-500 dark:text-slate-400 hover:text-[#d06a86] dark:hover:text-rose-300 hover:bg-[#fbeef2] dark:hover:bg-rose-950/40"
         : "text-slate-500 dark:text-slate-400 hover:text-[#6350ef] dark:hover:text-[#b3a3ff] hover:bg-slate-100 dark:hover:bg-slate-800";
   return (
     <button
@@ -788,7 +788,7 @@ function SongFlowBar({
               <button
                 type="button"
                 onClick={() => { setConfirmDeleteId(menu.id); setMenu(null); }}
-                className="w-full text-left px-3 py-1.5 text-sm hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-700 dark:text-rose-400 flex items-center gap-2"
+                className="w-full text-left px-3 py-1.5 text-sm text-[#d06a86] dark:text-rose-300 hover:bg-[#fbeef2] dark:hover:bg-rose-950/40 flex items-center gap-2"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <polyline points="3 6 5 6 21 6" />
@@ -5510,7 +5510,7 @@ export default function SongEditor({
                   <button
                     type="button"
                     onClick={() => { setMoreOpen(false); setConfirmDeleteOpen(true); }}
-                    className="w-full min-h-[48px] px-5 flex items-center gap-3.5 text-[15px] text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                    className="w-full min-h-[48px] px-5 flex items-center gap-3.5 text-[15px] text-[#d06a86] dark:text-rose-300 hover:bg-[#fbeef2] dark:hover:bg-rose-950/40 transition-colors"
                   >
                     <span className="shrink-0 w-5 flex justify-center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></span>
                     Delete song

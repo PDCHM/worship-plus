@@ -1039,7 +1039,7 @@ function MenuItem({
 }) {
   const toneClasses =
     tone === "danger"
-      ? "text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+      ? "text-[#d06a86] dark:text-rose-300 hover:bg-[#fbeef2] dark:hover:bg-rose-950/40"
       : "text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700";
   return (
     <button
