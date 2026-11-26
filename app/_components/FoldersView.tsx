@@ -904,13 +904,27 @@ function SetlistDetail({
         </div>
       </div>
 
-      {/* ── Schedule ── */}
-      <div className="mt-6">
-        <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3">Schedule</h3>
+      {/* ── Schedule ── header row: label left, Event + / Rehearsal + right (one line). */}
+      <div className="mt-4">
+        <div className="flex flex-nowrap items-center gap-2 mb-2">
+          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mr-auto whitespace-nowrap">Schedule</h3>
+          {canEdit && (
+            <div className="flex shrink-0 flex-nowrap items-center gap-1.5 max-[341px]:gap-1">
+              <button type="button" onClick={() => setEventModal({ type: "event" })}
+                className="h-7 px-[10px] max-[341px]:px-[7px] rounded-lg text-[13px] font-medium whitespace-nowrap shrink-0 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 flex items-center gap-1 transition-colors">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Event +
+              </button>
+              <button type="button" onClick={() => setEventModal({ type: "rehearsal" })}
+                className="h-7 px-[10px] max-[341px]:px-[7px] rounded-lg text-[13px] font-medium whitespace-nowrap shrink-0 bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/50 flex items-center gap-1 transition-colors">
+                <span className="w-1.5 h-1.5 rounded-full bg-violet-500" /> Rehearsal +
+              </button>
+            </div>
+          )}
+        </div>
         {events.length === 0 ? (
-          <p className="text-xs text-slate-500 dark:text-slate-500 mb-3">No rehearsals or events scheduled yet.</p>
+          <p className="text-xs text-slate-500 dark:text-slate-500">No rehearsals or events scheduled yet.</p>
         ) : (
-          <div className="rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800 mb-3">
+          <div className="rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800">
             {events.map((ev) => (
               <EventRow
                 key={ev.id}
@@ -927,23 +941,11 @@ function SetlistDetail({
             ))}
           </div>
         )}
-        {canEdit && (
-          <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => setEventModal({ type: "rehearsal" })}
-              className="h-8 px-3 rounded-lg text-xs font-medium bg-violet-50 dark:bg-violet-950/50 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/50 flex items-center gap-1.5 transition-colors">
-              <span className="w-2 h-2 rounded-full bg-violet-500" /> Rehearsal +
-            </button>
-            <button type="button" onClick={() => setEventModal({ type: "event" })}
-              className="h-8 px-3 rounded-lg text-xs font-medium bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 flex items-center gap-1.5 transition-colors">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" /> Event +
-            </button>
-          </div>
-        )}
       </div>
 
       {/* ── Songs ── (matches the Schedule header) */}
-      <h3 className="mt-6 text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3">Songs</h3>
-      <div className="flex items-center justify-between mb-4">
+      <h3 className="mt-5 text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Songs</h3>
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 flex-wrap">
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {orderedSongs.length} {orderedSongs.length === 1 ? "song" : "songs"}
@@ -960,7 +962,7 @@ function SetlistDetail({
           <button
             type="button"
             onClick={() => onAddSongs(folder.id)}
-            className="h-8 px-3 rounded-lg text-xs font-medium bg-[#735fee] text-white hover:bg-[#6650e6] flex items-center gap-1.5 shrink-0"
+            className="h-7 px-2.5 rounded-lg text-[13px] font-medium bg-[#735fee] text-white hover:bg-[#6650e6] flex items-center gap-1 shrink-0 whitespace-nowrap"
           >
             <PlusIconSm /> Add Songs
           </button>
