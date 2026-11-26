@@ -57,12 +57,15 @@ export type GroupsViewProps = {
   onShareSong: (groupId: string, songId: string) => Promise<void>;
   onUnshareSong: (groupId: string, songId: string) => void;
   onDeleteGroup: (groupId: string) => Promise<boolean>;
-  onOpenSong: (id: string) => void;
+  // teamId: the Team the song was opened from, so Back returns there.
+  onOpenSong: (id: string, teamId: string) => void;
   onOpenSetlist: (id: string, teamId: string) => void;
   showToast: (msg: string) => void;
   // Optional: drive team selection from the parent (so the left-nav highlight
   // tracks the open team). Falls back to internal state when not provided.
   selectedTeamId?: string | null;
+  // Which tab the Leader view opens on (Back from a Shared Songs song → "songs").
+  initialTeamTab?: "members" | "songs";
   onSelectTeam?: (id: string | null) => void;
 };
 
@@ -299,8 +302,8 @@ function TeamTile({ name }: { name: string }) {
 // Management view: the Owner ('leader') and Co-leaders. Owner-only actions
 // (rename, delete, transfer ownership) render only for the Owner — the DB
 // rejects them for anyone else regardless.
-function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, folders, onUpdateGroup, onAddMember, onSetMemberRole, onRemoveMember, onTransferOwnership, onReorderMembers, onSetMemberInstrument, onShareSong, onUnshareSong, onDeleteGroup, onOpenSong, onOpenSetlist, showToast }: { group: Group; onBack: () => void } & GroupsViewProps) {
-  const [tab, setTab] = useState<"members"|"songs">("members");
+function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, folders, onUpdateGroup, onAddMember, onSetMemberRole, onRemoveMember, onTransferOwnership, onReorderMembers, onSetMemberInstrument, onShareSong, onUnshareSong, onDeleteGroup, onOpenSong, onOpenSetlist, showToast, initialTeamTab }: { group: Group; onBack: () => void } & GroupsViewProps) {
+  const [tab, setTab] = useState<"members"|"songs">(initialTeamTab ?? "members");
   const [addSongsOpen, setAddSongsOpen] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameVal, setNameVal] = useState(group.name);
@@ -378,7 +381,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
             <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden">
               {sharedSongs.map((song, idx) => (
                 <div key={song.id} className={"flex items-center gap-3 px-4 py-3 group "+(idx<sharedSongs.length-1?"border-b border-slate-100 dark:border-slate-800":"")}>
-                  <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onOpenSong(song.id)}>
+                  <div className="flex-1 min-w-0 cursor-pointer" onClick={() => onOpenSong(song.id, group.id)}>
                     <div className="text-sm font-medium truncate">{song.title}</div>
                     <div className="text-xs text-slate-500 truncate">{song.artist||"Unknown"} · Key {song.key}</div>
                   </div>
@@ -960,7 +963,7 @@ function MemberView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
       ) : (
         <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden">
           {sharedSongs.map((song, idx) => (
-            <div key={song.id} className={"flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 "+(idx<sharedSongs.length-1?"border-b border-slate-100 dark:border-slate-800":"")} onClick={() => onOpenSong(song.id)}>
+            <div key={song.id} className={"flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 "+(idx<sharedSongs.length-1?"border-b border-slate-100 dark:border-slate-800":"")} onClick={() => onOpenSong(song.id, group.id)}>
               <div className="flex-1 min-w-0"><div className="text-sm font-medium truncate">{song.title}</div><div className="text-xs text-slate-500">{song.artist||"Unknown"} · Key {song.key}</div></div>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="text-slate-300 shrink-0"><polyline points="9 18 15 12 9 6"/></svg>
             </div>

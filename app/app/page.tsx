@@ -103,7 +103,7 @@ type View =
   // (legacy / cross-navigation). It's carried through subview navigation so Back
   // returns to the originating tab.
   | { kind: "folders"; subview: "all" | string; tab?: "folders" | "setlists"; fromTeamId?: string }
-  | { kind: "groups"; teamId?: string };
+  | { kind: "groups"; teamId?: string; teamTab?: "members" | "songs" };
 
 const SETTINGS_KEY = "wp-settings-v1";
 // Editor prefs + section styles (incl. prefs.chartFont, the single source of
@@ -3661,7 +3661,11 @@ export default function Home() {
               }}
               onBack={() => navigateTo(view.kind === "editor" && view.setlistId
                 ? { kind: "folders", subview: view.setlistId, tab: "setlists", fromTeamId: view.fromTeamId }
-                : { kind: "library", filter: "all" })}
+                // A team song opened from the Team page → back to that Team, on
+                // its Shared Songs tab (if the Team still exists for me).
+                : view.kind === "editor" && view.fromTeamId && groups.some((g) => g.id === view.fromTeamId)
+                  ? { kind: "groups", teamId: view.fromTeamId, teamTab: "songs" }
+                  : { kind: "library", filter: "all" })}
               onReadOnlyChange={setEditorReadOnly}
               onMarkupModeChange={setEditorMarkup}
               initialPresenting={presentActive}
@@ -3783,7 +3787,7 @@ export default function Home() {
             </div>
           )}
           {view.kind === "groups" && groupsLoaded && (
-            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={librarySongs} folders={folders} onCreateGroup={gatedCreateTeam} onUpdateGroup={updateGroupName} onAddMember={gatedAddMember} onSetMemberRole={setMemberRole} onRemoveMember={removeGroupMember} onTransferOwnership={transferTeamOwnership} onReorderMembers={reorderTeamMembers} onSetMemberInstrument={setMemberInstrument} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onDeleteGroup={deleteGroup} onOpenSong={openSong} onOpenSetlist={(id, teamId) => navigateTo({ kind: "folders", subview: id, tab: "setlists", fromTeamId: teamId })} showToast={showToast} selectedTeamId={view.kind === "groups" ? (view.teamId ?? null) : null} onSelectTeam={(id) => navigateTo({ kind: "groups", teamId: id ?? undefined })}/>
+            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={librarySongs} folders={folders} onCreateGroup={gatedCreateTeam} onUpdateGroup={updateGroupName} onAddMember={gatedAddMember} onSetMemberRole={setMemberRole} onRemoveMember={removeGroupMember} onTransferOwnership={transferTeamOwnership} onReorderMembers={reorderTeamMembers} onSetMemberInstrument={setMemberInstrument} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onDeleteGroup={deleteGroup} onOpenSong={(id, teamId) => { markSongOpened(id); navigateTo({ kind: "editor", songId: id, fromTeamId: teamId }); }} initialTeamTab={view.kind === "groups" ? view.teamTab : undefined} onOpenSetlist={(id, teamId) => navigateTo({ kind: "folders", subview: id, tab: "setlists", fromTeamId: teamId })} showToast={showToast} selectedTeamId={view.kind === "groups" ? (view.teamId ?? null) : null} onSelectTeam={(id) => navigateTo({ kind: "groups", teamId: id ?? undefined })}/>
           )}
         </main>
       </div>
