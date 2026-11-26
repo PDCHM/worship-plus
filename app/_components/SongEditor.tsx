@@ -1503,7 +1503,7 @@ export default function SongEditor({
   const lyricBase = LYRIC_FONT_SIZE_PX[prefs.lyricFontSize];
   const zoomMin = FONT_MIN_PX - lyricBase;
   const zoomMax = FONT_MAX_PX - lyricBase;
-  // 🔗 References + ⋯ More — rendered on the Key · Tempo · Capo line (edit /
+  // 🔗 References + ⋯ More — rendered on the Key · Capo · Tempo line (edit /
   // read view) and in the presenter header (that line is hidden while
   // presenting). Only one of the two places is ever mounted, so refsMenuRef
   // (outside-tap close for the links popover) has a single owner.
@@ -3838,7 +3838,7 @@ export default function SongEditor({
                   options={[{ value: "scroll", label: "Scroll" }, { value: "fit", label: "Fit" }]}
                   onChange={(v) => changePlayLayout(v as "scroll" | "fit")} />
               </div>
-              {/* 🔗 + ⋯ — the Key · Tempo · Capo line (their home in the editor)
+              {/* 🔗 + ⋯ — the Key · Capo · Tempo line (their home in the editor)
                   is hidden while presenting, so they live here instead: after
                   the toggles, or (phones, where the toggles wrap below) in the
                   top row before the Lock. */}
@@ -4172,8 +4172,8 @@ export default function SongEditor({
             </button>
           )}
           <span className="text-slate-300 dark:text-slate-600 max-sm:hidden">·</span>
-          {/* Key line — ONE row that never wraps: Key · Capo · Tempo (capo songs;
-              no-capo songs keep Key · Tempo · Capo), then 🔗 + ⋯ pinned right.
+          {/* Key line — ONE row that never wraps: Key · Capo · Tempo (every song),
+              then 🔗 + ⋯ pinned right.
               Phones: its own full-width line under the artist. */}
           <div className="flex flex-1 min-w-0 flex-nowrap items-center gap-2 max-sm:basis-full" data-key-line>
           <span className="flex min-w-0 flex-nowrap items-center gap-x-2 sm:gap-2">
@@ -4199,7 +4199,7 @@ export default function SongEditor({
               )}
             </div>
           </span>
-{hasCapo ? (<>
+          {/* Same order on every song: Key · Capo · Tempo. */}
           <span className="flex items-center gap-2">
           <span className="text-slate-300 dark:text-slate-600">·</span>
           {/* Capo stated ONCE: when set, the "Capo N · Play Y" pill IS
@@ -4238,46 +4238,6 @@ export default function SongEditor({
               </div>
             </span>
           )}
-</>) : (<>
-          {(song.bpm != null || !readOnly || tempoPanelOpen) && (
-            <span className="flex items-center gap-2">
-              <span className="text-slate-300 dark:text-slate-600">·</span>
-              <div className="relative">
-                <button type="button" onClick={() => { setTempoPanelOpen(o => !o); setKeyPickerOpen(false); setCapoPickerOpen(false); }}
-                  title="Tempo & metronome"
-                  aria-label={song.bpm != null ? `Tempo ${song.bpm} BPM` : "Tempo"}
-                  // Capo songs: same size as the capo pill, regular weight, and
-                  // icon-only at ≤360px so the line never wraps. No-capo songs: as before.
-                  className={"inline-flex items-center gap-1 text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/50 px-1.5 py-0.5 rounded-md transition-colors whitespace-nowrap " + (hasCapo ? "text-xs font-normal" : "font-semibold")}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 13.8"/></svg>
-                  <span className={hasCapo ? "max-[361px]:hidden" : undefined}>{song.bpm != null ? `${song.bpm} BPM` : "Tempo"}</span>
-                </button>
-                {tempoPanelOpen && !presenting && renderTempoPanel()}
-              </div>
-            </span>
-          )}
-          <span className="flex items-center gap-2">
-          <span className="text-slate-300 dark:text-slate-600">·</span>
-          {/* Capo stated ONCE: when set, the "Capo N · Play Y" pill IS
-              the control (tap to change); when unset, a compact "Capo" button to add
-              one. Both open the same wheel picker anchored here — no duplicate. */}
-          <div className="relative">
-            {(song.capo ?? 0) > 0 ? (
-              <button type="button" onClick={() => { setCapoPickerOpen(o => !o); setKeyPickerOpen(false); }}
-                title="Capo shifts the displayed chord shapes down; the sounding key is unchanged. Tap to change."
-                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full whitespace-nowrap bg-[#f3f0ff] dark:bg-[#2a2440]/50 text-[#6350ef] dark:text-[#c9bdfb] text-xs font-medium border border-[#e0d6fb] dark:border-[#2f2852] hover:bg-[#efe9fe] dark:hover:bg-[#2f2852]/50 transition-colors">
-                <span>Capo {song.capo}<span className="max-[331px]:hidden"> · Play {playKey(song.key, song.capo)}</span></span>
-              </button>
-            ) : (
-              <button type="button" onClick={() => { setCapoPickerOpen(o => !o); setKeyPickerOpen(false); }}
-                className="font-semibold text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/50 px-1.5 py-0.5 rounded-md transition-colors">
-                Capo
-              </button>
-            )}
-            {capoPickerOpen && !presenting && renderCapoPicker()}
-          </div>
-          </span>
-</>)}
           </span>
           {/* 🔗 + ⋯ — always pinned to the right end of this line. */}
           <span className="ml-auto shrink-0 flex items-center gap-1.5 print:hidden">
@@ -4301,7 +4261,7 @@ export default function SongEditor({
       </div>
 
       {/* ONE row at every width ≥320px: back · columns · play | edit · markup
-          … Save. (🔗 + ⋯ live on the Key · Tempo · Capo line.) ≤360px: 4px gaps;
+          … Save. (🔗 + ⋯ live on the Key · Capo · Tempo line.) ≤360px: 4px gaps;
           ≤340px: 2px gaps + slightly narrower Columns / Back / Play / Save
           (tap areas unchanged). */}
       <div className={"mb-3 sm:mb-5 flex flex-nowrap items-center gap-[7px] max-[361px]:gap-1 max-[341px]:gap-0.5 print:hidden" + (presenting ? " hidden" : "")}>

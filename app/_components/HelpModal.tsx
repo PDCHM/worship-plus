@@ -217,7 +217,7 @@ const GROUPS: Group[] = [
       { icon: ICON.sparkle, text: "Generate Chords — add chords with AI (when available)." },
       { icon: ICON.tempo, text: "Tempo — the BPM chip on the Key line: BPM, time signature and the metronome. In fullscreen: ⋯ → Tempo & metronome." },
       { icon: chip("Capo"), text: "Capo — on the Key line; shifts the shapes you play, the sounding key stays put. In fullscreen: tap the Capo chip, or ⋯ → Capo." },
-      { icon: ICON.link, text: "References — links to recordings and resources. On the right of the Key · Tempo · Capo line; in fullscreen, in the header." },
+      { icon: ICON.link, text: "References — links to recordings and resources. On the right of the Key · Capo · Tempo line; in fullscreen, in the header." },
       { icon: ICON.more, text: "More actions — print, export, section styles and quick actions. Next to References." },
       { icon: ICON.diagrams, text: "Chord diagrams — show the shapes for the chords in this song." },
     ],
