@@ -145,7 +145,7 @@ export default function SettingsView({ settings, onChange, plan, onUpgrade }: Pr
 
       {/* ── Help & Support ── */}
       <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-5 md:p-6">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+        <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">
           Help &amp; Support
         </h2>
         <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
@@ -261,7 +261,7 @@ function AccountSection() {
 
   return (
     <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-5 md:p-6">
-      <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-4">
+      <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-4">
         Account
       </h2>
 
@@ -326,7 +326,7 @@ function Section({
   return (
     <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-5 md:p-6">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+        <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
           {title}
         </h2>
         {action}

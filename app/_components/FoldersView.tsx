@@ -1050,9 +1050,9 @@ function SetlistDetail({
                     onClick={() => setLinksSong({ id: song.id, add: false })}
                     title="Reference links"
                     aria-label="Reference links"
-                    className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-[#6350ef] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/40 transition-colors shrink-0"
+                    className="w-6 h-6 rounded-full flex items-center justify-center bg-[#f3f0ff] border border-[#e0d6fb] text-[#6350ef] hover:bg-[#ebe5fe] dark:bg-[#2a2440]/50 dark:border-[#3a3358] dark:text-[#b3a3ff] transition-colors shrink-0"
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
                   </button>
                 ) : canEditSong(song) ? (
                   <button
@@ -1061,21 +1061,24 @@ function SetlistDetail({
                     onClick={() => setLinksSong({ id: song.id, add: true })}
                     title="Add a reference link"
                     aria-label="Add a reference link"
-                    className="shrink-0 flex items-center gap-1 px-1.5 h-7 rounded-md text-[11px] font-medium text-slate-500 hover:text-[#6350ef] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/40 transition-colors"
+                    className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center bg-[#f3f0ff] border border-[#e0d6fb] text-[#6350ef] hover:bg-[#ebe5fe] dark:bg-[#2a2440]/50 dark:border-[#3a3358] dark:text-[#b3a3ff] transition-colors"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    <span className="hidden sm:inline">Link</span>
                   </button>
                 ) : null}
+                {/* Remove — the ONLY way to take a song out of the setlist: a
+                    visible soft-pink "−" (was an invisible hover-only × that
+                    phones hit by accident). Undo toast unchanged. */}
                 {canEdit && (
                   <button
                     type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
                     onClick={() => onRemoveSong(folder.id, song.id)}
                     title="Remove from setlist"
                     aria-label="Remove from setlist"
-                    className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                    className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center bg-[#fbeef2] border border-[#f2d2dc] text-[#d06a86] hover:bg-[#f8e3ea] dark:bg-rose-950/30 dark:border-rose-900/60 dark:text-rose-300 transition-colors"
                   >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden><line x1="6" y1="12" x2="18" y2="12"/></svg>
                   </button>
                 )}
               </div>

@@ -393,15 +393,18 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
       )}
       <TeamSetlistList setlists={teamSetlists} onOpen={onOpenSetlist} />
       {isOwner && (
-        <div className="mt-10 pt-6 border-t border-slate-200 dark:border-slate-800 flex flex-wrap gap-2">
+        <div className="mt-10 pt-6 border-t border-slate-200 dark:border-slate-800 flex flex-nowrap gap-2 max-[341px]:gap-1.5">
+          {/* Compact outline pills: Transfer (brand purple) · Delete (soft pink). */}
           {onTransferOwnership && (
             <button type="button" onClick={() => setTransferOpen(true)}
-              className="h-9 px-4 rounded-xl text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+              className="inline-flex items-center gap-1.5 py-2 px-3.5 max-[341px]:px-2.5 max-[341px]:gap-1 rounded-[10px] border border-[#d9d0fb] dark:border-[#3a3358] text-[13px] font-medium text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#f6f3ff] dark:hover:bg-[#2a2440]/50 whitespace-nowrap transition-colors">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
               Transfer ownership
             </button>
           )}
           <button type="button" onClick={() => setConfirmDeleteTeam(true)}
-            className="h-9 px-4 rounded-xl text-sm font-semibold text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors">
+            className="inline-flex items-center gap-1.5 py-2 px-3.5 max-[341px]:px-2.5 max-[341px]:gap-1 rounded-[10px] border border-[#f2d2dc] bg-[#fbeef2] text-[13px] font-medium text-[#d06a86] hover:bg-[#f8e3ea] dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300 whitespace-nowrap transition-colors">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
             Delete team
           </button>
         </div>
@@ -962,7 +965,7 @@ function TeamSetlistList({ setlists, onOpen }: { setlists: Folder[]; onOpen: (id
   if (setlists.length === 0) return null;
   return (
     <div className="mt-8">
-      <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">Setlists</h2>
+      <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">Setlists</h2>
       <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 overflow-hidden">
         {setlists.map((sl, idx) => (
           <button key={sl.id} type="button" onClick={() => onOpen(sl.id)}
