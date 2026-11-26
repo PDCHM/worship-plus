@@ -1556,6 +1556,15 @@ export default function SongEditor({
           </button>
   );
 
+  const hasCapo = (song.capo ?? 0) > 0;
+  // Artist editing: armed by a first tap, opened by a second (see the Key line).
+  const [editingArtist, setEditingArtist] = useState(false);
+  const [artistArmed, setArtistArmed] = useState(false);
+  useEffect(() => {
+    if (!artistArmed) return;
+    const t = setTimeout(() => setArtistArmed(false), 2500);
+    return () => clearTimeout(t);
+  }, [artistArmed]);
   // Tempo panel + Capo wheel: one definition each, shown from the Key line
   // (edit / read view) or, while presenting (that line is hidden), from the
   // stage — under the presenter header. Same components and handlers.
@@ -1574,7 +1583,7 @@ export default function SongEditor({
   );
   const renderCapoPicker = () => (
               <div data-picker-popover onMouseDown={(e) => e.stopPropagation()} className="fixed inset-x-2 bottom-[calc(0.5rem+env(safe-area-inset-bottom,0px))] z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:left-0 sm:top-full sm:mt-1 sm:z-30 sm:w-44 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl p-3">
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider text-center mb-1.5">Capo</div>
+                <div className="text-[10px] text-slate-500 uppercase tracking-wider text-center mb-1.5">Capo{hasCapo ? ` · Play ${playKey(song.key, song.capo)}` : ""}</div>
                 {/* Rolling wheel → the centred fret is applied via the EXISTING
                     reshape path: handleCapoChange → update() → song.capo, read back
                     by the pill (playKey) and the chart (capoChord/displayChord). */}
@@ -4130,20 +4139,44 @@ export default function SongEditor({
         <div className="text-[13px] sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5 sm:mt-1 px-0.5 flex items-center gap-x-2 gap-y-0.5 sm:gap-2 flex-wrap">
           {readOnly ? (
             <span className="px-1.5 py-0.5 max-sm:basis-full max-sm:-ml-1.5">{song.artist || "Unknown artist"}</span>
-          ) : (
+          ) : editingArtist ? (
             <input
+              autoFocus
               value={song.artist}
               onChange={(e) => update((s) => ({ ...s, artist: e.target.value }))}
+              onBlur={() => setEditingArtist(false)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") (e.target as HTMLInputElement).blur(); }}
               placeholder="Artist"
-              // Sized to its text (no fixed ~20ch gap before Key); on phones
-              // the artist gets its own line and Key · Tempo · Capo the next.
-              className="bg-transparent outline-none focus:bg-slate-50 dark:focus:bg-slate-900 rounded px-1.5 py-0.5 [field-sizing:content] min-w-[6ch] max-w-full max-sm:basis-full max-sm:-ml-1.5"
+              aria-label="Artist"
+              // ≥16px on phones: iOS Safari zooms into (and stays zoomed on)
+              // any focused field under 16px. Sized to its text; on phones the
+              // artist gets its own line and the Key line the next.
+              className="bg-slate-50 dark:bg-slate-900 outline-none ring-1 ring-[#c9bdfb] dark:ring-[#4b3f80] rounded px-1.5 py-0.5 max-sm:text-base [field-sizing:content] min-w-[6ch] max-w-full max-sm:basis-full max-sm:-ml-1.5"
             />
+          ) : (
+            // Two taps to edit (first tap arms it — ring + hint — second opens
+            // the field), so a stray tap while working on the chart doesn't.
+            <button type="button"
+              onClick={() => {
+                if (artistArmed) { setArtistArmed(false); setEditingArtist(true); return; }
+                setArtistArmed(true);
+              }}
+              onBlur={() => setArtistArmed(false)}
+              title={artistArmed ? "Tap again to edit the artist" : "Artist — tap twice to edit"}
+              aria-label={`Artist: ${song.artist || "none"} — tap twice to edit`}
+              className={"text-left rounded px-1.5 py-0.5 max-sm:basis-full max-sm:-ml-1.5 transition-colors " + (artistArmed
+                ? "ring-1 ring-[#c9bdfb] dark:ring-[#4b3f80] bg-[#f6f3ff] dark:bg-[#2a2440]/40"
+                : "hover:bg-slate-50 dark:hover:bg-slate-900")}>
+              {song.artist || <span className="text-slate-400 dark:text-slate-500">Artist</span>}
+              {artistArmed && <span className="ml-1.5 text-[11px] text-[#6350ef] dark:text-[#b3a3ff]">Tap again to edit</span>}
+            </button>
           )}
           <span className="text-slate-300 dark:text-slate-600 max-sm:hidden">·</span>
-          {/* Key · Tempo · Capo — each item keeps its leading dot, so a wrap
-              never strands a lone "Capo" or "·". */}
-          <span className="flex items-center gap-x-2 gap-y-0.5 sm:gap-2 flex-wrap">
+          {/* Key line — ONE row that never wraps: Key · Capo · Tempo (capo songs;
+              no-capo songs keep Key · Tempo · Capo), then 🔗 + ⋯ pinned right.
+              Phones: its own full-width line under the artist. */}
+          <div className="flex flex-1 min-w-0 flex-nowrap items-center gap-2 max-sm:basis-full" data-key-line>
+          <span className="flex min-w-0 flex-nowrap items-center gap-x-2 sm:gap-2">
           <span className="flex items-center gap-1">
             Key
             <div className="relative">
@@ -4166,34 +4199,18 @@ export default function SongEditor({
               )}
             </div>
           </span>
-          {/* BPM chip — sits next to the Key chip. Shows in the read/performance
-              view whenever bpm is set; in edit mode also shows a "Tempo" entry when
-              unset so a value can be added. Tapping opens the local metronome panel. */}
-          {(song.bpm != null || !readOnly || tempoPanelOpen) && (
-            <span className="flex items-center gap-2">
-              <span className="text-slate-300 dark:text-slate-600">·</span>
-              <div className="relative">
-                <button type="button" onClick={() => { setTempoPanelOpen(o => !o); setKeyPickerOpen(false); setCapoPickerOpen(false); }}
-                  title="Tempo & metronome"
-                  className="inline-flex items-center gap-1 font-semibold text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/50 px-1.5 py-0.5 rounded-md transition-colors">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 13.8"/></svg>
-                  {song.bpm != null ? `${song.bpm} BPM` : "Tempo"}
-                </button>
-                {tempoPanelOpen && !presenting && renderTempoPanel()}
-              </div>
-            </span>
-          )}
+{hasCapo ? (<>
           <span className="flex items-center gap-2">
           <span className="text-slate-300 dark:text-slate-600">·</span>
-          {/* Capo stated ONCE: when set, the "Sounding … · Capo N · Play Y" pill IS
+          {/* Capo stated ONCE: when set, the "Capo N · Play Y" pill IS
               the control (tap to change); when unset, a compact "Capo" button to add
               one. Both open the same wheel picker anchored here — no duplicate. */}
           <div className="relative">
             {(song.capo ?? 0) > 0 ? (
               <button type="button" onClick={() => { setCapoPickerOpen(o => !o); setKeyPickerOpen(false); }}
                 title="Capo shifts the displayed chord shapes down; the sounding key is unchanged. Tap to change."
-                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#f3f0ff] dark:bg-[#2a2440]/50 text-[#6350ef] dark:text-[#c9bdfb] text-xs font-medium border border-[#e0d6fb] dark:border-[#2f2852] hover:bg-[#efe9fe] dark:hover:bg-[#2f2852]/50 transition-colors">
-                Sounding {song.key} · Capo {song.capo} · Play {playKey(song.key, song.capo)}
+                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full whitespace-nowrap bg-[#f3f0ff] dark:bg-[#2a2440]/50 text-[#6350ef] dark:text-[#c9bdfb] text-xs font-medium border border-[#e0d6fb] dark:border-[#2f2852] hover:bg-[#efe9fe] dark:hover:bg-[#2f2852]/50 transition-colors">
+                <span>Capo {song.capo}<span className="max-[331px]:hidden"> · Play {playKey(song.key, song.capo)}</span></span>
               </button>
             ) : (
               <button type="button" onClick={() => { setCapoPickerOpen(o => !o); setKeyPickerOpen(false); }}
@@ -4204,7 +4221,70 @@ export default function SongEditor({
             {capoPickerOpen && !presenting && renderCapoPicker()}
           </div>
           </span>
+          {(song.bpm != null || !readOnly || tempoPanelOpen) && (
+            <span className="flex items-center gap-2">
+              <span className="text-slate-300 dark:text-slate-600">·</span>
+              <div className="relative">
+                <button type="button" onClick={() => { setTempoPanelOpen(o => !o); setKeyPickerOpen(false); setCapoPickerOpen(false); }}
+                  title="Tempo & metronome"
+                  aria-label={song.bpm != null ? `Tempo ${song.bpm} BPM` : "Tempo"}
+                  // Capo songs: same size as the capo pill, regular weight, and
+                  // icon-only at ≤360px so the line never wraps. No-capo songs: as before.
+                  className={"inline-flex items-center gap-1 text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/50 px-1.5 py-0.5 rounded-md transition-colors whitespace-nowrap " + (hasCapo ? "text-xs font-normal" : "font-semibold")}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 13.8"/></svg>
+                  <span className={hasCapo ? "max-[361px]:hidden" : undefined}>{song.bpm != null ? `${song.bpm} BPM` : "Tempo"}</span>
+                </button>
+                {tempoPanelOpen && !presenting && renderTempoPanel()}
+              </div>
+            </span>
+          )}
+</>) : (<>
+          {(song.bpm != null || !readOnly || tempoPanelOpen) && (
+            <span className="flex items-center gap-2">
+              <span className="text-slate-300 dark:text-slate-600">·</span>
+              <div className="relative">
+                <button type="button" onClick={() => { setTempoPanelOpen(o => !o); setKeyPickerOpen(false); setCapoPickerOpen(false); }}
+                  title="Tempo & metronome"
+                  aria-label={song.bpm != null ? `Tempo ${song.bpm} BPM` : "Tempo"}
+                  // Capo songs: same size as the capo pill, regular weight, and
+                  // icon-only at ≤360px so the line never wraps. No-capo songs: as before.
+                  className={"inline-flex items-center gap-1 text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/50 px-1.5 py-0.5 rounded-md transition-colors whitespace-nowrap " + (hasCapo ? "text-xs font-normal" : "font-semibold")}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 13.8"/></svg>
+                  <span className={hasCapo ? "max-[361px]:hidden" : undefined}>{song.bpm != null ? `${song.bpm} BPM` : "Tempo"}</span>
+                </button>
+                {tempoPanelOpen && !presenting && renderTempoPanel()}
+              </div>
+            </span>
+          )}
+          <span className="flex items-center gap-2">
+          <span className="text-slate-300 dark:text-slate-600">·</span>
+          {/* Capo stated ONCE: when set, the "Capo N · Play Y" pill IS
+              the control (tap to change); when unset, a compact "Capo" button to add
+              one. Both open the same wheel picker anchored here — no duplicate. */}
+          <div className="relative">
+            {(song.capo ?? 0) > 0 ? (
+              <button type="button" onClick={() => { setCapoPickerOpen(o => !o); setKeyPickerOpen(false); }}
+                title="Capo shifts the displayed chord shapes down; the sounding key is unchanged. Tap to change."
+                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full whitespace-nowrap bg-[#f3f0ff] dark:bg-[#2a2440]/50 text-[#6350ef] dark:text-[#c9bdfb] text-xs font-medium border border-[#e0d6fb] dark:border-[#2f2852] hover:bg-[#efe9fe] dark:hover:bg-[#2f2852]/50 transition-colors">
+                <span>Capo {song.capo}<span className="max-[331px]:hidden"> · Play {playKey(song.key, song.capo)}</span></span>
+              </button>
+            ) : (
+              <button type="button" onClick={() => { setCapoPickerOpen(o => !o); setKeyPickerOpen(false); }}
+                className="font-semibold text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/50 px-1.5 py-0.5 rounded-md transition-colors">
+                Capo
+              </button>
+            )}
+            {capoPickerOpen && !presenting && renderCapoPicker()}
+          </div>
           </span>
+</>)}
+          </span>
+          {/* 🔗 + ⋯ — always pinned to the right end of this line. */}
+          <span className="ml-auto shrink-0 flex items-center gap-1.5 print:hidden">
+            {renderRefsButton("h-8 w-8 sm:h-9 sm:w-9")}
+            {renderMoreButton("h-8 w-8 sm:h-9 sm:w-9")}
+          </span>
+          </div>
           {clipboard && !readOnly && (
             <span className="inline-flex items-center gap-2 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-xs border border-amber-200 dark:border-amber-900 print:hidden">
               <span className="font-medium">{clipboard.label}</span> copied
@@ -4217,11 +4297,6 @@ export default function SongEditor({
               </button>
             </span>
           )}
-          {/* 🔗 + ⋯ ride the right end of this line (moved out of the toolbar). */}
-          <span className="ml-auto flex items-center gap-1.5 print:hidden">
-            {renderRefsButton("h-8 w-8 sm:h-9 sm:w-9")}
-            {renderMoreButton("h-8 w-8 sm:h-9 sm:w-9")}
-          </span>
         </div>
       </div>
 
