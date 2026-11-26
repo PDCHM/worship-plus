@@ -1896,7 +1896,7 @@ function TeamSelectChip({ currentGroupId, teams, onMoveToTeam, onOpenTeam }: {
 function TeamOpenChip({ name, onClick }: { name: string; onClick: () => void }) {
   return (
     <button type="button" onClick={onClick} aria-label={`${name} — view team members`} title="View team members"
-      className="inline-flex min-w-0 items-center gap-1.5 h-7 pl-2.5 pr-2 rounded-full text-xs font-semibold whitespace-nowrap bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/60 transition-colors">
+      className="inline-flex min-w-0 items-center gap-1.5 h-7 pl-2.5 pr-2 rounded-full text-xs font-normal whitespace-nowrap bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/60 transition-colors">
       <TeamPeopleIcon />
       <span className="min-w-0 max-w-[10rem] truncate">{name}</span>
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0"><polyline points="9 18 15 12 9 6"/></svg>
