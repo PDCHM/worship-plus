@@ -367,8 +367,8 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
         <div>
           <div className="flex justify-end mb-3">
             <button type="button" onClick={() => setAddSongsOpen(true)}
-              className="shrink-0 h-9 px-4 rounded-xl bg-[#735fee] text-white text-sm font-semibold hover:bg-[#6650e6] flex items-center gap-1.5">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add Songs
+              className="shrink-0 h-7 px-2.5 rounded-lg bg-[#735fee] text-white text-[13px] font-medium hover:bg-[#6650e6] flex items-center gap-1 whitespace-nowrap">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add Songs
             </button>
           </div>
           {sharedSongs.length===0 ? (

@@ -613,7 +613,7 @@ function FolderDetail({
           <button
             type="button"
             onClick={() => onAddSongs(folder.id)}
-            className="h-8 px-3 rounded-lg text-xs font-medium bg-[#735fee] text-white hover:bg-[#6650e6] flex items-center gap-1.5"
+            className="h-7 px-2.5 rounded-lg text-[13px] font-medium bg-[#735fee] text-white hover:bg-[#6650e6] flex items-center gap-1 shrink-0 whitespace-nowrap"
           >
             <PlusIconSm /> Add Songs
           </button>
