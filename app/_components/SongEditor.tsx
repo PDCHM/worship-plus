@@ -1557,6 +1557,8 @@ export default function SongEditor({
   );
 
   const hasCapo = (song.capo ?? 0) > 0;
+  // The song's owner (or a brand-new, not-yet-owned song).
+  const isSongOwner = !song.userId || song.userId === currentUserId;
   // Artist editing: armed by a first tap, opened by a second (see the Key line).
   const [editingArtist, setEditingArtist] = useState(false);
   const [artistArmed, setArtistArmed] = useState(false);
@@ -4108,7 +4110,9 @@ export default function SongEditor({
                 Shared
               </span>
             )}
-            {readOnly ? (
+            {/* Only me / Shared privacy state — OWNER only (only the owner can
+                change it; others already see the "Shared" shared-with-you badge). */}
+            {isSongOwner && (readOnly ? (
               song.isDraft && (
                 <span title="Only you can see this." className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap">
                   Only me
@@ -4134,7 +4138,7 @@ export default function SongEditor({
               >
                 {song.isDraft ? "Only me" : "Shared"}
               </button>
-            )}
+            ))}
           </div>
         )}
         <div className="text-[13px] sm:text-sm text-slate-500 dark:text-slate-400 mt-0.5 sm:mt-1 px-0.5 flex items-center gap-x-2 gap-y-0.5 sm:gap-2 flex-wrap">
