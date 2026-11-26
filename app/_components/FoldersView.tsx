@@ -889,18 +889,19 @@ function SetlistDetail({
         onExport={() => onExportSetlist(folder.id)}
         canEdit={canEdit}
       />
-      {/* Service date — prominent pill right under the title. */}
-      <SetlistDatePill date={folder.date ?? null} canEdit={canEdit}
-        onChange={(d) => onUpdateDate(folder.id, d)} />
-      <div className="mt-3">
-        {isOwner ? (
-          <div className="flex flex-col items-start gap-1.5 sm:flex-row sm:items-center sm:gap-2">
-            <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Share with team</span>
+      {/* Service date (left) + team sharing (right) — ONE row that never
+          wraps: ≤360px drops the countdown, ≤330px the year; a long team
+          name truncates. */}
+      <div className="mt-3 flex flex-nowrap items-center gap-2 min-w-0" data-setlist-toprow>
+        <SetlistDatePill date={folder.date ?? null} canEdit={canEdit}
+          onChange={(d) => onUpdateDate(folder.id, d)} />
+        <div className="ml-auto min-w-0 flex justify-end">
+          {isOwner ? (
             <TeamSelectChip currentGroupId={folder.groupId ?? null} teams={teams} onMoveToTeam={(gid) => onMoveToTeam(folder.id, gid)} onOpenTeam={onOpenTeam} />
-          </div>
-        ) : (
-          <TeamStaticPill currentGroupId={folder.groupId ?? null} teams={teams} onOpenTeam={onOpenTeam} />
-        )}
+          ) : (
+            <TeamStaticPill currentGroupId={folder.groupId ?? null} teams={teams} onOpenTeam={onOpenTeam} />
+          )}
+        </div>
       </div>
 
       {/* ── Schedule ── */}
@@ -940,7 +941,9 @@ function SetlistDetail({
         )}
       </div>
 
-      <div className="flex items-center justify-between mt-6 mb-4">
+      {/* ── Songs ── (matches the Schedule header) */}
+      <h3 className="mt-6 text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3">Songs</h3>
+      <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2 flex-wrap">
           <p className="text-sm text-slate-500 dark:text-slate-400">
             {orderedSongs.length} {orderedSongs.length === 1 ? "song" : "songs"}
@@ -1718,40 +1721,44 @@ function SetlistDatePill({ date, canEdit, onChange }: {
   date: string | null; canEdit: boolean; onChange: (date: string | null) => void;
 }) {
   if (!date && !canEdit) return null;
-  const label = date
-    ? new Date(date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" })
-    : "Set date";
+  const d = date ? new Date(date + "T00:00:00") : null;
+  const dayMonth = d ? d.toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "";
+  const year = d ? String(d.getFullYear()) : "";
+  const fullLabel = d ? d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" }) : "";
   const diff = date ? daysUntil(date) : null;
   const countdown = diff === null ? null
     : diff > 1 ? `in ${diff} days`
     : diff === 1 ? "Tomorrow"
     : diff === 0 ? "Today"
     : null;
-  const pill = "relative inline-flex items-center gap-1.5 h-9 px-3.5 rounded-full border text-sm font-semibold transition-colors " +
+  const pill = "relative inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full border text-xs font-semibold whitespace-nowrap transition-colors " +
     (date
       ? "bg-[#efe9fe] border-[#e0d6fb] text-[#6350ef] dark:bg-[#2a2440] dark:border-[#3a3358] dark:text-[#b3a3ff]"
       : "bg-white border-dashed border-[#c9bdfb] text-[#6350ef] dark:bg-slate-900 dark:border-[#3a3358] dark:text-[#b3a3ff]");
+  // "26 Nov 2026" (no weekday); the year drops at ≤330px.
+  const text = d ? <span>{dayMonth}<span className="max-[331px]:hidden"> {year}</span></span> : <span>Set date</span>;
   return (
-    <div className="mt-3 flex items-center gap-2 flex-wrap">
+    <div className="flex shrink-0 items-center gap-2">
       {canEdit ? (
-        <label className={pill + " cursor-pointer hover:bg-[#e6dcfd] dark:hover:bg-[#332c4f] focus-within:ring-2 focus-within:ring-[#735fee]/40"}>
+        <label className={pill + " cursor-pointer hover:bg-[#e6dcfd] dark:hover:bg-[#332c4f] focus-within:ring-2 focus-within:ring-[#735fee]/40"} title={fullLabel || undefined}>
           <CalendarIcon />
-          <span>{label}</span>
-          <input type="date" value={date ?? ""} aria-label={date ? `Setlist date: ${label}. Change date` : "Set setlist date"}
+          {text}
+          <input type="date" value={date ?? ""} aria-label={date ? `Service date: ${fullLabel}. Change date` : "Set service date"}
             onChange={(e) => onChange(e.target.value || null)}
             onClick={(e) => { try { (e.currentTarget as HTMLInputElement & { showPicker?: () => void }).showPicker?.(); } catch { /* not allowed here; native tap still opens it */ } }}
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer appearance-none" />
         </label>
       ) : (
-        <span className={pill}><CalendarIcon /><span>{label}</span></span>
+        <span className={pill} title={fullLabel || undefined}><CalendarIcon />{text}</span>
       )}
+      {/* Countdown — only with a date; hidden at ≤360px so the row never wraps. */}
       {countdown && (
-        <span className="inline-flex items-center h-6 px-2.5 rounded-full text-xs font-semibold bg-white dark:bg-slate-900 text-[#6350ef] dark:text-[#b3a3ff] ring-1 ring-inset ring-[#e0d6fb] dark:ring-[#3a3358]">
+        <span className="max-[361px]:hidden inline-flex items-center h-6 px-2 rounded-full text-[11px] font-semibold whitespace-nowrap bg-white dark:bg-slate-900 text-[#6350ef] dark:text-[#b3a3ff] ring-1 ring-inset ring-[#e0d6fb] dark:ring-[#3a3358]">
           {countdown}
         </span>
       )}
       {diff !== null && diff < 0 && (
-        <span className="text-xs font-medium text-slate-500 dark:text-slate-400">Past</span>
+        <span className="max-[361px]:hidden text-xs font-medium text-slate-500 dark:text-slate-400">Past</span>
       )}
     </div>
   );
@@ -1853,12 +1860,12 @@ function TeamSelectChip({ currentGroupId, teams, onMoveToTeam, onOpenTeam }: {
   // sheet) and a separate "Change" control switches/stops sharing.
   const openable = !!currentGroupId && !!onOpenTeam && teams.some((t) => t.id === currentGroupId);
   return (
-    <div ref={ref} className="relative shrink-0 flex items-center gap-1.5">
+    <div ref={ref} className="relative min-w-0 flex items-center gap-1.5">
       {openable && <TeamOpenChip name={currentName} onClick={() => onOpenTeam!(currentGroupId!)} />}
       {openable ? (
         <button type="button" onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}
           aria-label="Change which team this setlist is shared with"
-          className="inline-flex items-center gap-1 h-7 px-2.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+          className="inline-flex shrink-0 items-center gap-1 h-7 px-2.5 rounded-full text-xs font-semibold whitespace-nowrap bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
           Change
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polyline points="6 9 12 15 18 9"/></svg>
         </button>
@@ -1869,15 +1876,15 @@ function TeamSelectChip({ currentGroupId, teams, onMoveToTeam, onOpenTeam }: {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-label={`Share with team — currently ${currentGroupId ? `shared with ${currentName}` : "not shared"}`}
-        className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-xs font-semibold bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/60 transition-colors"
+        className="inline-flex min-w-0 items-center gap-1.5 h-7 px-2.5 rounded-full text-xs font-normal whitespace-nowrap bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/60 transition-colors"
       >
         <TeamPeopleIcon />
-        <span className="max-w-[10rem] truncate">{currentName}</span>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polyline points="6 9 12 15 18 9"/></svg>
+        <span className="min-w-0 max-w-[10rem] truncate">{currentName}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
       )}
       {open && (
-        <div className="absolute left-0 top-9 z-30 w-48 py-1 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl">
+        <div className="absolute right-0 top-9 z-30 w-48 py-1 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl">
           <TeamOptionList currentGroupId={currentGroupId} teams={teams} onPick={pick} />
         </div>
       )}
@@ -1889,10 +1896,10 @@ function TeamSelectChip({ currentGroupId, teams, onMoveToTeam, onOpenTeam }: {
 function TeamOpenChip({ name, onClick }: { name: string; onClick: () => void }) {
   return (
     <button type="button" onClick={onClick} aria-label={`${name} — view team members`} title="View team members"
-      className="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-2 rounded-full text-xs font-semibold bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/60 transition-colors">
+      className="inline-flex min-w-0 items-center gap-1.5 h-7 pl-2.5 pr-2 rounded-full text-xs font-semibold whitespace-nowrap bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/60 transition-colors">
       <TeamPeopleIcon />
-      <span className="max-w-[10rem] truncate">{name}</span>
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polyline points="9 18 15 12 9 6"/></svg>
+      <span className="min-w-0 max-w-[10rem] truncate">{name}</span>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden className="shrink-0"><polyline points="9 18 15 12 9 6"/></svg>
     </button>
   );
 }
@@ -1905,9 +1912,9 @@ function TeamStaticPill({ currentGroupId, teams, onOpenTeam }: { currentGroupId:
     return <TeamOpenChip name={name} onClick={() => onOpenTeam(currentGroupId)} />;
   }
   return (
-    <span className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full text-xs font-semibold bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-300">
+    <span className="inline-flex min-w-0 items-center gap-1.5 h-7 px-2.5 rounded-full text-xs font-normal whitespace-nowrap bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-300">
       <TeamPeopleIcon />
-      {name}
+      <span className="min-w-0 truncate">{name}</span>
     </span>
   );
 }

@@ -2523,7 +2523,7 @@ export default function Home() {
               newRows.push({ id: row.id, folderId: row.folder_id, songId: row.song_id, position: row.position });
             }
             if (newRows.length) setFolderSongs(prev => [...prev, ...newRows]);
-            // createFolder seeds setlists with today's date — restore the bundle's.
+            // New setlists start undated — restore the bundle's service date, if any.
             const bundleDate = typeof data.setlist?.date === "string" ? data.setlist.date : null;
             if (bundleDate) await updateFolderDate(folder.id, bundleDate);
           }
@@ -2908,7 +2908,7 @@ export default function Home() {
     if (!user) return null;
     try {
       const insertData: Record<string, unknown> = { user_id: user.id, name, type };
-      if (type === "setlist") insertData.date = new Date().toISOString().split("T")[0];
+      // New setlists start with NO service date ("Set date") — the owner picks it.
       if (type === "setlist" && groupId) insertData.group_id = groupId;
       const { data, error } = await supabase
         .from("folders")
