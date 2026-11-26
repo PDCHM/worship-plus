@@ -830,9 +830,15 @@ function TeamMembersPanel({ group, members, userId, viewerRole, suggestions, onA
                         </button>
                       )}
                     </div>
+                    {/* Remove: phones pin it top-right (absolute); sm+ puts it back in
+                        the row flow as RELATIVE, never static — the touch hit-area
+                        ::after (globals.css) sizes itself against the nearest
+                        positioned ancestor, so a static "−" grew a tap area over
+                        the WHOLE row and swallowed taps on Invite / role pills.
+                        ml-1 keeps its 44px tap area clear of Invite. */}
                     {manageable && (
                       <button type="button" aria-label={`Remove ${m.displayName ?? "member"}`} onClick={() => setRemoveMemberTarget({ id: m.id, name: m.displayName ?? "this member" })}
-                        className="absolute top-2 right-3 sm:static sm:-ml-1 shrink-0 w-6 h-6 rounded-full flex items-center justify-center bg-[#fbeef2] border border-[#f2d2dc] text-[#d06a86] hover:bg-[#f8e3ea] dark:bg-rose-950/30 dark:border-rose-900/60 dark:text-rose-300 transition-colors">
+                        className="absolute top-2 right-3 sm:relative sm:top-auto sm:right-auto sm:ml-1 shrink-0 w-6 h-6 rounded-full flex items-center justify-center bg-[#fbeef2] border border-[#f2d2dc] text-[#d06a86] hover:bg-[#f8e3ea] dark:bg-rose-950/30 dark:border-rose-900/60 dark:text-rose-300 transition-colors">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden><line x1="6" y1="12" x2="18" y2="12"/></svg>
                       </button>
                     )}
