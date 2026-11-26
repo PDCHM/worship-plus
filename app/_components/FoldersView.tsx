@@ -150,14 +150,21 @@ function setlistShareUrl(folderId: string): string {
   return `${SITE_URL}/setlist/${folderId}`;
 }
 
+// Calendar entry description: numbered song list + the setlist share link
+// (shared by the Google link and the .ics export).
+function calendarDetails(songs: Song[], folderId: string): string {
+  return songs.length
+    ? songs.map((s, i) => `${i + 1}. ${s.title}${s.artist ? ` — ${s.artist}` : ""}${s.key ? ` (${s.key})` : ""}`).join("\n") + `\n\nWorship+ · ${setlistShareUrl(folderId)}`
+    : `Songs to be confirmed — check Worship+ for updates: ${setlistShareUrl(folderId)}`;
+}
+const icsStamp = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+
 // Build a Google Calendar "add event" URL (1-hour default duration).
 function googleCalendarUrl(ev: SetlistEvent, setlistName: string, songs: Song[], folderId: string): string {
   const start = new Date(ev.eventDate);
   const end = new Date(start.getTime() + 60 * 60 * 1000);
-  const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
-  const details = songs.length
-    ? songs.map((s, i) => `${i + 1}. ${s.title}${s.artist ? ` — ${s.artist}` : ""}${s.key ? ` (${s.key})` : ""}`).join("\n") + `\n\nWorship+ · ${setlistShareUrl(folderId)}`
-    : `Songs to be confirmed — check Worship+ for updates: ${setlistShareUrl(folderId)}`;
+  const fmt = icsStamp;
+  const details = calendarDetails(songs, folderId);
   const params = new URLSearchParams({
     action: "TEMPLATE",
     text: `${setlistName} — ${ev.label}`,
@@ -165,6 +172,59 @@ function googleCalendarUrl(ev: SetlistEvent, setlistName: string, songs: Song[],
     details,
   });
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
+}
+
+/** One .ics (iCalendar) file holding EVERY schedule entry of a setlist.
+ *  UID = the setlist_events row id (stable across re-exports), SEQUENCE =
+ *  now-in-seconds (always increases, so a re-import counts as an update in
+ *  Apple Calendar / Outlook). Times in UTC; 1-hour entries like the Google
+ *  link. Built entirely in the browser from data already loaded. */
+function buildSetlistIcs(events: SetlistEvent[], setlistName: string, songs: Song[], folderId: string): string {
+  const esc = (t: string) => t.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+  // RFC 5545: lines over 75 octets are folded (CRLF + one space).
+  const fold = (line: string) => {
+    const bytes = new TextEncoder().encode(line);
+    if (bytes.length <= 75) return line;
+    const out: string[] = []; let cur = ""; let curLen = 0;
+    for (const ch of line) {
+      const n = new TextEncoder().encode(ch).length;
+      if (curLen + n > (out.length ? 74 : 75)) { out.push(cur); cur = ""; curLen = 0; }
+      cur += ch; curLen += n;
+    }
+    out.push(cur);
+    return out.join("\r\n ");
+  };
+  const now = new Date();
+  const seq = Math.floor(now.getTime() / 1000);
+  const details = calendarDetails(songs, folderId);
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Worship+//Setlist schedule//EN", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", `X-WR-CALNAME:${esc(setlistName)}`];
+  for (const ev of events) {
+    const start = new Date(ev.eventDate);
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    lines.push("BEGIN:VEVENT", `UID:${ev.id}@worshipplus.app`, `SEQUENCE:${seq}`, `DTSTAMP:${icsStamp(now)}`,
+      `DTSTART:${icsStamp(start)}`, `DTEND:${icsStamp(end)}`,
+      `SUMMARY:${esc(`${setlistName} — ${ev.label}`)}`, `DESCRIPTION:${esc(details)}`,
+      `URL:${setlistShareUrl(folderId)}`, "END:VEVENT");
+  }
+  lines.push("END:VCALENDAR");
+  return lines.map(fold).join("\r\n") + "\r\n";
+}
+
+/** Hand the .ics to the device: the share sheet where files can be shared
+ *  (iPhone — choose Calendar / "Add All"), otherwise a normal download. */
+async function deliverIcs(ics: string, setlistName: string): Promise<void> {
+  const name = (setlistName.replace(/[\\/:*?"<>|]+/g, " ").trim() || "Setlist") + ".ics";
+  const file = new File([ics], name, { type: "text/calendar" });
+  const nav = navigator as Navigator & { canShare?: (d: { files: File[] }) => boolean };
+  if (nav.share && nav.canShare?.({ files: [file] })) {
+    try { await nav.share({ files: [file], title: setlistName }); return; }
+    catch (e) { if ((e as Error)?.name === "AbortError") return; /* else fall back to download */ }
+  }
+  const url = URL.createObjectURL(file);
+  const a = document.createElement("a");
+  a.href = url; a.download = name; a.rel = "noopener";
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 /* ─── Root ────────────────────────────────────────────────────────────────── */
@@ -908,6 +968,17 @@ function SetlistDetail({
       <div className="mt-4">
         <div className="flex flex-nowrap items-center gap-2 mb-2">
           <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mr-auto whitespace-nowrap">Schedule</h3>
+          {/* Add all to calendar — one .ics with every schedule entry. */}
+          {events.length > 0 && (
+            <button type="button"
+              onClick={() => canUseCalendar
+                ? void deliverIcs(buildSetlistIcs(events, folder.name, currentSongs, folder.id), folder.name)
+                : onRequireUpgrade()}
+              title="Add all to calendar (.ics)" aria-label="Add all schedule entries to calendar"
+              className="shrink-0 w-7 h-7 max-[341px]:w-6 max-[341px]:h-6 rounded-lg flex items-center justify-center text-[#6350ef] dark:text-[#b3a3ff] bg-[#f3f0ff] dark:bg-[#2a2440]/50 hover:bg-[#ebe5fe] transition-colors">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><polyline points="9 15 12 18 15 15"/><line x1="12" y1="12" x2="12" y2="18"/></svg>
+            </button>
+          )}
           {canEdit && (
             <div className="flex shrink-0 flex-nowrap items-center gap-1.5 max-[341px]:gap-1">
               <button type="button" onClick={() => setEventModal({ type: "event" })}
@@ -1183,14 +1254,19 @@ function EventRow({ ev, setlistName, songs, folderId, canUseCalendar, onRequireU
         : "bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300")}>
         {isRehearsal ? "Rehearsal" : "Event"}
       </span>
-      <button type="button"
-        onClick={() => canUseCalendar
-          ? window.open(googleCalendarUrl(ev, setlistName, songs, folderId), "_blank", "noopener,noreferrer")
-          : onRequireUpgrade()}
+      {/* A real link (not window.open): iOS PWAs / in-app browsers turned the
+          scripted window.open(…, "noopener") into a blank about:blank tab that
+          stayed behind after returning from Google Calendar. A plain
+          target=_blank anchor opens the page directly (iOS shows its in-app
+          browser with "Done" back to the setlist). Gate kept for later. */}
+      <a href={canUseCalendar ? googleCalendarUrl(ev, setlistName, songs, folderId) : undefined}
+        target="_blank" rel="noopener noreferrer"
+        onClick={canUseCalendar ? undefined : (e) => { e.preventDefault(); onRequireUpgrade(); }}
+        role={canUseCalendar ? undefined : "button"}
         title={canUseCalendar ? "Add to Google Calendar" : "Google Calendar sync is a Team feature"} aria-label="Add to Google Calendar"
-        className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-[#6350ef] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/40 transition-colors">
+        className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:text-[#6350ef] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/40 transition-colors cursor-pointer">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-      </button>
+      </a>
       {canEdit && (
         <>
           <button type="button" onClick={onEdit} title="Edit schedule item" aria-label="Edit schedule item"
