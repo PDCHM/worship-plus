@@ -4110,8 +4110,8 @@ export default function SongEditor({
             )}
             {readOnly ? (
               song.isDraft && (
-                <span className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[11px] font-semibold uppercase tracking-wider">
-                  Draft
+                <span title="Only you can see this." className="px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap">
+                  Only me
                 </span>
               )
             ) : (
@@ -4119,19 +4119,20 @@ export default function SongEditor({
                 type="button"
                 onClick={() => update((s) => ({ ...s, isDraft: !s.isDraft }))}
                 aria-pressed={!!song.isDraft}
+                aria-label={song.isDraft ? "Only me — only you can see this. Tap to share." : "Shared — your team can see this. Tap to make private."}
                 title={
                   song.isDraft
-                    ? "Draft — hidden from your team. Click to publish."
-                    : "Click to mark as draft (hidden from your team until published)."
+                    ? "Only you can see this. Tap to share."
+                    : "Your team can see this. Tap to make private."
                 }
                 className={
-                  "px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider transition-colors " +
+                  "px-2 py-0.5 rounded-full text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap transition-colors " +
                   (song.isDraft
                     ? "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600"
                     : "border border-dashed border-slate-300 dark:border-slate-600 text-slate-500 dark:text-slate-500 hover:border-slate-400 hover:text-slate-600 dark:hover:text-slate-300")
                 }
               >
-                Draft
+                {song.isDraft ? "Only me" : "Shared"}
               </button>
             )}
           </div>

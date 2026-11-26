@@ -1055,8 +1055,8 @@ function MenuItem({
 
 function DraftBadge() {
   return (
-    <span className="shrink-0 px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-semibold uppercase tracking-wider">
-      Draft
+    <span title="Only you can see this." className="shrink-0 whitespace-nowrap px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-[10px] font-semibold uppercase tracking-wider">
+      Only me
     </span>
   );
 }

@@ -965,9 +965,9 @@ function SetlistDetail({
       </div>
       {hiddenDraftCount > 0 && (
         <p className="mb-2 flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-400"
-          title="Drafts are visible only to their owner. Ask them to turn off Draft in the song editor so the team can see it.">
+          title="Set to “Only me” by the owner. Ask them to share it so the team can see it.">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-          {hiddenDraftCount === 1 ? "1 song is" : `${hiddenDraftCount} songs are`} hidden — saved as a draft by {hiddenDraftCount === 1 ? "its owner" : "their owners"}, so the team can&apos;t see {hiddenDraftCount === 1 ? "it" : "them"}.
+          {hiddenDraftCount === 1 ? "1 song is" : `${hiddenDraftCount} songs are`} hidden — set to “Only me” by {hiddenDraftCount === 1 ? "its owner" : "their owners"}, so the team can&apos;t see {hiddenDraftCount === 1 ? "it" : "them"}.
         </p>
       )}
       {orderedSongs.length === 0 ? (
@@ -1026,8 +1026,8 @@ function SetlistDetail({
                     )}
                     {isTeamSetlist && song.isDraft && (
                       <span className="shrink-0 px-1.5 py-px rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 text-[10px] font-semibold"
-                        title="Drafts are visible only to you. Turn off Draft in the song editor so your team can see it.">
-                        Draft · hidden from team
+                        title="Only you can see this. Tap the “Only me” pill in the song editor to share it.">
+                        Only me
                       </span>
                     )}
                   </div>
