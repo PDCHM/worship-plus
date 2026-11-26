@@ -1147,7 +1147,7 @@ function SetlistDetail({
                     onClick={() => onRemoveSong(folder.id, song.id)}
                     title="Remove from setlist"
                     aria-label="Remove from setlist"
-                    className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center bg-[#fbeef2] border border-[#f2d2dc] text-[#d06a86] hover:bg-[#f8e3ea] dark:bg-rose-950/30 dark:border-rose-900/60 dark:text-rose-300 transition-colors"
+                    className="shrink-0 ml-1 w-6 h-6 rounded-full flex items-center justify-center bg-[#fbeef2] border border-[#f2d2dc] text-[#d06a86] hover:bg-[#f8e3ea] dark:bg-rose-950/30 dark:border-rose-900/60 dark:text-rose-300 transition-colors"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden><line x1="6" y1="12" x2="18" y2="12"/></svg>
                   </button>

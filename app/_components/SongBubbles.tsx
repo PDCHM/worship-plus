@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import ConfirmDialog from "@/app/_components/ConfirmDialog";
 import { createClient } from "@/lib/supabase/client";
 
 type BubbleRow = {
@@ -170,6 +171,8 @@ export function LineBubbles({
   sectionId, lineIndex, api, readOnly, hideTrigger = false,
 }: { sectionId: string; lineIndex: number; api: SongBubblesApi; readOnly: boolean; hideTrigger?: boolean }) {
   const [replyText, setReplyText] = useState("");
+  // Delete note removes it AND its replies permanently → confirm first.
+  const [confirmDelete, setConfirmDelete] = useState<BubbleRow | null>(null);
   const roots = api.rootsForLine(sectionId, lineIndex);
   const draftHere = api.draft && api.draft.sectionId === sectionId && api.draft.lineIndex === lineIndex;
 
@@ -177,6 +180,17 @@ export function LineBubbles({
 
   return (
     <div className="mt-1 ml-1 space-y-1 print:hidden">
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Delete note?"
+          message={api.repliesOf(confirmDelete.id).length > 0
+            ? `This deletes the note and its ${api.repliesOf(confirmDelete.id).length} ${api.repliesOf(confirmDelete.id).length === 1 ? "reply" : "replies"}. This can't be undone.`
+            : "This deletes the note. This can't be undone."}
+          confirmLabel="Delete note"
+          onCancel={() => setConfirmDelete(null)}
+          onConfirm={() => { const b = confirmDelete; setConfirmDelete(null); api.remove(b); }}
+        />
+      )}
       {roots.map((b) => {
         const tint = tintFor(b.user_id);
         const isOwner = b.user_id === api.currentUserId;
@@ -193,11 +207,11 @@ export function LineBubbles({
               <span className={`text-[10px] font-semibold truncate ${tint.accent}`}>{name}</span>
               <span className="text-[10px] text-black/40 dark:text-white/40 shrink-0">{shortTime(b.created_at)}</span>
               {isOwner && (
-                <span className="ml-auto flex items-center gap-1 opacity-0 group-hover/note:opacity-100 transition-opacity">
+                <span className="ml-auto flex items-center gap-1 opacity-0 group-hover/note:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100 transition-opacity">
                   <button type="button" onClick={() => api.toggleResolve(b)} title={b.resolved ? "Reopen" : "Resolve"} aria-label={b.resolved ? "Reopen" : "Resolve"} className="text-emerald-600 hover:text-emerald-700">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                   </button>
-                  <button type="button" onClick={() => api.remove(b)} title="Delete" aria-label="Delete note" className="text-rose-600 hover:text-rose-700 dark:text-rose-400">
+                  <button type="button" onClick={() => setConfirmDelete(b)} title="Delete" aria-label="Delete note" className="text-rose-600 hover:text-rose-700 dark:text-rose-400">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                   </button>
                 </span>

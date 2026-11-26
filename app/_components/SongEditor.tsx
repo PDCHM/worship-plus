@@ -3885,7 +3885,7 @@ export default function SongEditor({
                 tab strip (navigation only; scrolls sideways so long songs are
                 never cut off or covered). */}
             {song.sections.length > 0 && (
-              <div className="w-full min-w-0 -mb-1" data-present-chips>
+              <div className="w-full min-w-0 -mb-1 max-sm:pt-1" data-present-chips>
                 <SongFlowBar
                   isDark={isDark}
                   compact
@@ -3991,7 +3991,7 @@ export default function SongEditor({
                   </span>
                 )}
                 {/* Text size (A− / A+) — the presenter's text-size control. */}
-                <div className="shrink-0 flex items-center h-8 rounded-[10px] overflow-hidden border border-[#e7e2f7] dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300">
+                <div className="tap-vert shrink-0 flex items-center h-8 rounded-[10px] overflow-hidden border border-[#e7e2f7] dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300">
                   <button type="button" onClick={() => { adjustZoom(-1); revealControls(); }}
                     disabled={zoomOffset <= zoomMin} aria-label="Smaller text" title="Smaller text"
                     className="h-full px-2 sm:px-2.5 flex items-center hover:bg-[#f6f3ff] dark:hover:bg-slate-800 disabled:opacity-40 disabled:hover:bg-transparent">
@@ -4337,7 +4337,7 @@ export default function SongEditor({
               <span className="hidden sm:inline">Save copy</span>
             </button>
           ) : !readOnly ? (
-          <div ref={saveMenuRef} className="relative flex ml-auto shrink-0">
+          <div ref={saveMenuRef} className="tap-vert relative flex ml-auto shrink-0">
             <button
               type="button"
               onClick={onSave}
@@ -4573,7 +4573,7 @@ export default function SongEditor({
                   )}
 
                   {!readOnly && (
-                    <div className={"items-center gap-0.5 ml-1 print:hidden " + (columnView ? "hidden sm:flex" : "flex")}>
+                    <div className={"tap-vert items-center gap-0.5 ml-1 print:hidden " + (columnView ? "hidden sm:flex" : "flex")}>
                       <ToolBtn
                         onClick={() => moveSection(section.id, -1)}
                         disabled={sIdx === 0}
@@ -5179,7 +5179,7 @@ export default function SongEditor({
                     <button
                       type="button"
                       onClick={() => addLineToSection(section.id)}
-                      className="text-xs text-slate-500 dark:text-slate-400 hover:text-[#6350ef] dark:hover:text-[#b3a3ff] transition-colors flex items-center gap-1 mt-1 print:hidden"
+                      className="text-xs text-slate-500 dark:text-slate-400 hover:text-[#6350ef] dark:hover:text-[#b3a3ff] transition-colors flex items-center gap-1 mt-2 print:hidden"
                     >
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <line x1="12" y1="5" x2="12" y2="19" />
@@ -6486,7 +6486,7 @@ function MetronomePill({ bpm, playing, onToggle, raised, metronome, silent, onSi
       {/* Beat bar sits directly above the pill so the tempo is glanceable from
           the same spot the user already looks to start/stop. */}
       <BeatBar metronome={metronome} playing={playing} beats={beats} variant="pill" className="w-24 self-stretch" />
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-3">
     <button type="button"
       onPointerDown={(e) => { e.preventDefault(); onToggle(); }}
       aria-pressed={playing}
@@ -6561,7 +6561,7 @@ function PresentSegmented({ label, value, options, onChange }: {
   return (
     <div className="flex items-center gap-1" role="group" aria-label={label}>
       <span className="text-[10px] font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">{label}</span>
-      <div className="flex items-center h-7 p-0.5 rounded-md bg-slate-100 dark:bg-slate-800/80">
+      <div className="tap-vert flex items-center h-7 p-0.5 rounded-md bg-slate-100 dark:bg-slate-800/80">
         {options.map((o) => {
           const on = o.value === value;
           return (

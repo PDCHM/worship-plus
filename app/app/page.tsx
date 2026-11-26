@@ -3097,12 +3097,21 @@ export default function Home() {
     const r=data as{id:string;group_id:string;song_id:string};
     setGroupSongs(prev=>[...prev,{id:r.id,groupId:r.group_id,songId:r.song_id}]);
   };
+  // Remove a song from a team: optimistic, with an Undo toast — the delete is
+  // only sent when the toast expires (Undo just restores the row).
   const unshareGroupSong=async(groupId:string,songId:string):Promise<void>=>{
     if(!guardOnline())return;
     const prev=groupSongs;
+    const title=songs.find(s=>s.id===songId)?.title;
     setGroupSongs(p=>p.filter(gs=>!(gs.groupId===groupId&&gs.songId===songId)));
-    const{error}=await supabase.from("group_songs").delete().eq("group_id",groupId).eq("song_id",songId);
-    if(error){logErr("unshare group song",error);showToast("Couldn't unshare song: "+error.message);setGroupSongs(prev);}
+    showUndoToast(
+      title?`Removed "${title}" from team`:"Removed from team",
+      ()=>setGroupSongs(prev),
+      async()=>{
+        const{error}=await supabase.from("group_songs").delete().eq("group_id",groupId).eq("song_id",songId);
+        if(error){logErr("unshare group song",error);showToast("Couldn't unshare song: "+error.message);setGroupSongs(prev);}
+      },
+    );
   };
   const deleteGroup=async(groupId:string):Promise<boolean>=>{
     if(!guardOnline())return false;

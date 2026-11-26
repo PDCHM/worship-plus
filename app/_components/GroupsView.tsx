@@ -381,9 +381,12 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
                     <div className="text-sm font-medium truncate">{song.title}</div>
                     <div className="text-xs text-slate-500 truncate">{song.artist||"Unknown"} · Key {song.key}</div>
                   </div>
-                  <button type="button" onClick={() => { onUnshareSong(group.id, song.id); showToast("Removed from team"); }}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 opacity-0 group-hover:opacity-100 transition-all">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  {/* Visible soft-pink "−" (was an invisible hover-only × that touch
+                      screens tapped by accident). Undo toast comes from the app. */}
+                  <button type="button" onClick={() => onUnshareSong(group.id, song.id)}
+                    title="Remove from team" aria-label={`Remove ${song.title} from team`}
+                    className="shrink-0 w-6 h-6 rounded-full flex items-center justify-center bg-[#fbeef2] border border-[#f2d2dc] text-[#d06a86] hover:bg-[#f8e3ea] dark:bg-rose-950/30 dark:border-rose-900/60 dark:text-rose-300 transition-colors">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" aria-hidden><line x1="6" y1="12" x2="18" y2="12"/></svg>
                   </button>
                 </div>
               ))}
