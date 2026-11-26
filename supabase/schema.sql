@@ -2210,6 +2210,19 @@ $$;
 revoke all on function public.is_group_manager(uuid) from public;
 grant execute on function public.is_group_manager(uuid) to authenticated;
 
+-- Team setlists: DELETE only by the team's Leader / Co-leader. Restrictive, so
+-- it's ANDed with the two permissive policies above (which would otherwise let
+-- the creator or an editor delete). See 20261126120000_team_setlist_delete_managers.
+drop policy if exists folders_team_setlist_delete_managers on public.folders;
+create policy folders_team_setlist_delete_managers on public.folders
+  as restrictive
+  for delete to authenticated
+  using (
+    type <> 'setlist'
+    or group_id is null
+    or public.is_group_manager(group_id)
+  );
+
 -- Content editing (shared songs, team setlists and their contents): every
 -- content policy / guard already goes through this function, so adding
 -- co_leader here covers all of them.

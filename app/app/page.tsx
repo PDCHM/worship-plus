@@ -94,13 +94,15 @@ const dedupeIds = (ids: string[]) => {
 
 type View =
   | { kind: "library"; filter: "all" | "favorites" | "recent" }
-  | { kind: "editor"; songId: string; setlistId?: string }
+  // fromTeamId: the setlist was opened from that Team's page, so Back from the
+  // setlist (and from a song opened inside it) returns to the Team.
+  | { kind: "editor"; songId: string; setlistId?: string; fromTeamId?: string }
   | { kind: "settings" }
   // `tab` splits the overview (subview === "all") between the Folders bottom-nav
   // tab (type='folder') and the Setlists tab (type='setlist'); undefined shows both
   // (legacy / cross-navigation). It's carried through subview navigation so Back
   // returns to the originating tab.
-  | { kind: "folders"; subview: "all" | string; tab?: "folders" | "setlists" }
+  | { kind: "folders"; subview: "all" | string; tab?: "folders" | "setlists"; fromTeamId?: string }
   | { kind: "groups"; teamId?: string };
 
 const SETTINGS_KEY = "wp-settings-v1";
@@ -2286,6 +2288,15 @@ export default function Home() {
     if (user) { try { localStorage.setItem("wp-overrides-" + user.id, JSON.stringify(list)); } catch { /* quota */ } }
   };
 
+  // The Team a setlist was opened from, while we're still inside that setlist
+  // (its page, or a song opened from it) — carried so Back returns there.
+  const teamOriginFor = (setlistId: string | undefined): string | undefined => {
+    if (!setlistId) return undefined;
+    if (view.kind === "folders" && view.subview === setlistId) return view.fromTeamId;
+    if (view.kind === "editor" && view.setlistId === setlistId) return view.fromTeamId;
+    return undefined;
+  };
+
   // "Make my own version" of a setlist song. Reuses the Save-as-copy clone
   // (fresh ids for every section/line/chord, owned by me) but tags it with
   // setlistScope instead of adding it to the library, then records the
@@ -2328,7 +2339,7 @@ export default function Home() {
     lastSavedRef.current.set(version.id, version);
     hydratedIdsRef.current.add(version.id);
     persistOverrides([...overrides, { folderId, originalSongId: originalId, overrideSongId: version.id, usePresenter: false }]);
-    setView({ kind: "editor", songId: version.id, setlistId: folderId });
+    setView({ kind: "editor", songId: version.id, setlistId: folderId, fromTeamId: teamOriginFor(folderId) });
     showToast("Your version is in My Versions — only you can see it");
   };
 
@@ -2387,7 +2398,7 @@ export default function Home() {
       try { localStorage.removeItem("wp-backup-" + versionId); } catch { /* ignore */ }
     }
     persistOverrides(overrides.filter((o) => !(o.folderId === folderId && o.overrideSongId === versionId)));
-    if (!stayOnSetlist) setView({ kind: "editor", songId: originalId, setlistId: folderId });
+    if (!stayOnSetlist) setView({ kind: "editor", songId: originalId, setlistId: folderId, fromTeamId: teamOriginFor(folderId) });
     showToast(version?.setlistScope ? "Back to the shared song — your version was discarded" : "Back to the shared song — your version is still in your library");
   };
 
@@ -2402,7 +2413,7 @@ export default function Home() {
     setView(newView);
   };
 
-  const openSong = (id: string, opts?: { setlistId?: string }) => { markSongOpened(id); navigateTo({ kind: "editor", songId: id, setlistId: opts?.setlistId }); };
+  const openSong = (id: string, opts?: { setlistId?: string }) => { markSongOpened(id); navigateTo({ kind: "editor", songId: id, setlistId: opts?.setlistId, fromTeamId: teamOriginFor(opts?.setlistId) }); };
 
   const handleImportPasted = (song: Song, aiIntent = false) => {
     if (!guardOnline()) return;
@@ -3250,11 +3261,17 @@ export default function Home() {
     // sends the request when awaited/.then()'d. Fire-and-forget (`void …`)
     // never executed the DELETE, so it silently didn't persist and the setlist
     // reappeared on refresh. Child rows (folder_songs, setlist_events) are
-    // removed by ON DELETE CASCADE. (RLS folders_owner_all already allows this.)
-    const { error } = await supabase.from("folders").delete().eq("id", id);
-    if (error) {
-      logErr("delete folder", error);
-      showToast("Couldn't delete setlist: " + error.message);
+    // removed by ON DELETE CASCADE. RLS: the owner may delete, except a TEAM
+    // setlist, which only the team's Leader / Co-leader may delete
+    // (folders_team_setlist_delete_managers). An RLS-filtered DELETE returns
+    // no error, just no rows — so ask for the deleted id back to tell.
+    const { data, error } = await supabase.from("folders").delete().eq("id", id).select("id");
+    if (error || !data?.length) {
+      if (error) logErr("delete folder", error);
+      const wasTeam = !!prevFolders.find((f) => f.id === id)?.groupId;
+      showToast(error ? "Couldn't delete setlist: " + error.message
+        : wasTeam ? "Couldn't delete — only the team's Leader or Co-leader can delete a team setlist"
+        : "Couldn't delete — it may already have been removed");
       // Restore so the UI reflects what's actually in the DB.
       setFolders(prevFolders);
       setFolderSongs(prevFolderSongs);
@@ -3390,6 +3407,17 @@ export default function Home() {
   // edit (leader/editor). Passed to FoldersView to gate mutating controls.
   const canEditFolder = (folder: Folder): boolean =>
     folder.ownerId === authedUser.id || (folder.type === "setlist" && canEditGroupContent(folder.groupId));
+  // Delete: a TEAM setlist only by the team's Leader or Co-leader (not editors,
+  // members, or its creator unless they hold one of those roles). Personal
+  // setlists and folders: their owner. Mirrors the restrictive RLS policy
+  // folders_team_setlist_delete_managers (migration 20261126120000).
+  const canDeleteFolder = (folder: Folder): boolean => {
+    if (folder.type === "setlist" && folder.groupId) {
+      const r = myGroupRole(folder.groupId);
+      return r === "leader" || r === "co_leader";
+    }
+    return folder.ownerId === authedUser.id;
+  };
 
   // Private-version controls for the open setlist slot (hidden until the
   // migration exists). Sharing = changing the setlist → owner/leader/editor.
@@ -3632,7 +3660,7 @@ export default function Home() {
                 else void discardPrivateVersion(pvFolderId, pvSongId);
               }}
               onBack={() => navigateTo(view.kind === "editor" && view.setlistId
-                ? { kind: "folders", subview: view.setlistId }
+                ? { kind: "folders", subview: view.setlistId, tab: "setlists", fromTeamId: view.fromTeamId }
                 : { kind: "library", filter: "all" })}
               onReadOnlyChange={setEditorReadOnly}
               onMarkupModeChange={setEditorMarkup}
@@ -3694,7 +3722,19 @@ export default function Home() {
               currentUserId={user.id}
               onMoveToTeam={assignSetlistToTeam}
               onOpenTeam={setTeamSheetId}
-              onNavigate={(to) => navigateTo({ kind: "folders", subview: to, tab: view.kind === "folders" ? view.tab : undefined })}
+              onNavigate={(to) => {
+                if (view.kind !== "folders") return;
+                // Back out of a setlist opened from a Team → that Team (if it
+                // still exists for me); otherwise the overview, on the tab that
+                // matches what was open (a setlist → Setlists, a folder → Folders).
+                if (to === "all" && view.fromTeamId && groups.some((g) => g.id === view.fromTeamId)) {
+                  navigateTo({ kind: "groups", teamId: view.fromTeamId });
+                  return;
+                }
+                const open = view.subview !== "all" ? folders.find((f) => f.id === view.subview) : undefined;
+                const tab = open ? (open.type === "setlist" ? "setlists" : "folders") : view.tab;
+                navigateTo({ kind: "folders", subview: to, tab });
+              }}
               onCreate={createFolder}
               onRename={renameFolder}
               onDelete={deleteFolder}
@@ -3709,6 +3749,7 @@ export default function Home() {
               onUpdateDate={updateFolderDate}
               onExportSetlist={setExportSetlistId}
               canEditFolder={canEditFolder}
+              canDeleteFolder={canDeleteFolder}
               songLinks={songLinks}
               onAddLink={addSongLink}
               onUpdateLink={updateSongLink}
@@ -3742,7 +3783,7 @@ export default function Home() {
             </div>
           )}
           {view.kind === "groups" && groupsLoaded && (
-            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={librarySongs} folders={folders} onCreateGroup={gatedCreateTeam} onUpdateGroup={updateGroupName} onAddMember={gatedAddMember} onSetMemberRole={setMemberRole} onRemoveMember={removeGroupMember} onTransferOwnership={transferTeamOwnership} onReorderMembers={reorderTeamMembers} onSetMemberInstrument={setMemberInstrument} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onDeleteGroup={deleteGroup} onOpenSong={openSong} onOpenSetlist={(id) => navigateTo({ kind: "folders", subview: id })} showToast={showToast} selectedTeamId={view.kind === "groups" ? (view.teamId ?? null) : null} onSelectTeam={(id) => navigateTo({ kind: "groups", teamId: id ?? undefined })}/>
+            <GroupsView userId={user.id} groups={groups} groupMembers={groupMembers} groupSongs={groupSongs} songs={librarySongs} folders={folders} onCreateGroup={gatedCreateTeam} onUpdateGroup={updateGroupName} onAddMember={gatedAddMember} onSetMemberRole={setMemberRole} onRemoveMember={removeGroupMember} onTransferOwnership={transferTeamOwnership} onReorderMembers={reorderTeamMembers} onSetMemberInstrument={setMemberInstrument} onShareSong={shareGroupSong} onUnshareSong={unshareGroupSong} onDeleteGroup={deleteGroup} onOpenSong={openSong} onOpenSetlist={(id, teamId) => navigateTo({ kind: "folders", subview: id, tab: "setlists", fromTeamId: teamId })} showToast={showToast} selectedTeamId={view.kind === "groups" ? (view.teamId ?? null) : null} onSelectTeam={(id) => navigateTo({ kind: "groups", teamId: id ?? undefined })}/>
           )}
         </main>
       </div>

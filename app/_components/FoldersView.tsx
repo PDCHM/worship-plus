@@ -93,6 +93,9 @@ export type FoldersViewProps = {
   // team member viewing a shared team setlist — mutating controls are hidden.
   // RLS is the real gate; this is UI convenience.
   canEditFolder: (folder: Folder) => boolean;
+  // Whether the current user may DELETE it. A team setlist: the team's Leader /
+  // Co-leader only (RLS folders_team_setlist_delete_managers enforces it).
+  canDeleteFolder: (folder: Folder) => boolean;
   // Song reference links (shared with the Library) — so a setlist row can show a
   // 🔗 affordance and open the same references list + inline player. These are the
   // SONG's links (Model A), not per-setlist copies.
@@ -227,6 +230,19 @@ async function deliverIcs(ics: string, setlistName: string): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
+/* Delete-setlist confirm copy. A TEAM setlist says plainly that it goes for
+   the whole team, not just you, and can't be undone. */
+function setlistDeleteCopy(f: Folder, teams?: { id: string; name: string }[]): { title: string; message: string } {
+  if (f.groupId) {
+    const team = teams?.find((t) => t.id === f.groupId)?.name;
+    return {
+      title: "Delete for the whole team?",
+      message: `"${f.name}" will be deleted for everyone on ${team ? `"${team}"` : "the team"}, not just you. Its song order and schedule go with it. This can't be undone. Songs stay in their owners' libraries.`,
+    };
+  }
+  return { title: "Delete setlist?", message: `Delete setlist "${f.name}"? This can't be undone.` };
+}
+
 /* ─── Root ────────────────────────────────────────────────────────────────── */
 
 export default function FoldersView(props: FoldersViewProps) {
@@ -296,7 +312,7 @@ export function SearchField({ value, onChange, placeholder, label }: {
 
 function Overview({
   folders, folderSongs, teams, onNavigate, onCreate, onRename, onDelete, showToast, currentUserId, onMoveToTeam,
-  canUseSetlists, onRequireUpgrade, tab, loadError, onRetryLoad, retryingLoad,
+  canUseSetlists, onRequireUpgrade, tab, loadError, onRetryLoad, retryingLoad, canDeleteFolder,
 }: FoldersViewProps) {
   // Which overview sections to show — driven by the bottom-nav tab. undefined
   // (legacy / cross-nav) shows both.
@@ -342,8 +358,7 @@ function Overview({
     onConfirm: () => { onDelete(f.id); showToast("Folder deleted"); },
   });
   const askDeleteSetlist = (f: Folder) => setConfirmDel({
-    title: "Delete setlist?",
-    message: `Delete setlist "${f.name}"? This can't be undone.`,
+    ...setlistDeleteCopy(f, teams),
     onConfirm: () => { onDelete(f.id); showToast("Setlist deleted"); },
   });
 
@@ -557,7 +572,7 @@ function Overview({
                   onClick={() => onNavigate(f.id)}
                   highlighted={highlightId === f.id}
                   onRename={(name) => onRename(f.id, name).then(() => showToast("Renamed"))}
-                  onDelete={() => askDeleteSetlist(f)}
+                  onDelete={canDeleteFolder(f) ? () => askDeleteSetlist(f) : undefined}
                   teams={teams}
                   onMoveToTeam={f.ownerId === currentUserId ? (gid) => onMoveToTeam(f.id, gid) : undefined}
                 />
@@ -575,7 +590,7 @@ function Overview({
                   onClick={() => onNavigate(f.id)}
                   highlighted={highlightId === f.id}
                   onRename={(name) => onRename(f.id, name).then(() => showToast("Renamed"))}
-                  onDelete={() => askDeleteSetlist(f)}
+                  onDelete={canDeleteFolder(f) ? () => askDeleteSetlist(f) : undefined}
                   teams={teams}
                   onMoveToTeam={f.ownerId === currentUserId ? (gid) => onMoveToTeam(f.id, gid) : undefined}
                 />
@@ -752,7 +767,7 @@ function FolderDetail({
 function SetlistDetail({
   folder, currentSongs, folderSongs, cachedSongIds, onNavigate, onRename, onDelete,
   onAddSongs, onRemoveSong, onCommitOrder, onOpenSong, onUpdateDate, onExportSetlist,
-  setlistEvents, onAddEvent, onUpdateEvent, onDeleteEvent, canUseCalendar, onRequireUpgrade, showToast, teams, currentUserId, onMoveToTeam, onOpenTeam, canEditFolder,
+  setlistEvents, onAddEvent, onUpdateEvent, onDeleteEvent, canUseCalendar, onRequireUpgrade, showToast, teams, currentUserId, onMoveToTeam, onOpenTeam, canEditFolder, canDeleteFolder,
   songLinks, onAddLink, onUpdateLink, onDeleteLink, onReorderLinks, canEditSong, online, sharedSongsReady, privateVersionFor,
   myVersionsFor, presenterToggleReady, onMyVersion,
 }: { folder: Folder; currentSongs: Song[] } & FoldersViewProps) {
@@ -941,10 +956,10 @@ function SetlistDetail({
         onBack={() => onNavigate("all")}
         onRename={(name) => onRename(folder.id, name)}
         onDelete={() => setConfirmDel({
-          title: "Delete setlist?",
-          message: `Delete setlist "${folder.name}"? This can't be undone.`,
+          ...setlistDeleteCopy(folder, teams),
           onConfirm: () => { onDelete(folder.id); onNavigate("all"); showToast("Setlist deleted"); },
         })}
+        canDelete={canDeleteFolder(folder)}
         onShare={() => { void navigator.clipboard.writeText(setlistShareUrl(folder.id)); showToast("Setlist link copied"); }}
         onExport={() => onExportSetlist(folder.id)}
         canEdit={canEdit}
@@ -1519,7 +1534,8 @@ function ItemCard({
   updated?: boolean;
   onClick: () => void;
   onRename: (name: string) => void;
-  onDelete: () => void;
+  // Absent → no Delete item (e.g. a team setlist for a non-Leader/Co-leader).
+  onDelete?: () => void;
   teams?: TeamOption[];
   onMoveToTeam?: (groupId: string | null) => void;
 }) {
@@ -1627,13 +1643,15 @@ function ItemCard({
                   Share with team <span aria-hidden>›</span>
                 </button>
               )}
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete(); }}
-                className="w-full text-left px-3 py-2 hover:bg-[#fbeef2] dark:hover:bg-rose-950/40 text-[#d06a86] dark:text-rose-300"
-              >
-                Delete
-              </button>
+              {onDelete && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete(); }}
+                  className="w-full text-left px-3 py-2 hover:bg-[#fbeef2] dark:hover:bg-rose-950/40 text-[#d06a86] dark:text-rose-300"
+                >
+                  Delete
+                </button>
+              )}
             </>
           )}
         </FloatingMenu>
@@ -1654,7 +1672,8 @@ function ItemRow({
   isLast: boolean;
   onClick: () => void;
   onRename: (name: string) => void;
-  onDelete: () => void;
+  // Absent → no Delete item (e.g. a team setlist for a non-Leader/Co-leader).
+  onDelete?: () => void;
   teams?: TeamOption[];
   onMoveToTeam?: (groupId: string | null) => void;
 }) {
@@ -1759,13 +1778,15 @@ function ItemRow({
                   Share with team <span aria-hidden>›</span>
                 </button>
               )}
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete(); }}
-                className="w-full text-left px-3 py-2 hover:bg-[#fbeef2] dark:hover:bg-rose-950/40 text-[#d06a86] dark:text-rose-300"
-              >
-                Delete
-              </button>
+              {onDelete && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setMenuOpen(false); onDelete(); }}
+                  className="w-full text-left px-3 py-2 hover:bg-[#fbeef2] dark:hover:bg-rose-950/40 text-[#d06a86] dark:text-rose-300"
+                >
+                  Delete
+                </button>
+              )}
             </>
           )}
         </FloatingMenu>
@@ -2001,7 +2022,7 @@ function TeamStaticPill({ currentGroupId, teams, onOpenTeam }: { currentGroupId:
 }
 
 function DetailHeader({
-  folder, onBack, onRename, onDelete, onShare, onExport, canEdit = true,
+  folder, onBack, onRename, onDelete, onShare, onExport, canEdit = true, canDelete = canEdit,
 }: {
   folder: Folder;
   onBack: () => void;
@@ -2011,6 +2032,7 @@ function DetailHeader({
   onExport?: () => void;
   // When false, rename and delete are hidden (read-only viewer).
   canEdit?: boolean;
+  canDelete?: boolean;
 }) {
   const [renaming, setRenaming] = useState(false);
   const [nameVal, setNameVal] = useState(folder.name);
@@ -2082,7 +2104,7 @@ function DetailHeader({
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         </button>
       )}
-      {canEdit && (
+      {canDelete && (
         <button
           type="button"
           onClick={onDelete}

@@ -58,7 +58,7 @@ export type GroupsViewProps = {
   onUnshareSong: (groupId: string, songId: string) => void;
   onDeleteGroup: (groupId: string) => Promise<boolean>;
   onOpenSong: (id: string) => void;
-  onOpenSetlist: (id: string) => void;
+  onOpenSetlist: (id: string, teamId: string) => void;
   showToast: (msg: string) => void;
   // Optional: drive team selection from the parent (so the left-nav highlight
   // tracks the open team). Falls back to internal state when not provided.
@@ -353,8 +353,8 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
       <div className="flex gap-1 mb-4 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl w-fit">
         {(["members","songs"] as const).map(t => (
           <button key={t} type="button" onClick={() => setTab(t)}
-            className={"h-8 px-4 rounded-lg text-sm font-medium capitalize transition-colors "+(tab===t?"bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm":"text-slate-600 dark:text-slate-400")}>
-            {t} {t==="members"?`(${members.length})`:`(${sharedSongs.length})`}
+            className={"h-8 px-4 rounded-lg text-sm font-medium whitespace-nowrap transition-colors "+(tab===t?"bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 shadow-sm":"text-slate-600 dark:text-slate-400")}>
+            {t==="members"?`Members (${members.length})`:`Shared Songs (${sharedSongs.length})`}
           </button>
         ))}
       </div>
@@ -365,7 +365,8 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
       )}
       {tab==="songs" && (
         <div>
-          <div className="flex justify-end mb-3">
+          <div className="flex items-start justify-between gap-3 mb-3">
+            <p className="min-w-0 text-xs text-slate-500 dark:text-slate-500 leading-snug pt-1">Songs shared directly with the team — setlist songs live inside each setlist.</p>
             <button type="button" onClick={() => setAddSongsOpen(true)}
               className="shrink-0 h-7 px-2.5 rounded-lg bg-[#735fee] text-white text-[13px] font-medium hover:bg-[#6650e6] flex items-center gap-1 whitespace-nowrap">
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>Add Songs
@@ -394,7 +395,7 @@ function LeaderView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
           )}
         </div>
       )}
-      <TeamSetlistList setlists={teamSetlists} onOpen={onOpenSetlist} />
+      <TeamSetlistList setlists={teamSetlists} onOpen={(id) => onOpenSetlist(id, group.id)} />
       {isOwner && (
         <div className="mt-10 pt-6 border-t border-slate-200 dark:border-slate-800 flex flex-nowrap gap-2 max-[341px]:gap-1.5">
           {/* Compact outline pills: Transfer (brand purple) · Delete (soft pink). */}
@@ -953,7 +954,7 @@ function MemberView({ group, onBack, userId, groupMembers, groupSongs, songs, fo
         </div>
       </div>
       {rolesInfoOpen && <RolesInfoSheet onClose={() => setRolesInfoOpen(false)} />}
-      <TeamSetlistList setlists={teamSetlists} onOpen={onOpenSetlist} />
+      <TeamSetlistList setlists={teamSetlists} onOpen={(id) => onOpenSetlist(id, group.id)} />
       {sharedSongs.length===0 ? (
         <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 px-4 py-16 text-center text-sm text-slate-500">Your team leader hasn't shared any songs yet.</div>
       ) : (
