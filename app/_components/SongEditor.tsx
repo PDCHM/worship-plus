@@ -1857,8 +1857,25 @@ export default function SongEditor({
     };
     window.addEventListener("resize", onResize);
     window.addEventListener("orientationchange", onResize);
+    // …and whenever the chart card's own WIDTH changes without a window resize.
+    // Opening a song on a landscape tablet measured while the app's side menu
+    // was still taking ~240px, then the menu slid away and nothing re-measured —
+    // auto-fit stayed on 1 column for a 910px chart (11 pages instead of ~4).
+    // Width only (height is set by the fit pass itself), ignoring sub-2px jitter.
+    const wrap = fitWrapRef.current;
+    let lastW = wrap ? wrap.getBoundingClientRect().width : 0;
+    const ro = wrap && typeof ResizeObserver !== "undefined"
+      ? new ResizeObserver(() => {
+          const w = wrap.getBoundingClientRect().width;
+          if (Math.abs(w - lastW) < 2) return;
+          lastW = w;
+          onResize();
+        })
+      : null;
+    if (wrap) ro?.observe(wrap);
     return () => {
       cancelAnimationFrame(raf);
+      ro?.disconnect();
       window.removeEventListener("resize", onResize);
       window.removeEventListener("orientationchange", onResize);
     };
@@ -4447,7 +4464,9 @@ export default function SongEditor({
         // adds) tells Blink to swallow that scroll instead of chaining — which
         // froze scrolling on Chrome/Android (WebKit/iOS chained anyway). Keep only
         // the x-axis contained so horizontal scroll of wide charts doesn't bounce.
-        className={"rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-x-auto overscroll-x-none print:border-0 print:shadow-none print:p-0 " + (presenting ? (fitMode ? "p-2.5 sm:p-3" : "p-3 sm:p-4") : "p-4 sm:p-6 md:p-8")}
+        // Fit in the regular view (sm+): slimmer top/bottom padding — every px
+        // goes to the page height (the "Page x / n" pill sits in the reserved strip).
+        className={"rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-x-auto overscroll-x-none print:border-0 print:shadow-none print:p-0 " + (presenting ? (fitMode ? "p-2.5 sm:p-3" : "p-3 sm:p-4") : fitMode ? "p-4 sm:px-6 sm:pt-3 sm:pb-2 md:px-8" : "p-4 sm:p-6 md:p-8")}
         // Fit mode turns this card into the scroll viewport: fixed height with
         // vertical overflow, so the song scrolls inside it only when it can't be
         // shrunk to fit. Scroll mode keeps the card's natural auto height.
