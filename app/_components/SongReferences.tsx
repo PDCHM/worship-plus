@@ -210,9 +210,12 @@ export default function SongReferences({
             }
             return (
               <div key={link.id} className="flex items-center gap-3 px-3 py-2.5 bg-white dark:bg-slate-900 group">
-                <button type="button" onClick={() => openLink(link)} disabled={ytOffline}
-                  title={ytOffline ? "Needs a connection to play" : isYt ? "Play inline" : "Open link"}
-                  className={"min-w-0 flex-1 flex items-center gap-2.5 text-left " + (ytOffline ? "opacity-40 cursor-not-allowed" : "cursor-pointer")}>
+                {/* Web links: a real target=_blank link (not window.open — iOS
+                    PWAs / in-app browsers left a blank tab behind). YouTube
+                    keeps the button (plays inline). */}
+                {!isYt && safeLinkUrl(link.url) ? (
+                  <a href={safeLinkUrl(link.url)!} target="_blank" rel="noopener noreferrer" title="Open link"
+                    className={"min-w-0 flex-1 flex items-center gap-2.5 text-left " + (ytOffline ? "opacity-40 cursor-not-allowed" : "cursor-pointer")}>
                   <span className={"shrink-0 w-9 h-9 rounded-lg flex items-center justify-center " + (isYt ? "bg-red-50 dark:bg-red-950/40" : "bg-slate-100 dark:bg-slate-800")}>
                     {isYt ? <YouTubeIcon /> : <LinkIcon />}
                   </span>
@@ -222,7 +225,22 @@ export default function SongReferences({
                       ? <span className="block text-[11px] text-amber-600 dark:text-amber-400">Needs connection</span>
                       : (link.title?.trim() && <span className="block text-[11px] text-slate-500 truncate">{urlLabel(link.url)}</span>)}
                   </span>
-                </button>
+                  </a>
+                ) : (
+                <button type="button" onClick={() => openLink(link)} disabled={ytOffline}
+                    title={ytOffline ? "Needs a connection to play" : isYt ? "Play inline" : "Open link"}
+                    className={"min-w-0 flex-1 flex items-center gap-2.5 text-left " + (ytOffline ? "opacity-40 cursor-not-allowed" : "cursor-pointer")}>
+                    <span className={"shrink-0 w-9 h-9 rounded-lg flex items-center justify-center " + (isYt ? "bg-red-50 dark:bg-red-950/40" : "bg-slate-100 dark:bg-slate-800")}>
+                      {isYt ? <YouTubeIcon /> : <LinkIcon />}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium truncate">{label}</span>
+                      {ytOffline
+                        ? <span className="block text-[11px] text-amber-600 dark:text-amber-400">Needs connection</span>
+                        : (link.title?.trim() && <span className="block text-[11px] text-slate-500 truncate">{urlLabel(link.url)}</span>)}
+                    </span>
+                  </button>
+                )}
                 {canEdit && (
                   <div className="flex items-center gap-0.5 shrink-0">
                     <button type="button" onClick={() => move(idx, -1)} disabled={idx === 0}
