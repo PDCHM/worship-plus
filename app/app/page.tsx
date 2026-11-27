@@ -3476,16 +3476,18 @@ export default function Home() {
       {/* Offline-readiness indicator — so a leader knows the library is fully
           cached before a service. Downloading progress while caching; a brief
           "Offline ready" confirmation when the whole library is saved. Hidden
-          while offline (the Offline badge covers that state). */}
+          while offline (the Offline badge covers that state). z-45: above the
+          bottom nav (z-30), BELOW sheets/modals (z-50) — it used to float over
+          a sheet's Done bar. */}
       {online && offlineCache && offlineCache.total > 0 && (
         offlineCache.cached < offlineCache.total ? (
-          <div className="fixed left-3 z-[60] flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/85 dark:bg-slate-800/90 text-white text-xs font-medium shadow-lg print:hidden"
+          <div className="fixed left-3 z-[45] flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/85 dark:bg-slate-800/90 text-white text-xs font-medium shadow-lg print:hidden"
             style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 4.75rem)" }}>
             <span className="w-3 h-3 rounded-full border-2 border-white/40 border-t-white animate-spin" aria-hidden />
             Saving for offline… {offlineCache.cached}/{offlineCache.total}
           </div>
         ) : offlineReadyFlash ? (
-          <div className="fixed left-3 z-[60] flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-700 text-white text-xs font-semibold shadow-lg print:hidden"
+          <div className="fixed left-3 z-[45] flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-700 text-white text-xs font-semibold shadow-lg print:hidden"
             style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 4.75rem)" }} role="status">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polyline points="20 6 9 17 4 12" /></svg>
             Offline ready

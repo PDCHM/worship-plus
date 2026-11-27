@@ -1,6 +1,7 @@
 "use client";
 
 import { backdropDismiss } from "@/lib/backdropDismiss";
+import { useKeyboardViewport, keyboardSheetStyles } from "@/lib/useKeyboardViewport";
 import { useState } from "react";
 import { FEATURE_AI_CHORDS } from "@/lib/flags";
 
@@ -59,6 +60,8 @@ function looksIncomplete(r: SongSearchResult): boolean {
 export default function SongSearchSheet({ findInLibrary, onOpenExisting, onCreateWithAi, onRequireUpgrade, onTryPhotoImport, onClose }: Props) {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
+  // Keyboard up (iPhone): fill only the space above it (see useKeyboardViewport).
+  const kbStyles = keyboardSheetStyles(useKeyboardViewport());
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SongSearchResult | null>(null);
 
@@ -92,8 +95,8 @@ export default function SongSearchSheet({ findInLibrary, onOpenExisting, onCreat
   const existingId = result?.found ? findInLibrary(result.title) : null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4" {...backdropDismiss(onClose)}>
-      <div className="w-full sm:max-w-md bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden flex flex-col max-h-[88vh]" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm p-0 sm:p-4" style={kbStyles.overlay} {...backdropDismiss(onClose)}>
+      <div className="w-full sm:max-w-md bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden flex flex-col max-h-[88vh]" style={kbStyles.card} onClick={(e) => e.stopPropagation()}>
         <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-[#735fee]"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>

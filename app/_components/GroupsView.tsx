@@ -1,5 +1,6 @@
 "use client";
 import { backdropDismiss } from "@/lib/backdropDismiss";
+import { useKeyboardViewport, keyboardSheetStyles } from "@/lib/useKeyboardViewport";
 import { PageTitleRow, ViewModeToggle, type ViewMode } from "@/app/_components/PageTitle";
 import { usePersistedState, oneOf } from "@/lib/usePersistedState";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -1221,11 +1222,13 @@ function AddSongsModal({ songs, alreadyShared, groupId, onShare, onClose, showTo
   const [search, setSearch] = useState("");
   const [adding, setAdding] = useState<Set<string>>(new Set());
   const [added, setAdded] = useState<Set<string>>(new Set());
+  // Keyboard up (iPhone): fill only the space above it (see useKeyboardViewport).
+  const kbStyles = keyboardSheetStyles(useKeyboardViewport());
   const available = songs.filter(s => { if(alreadyShared.has(s.id)||added.has(s.id)) return false; if(!search.trim()) return true; const q=search.toLowerCase(); return s.title.toLowerCase().includes(q)||(s.artist??"").toLowerCase().includes(q); });
   const handleAdd = async (songId: string) => { setAdding(p => new Set(p).add(songId)); await onShare(groupId,songId); setAdded(p => new Set(p).add(songId)); setAdding(p => { const n=new Set(p); n.delete(songId); return n; }); };
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="w-full sm:max-w-md bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl flex flex-col max-h-[80vh]">
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" style={kbStyles.overlay}>
+      <div className="w-full sm:max-w-md bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl flex flex-col max-h-[80vh]" style={kbStyles.card}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800">
           <h3 className="font-semibold text-sm">Add Songs to Team</h3>
           <button type="button" onClick={onClose} className="w-7 h-7 rounded-md flex items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>

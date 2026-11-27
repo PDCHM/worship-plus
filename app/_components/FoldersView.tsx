@@ -2,6 +2,7 @@
 
 import { FREE_MODEL } from "@/lib/flags";
 import { backdropDismiss } from "@/lib/backdropDismiss";
+import { useKeyboardViewport, keyboardSheetStyles } from "@/lib/useKeyboardViewport";
 import { useEffect, useRef, useState } from "react";
 import type { Song } from "@/lib/song";
 import ConfirmDialog from "@/app/_components/ConfirmDialog";
@@ -1392,6 +1393,9 @@ export function AddSongsModal({
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
+  // Keyboard up (iPhone): fill only the space above it — search on top, the
+  // Done bar right above the keys, the list scrolling between.
+  const kbStyles = keyboardSheetStyles(useKeyboardViewport());
 
   // Songs matching the current search. Already-in songs stay visible (shown as
   // a disabled "Added" row) so it's clear they can't be re-added.
@@ -1434,8 +1438,8 @@ export function AddSongsModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <div className="w-full sm:max-w-md bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4" style={kbStyles.overlay}>
+      <div className="w-full sm:max-w-md bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden flex flex-col max-h-[80vh]" style={kbStyles.card}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800">
           <h3 className="font-semibold text-sm">Add Songs</h3>
           <button
