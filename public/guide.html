@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Worship+ Quick Start</title>
+<style>
+  :root{
+    --bg:#f6f5fb; --surface:#ffffff; --ink:#1a1726; --muted:#6b6880; --line:#e8e3f4;
+    --brand:#8574f0; --brand-ink:#6a57e0; --lav:#efe9fe; --lav2:#f4f1fe;
+    --pink:#d06a86; --pinkbg:#fbeef2; --pinkbd:#f2d2dc; --green:#2f9c57;
+    --hero1:#efe9fe; --hero2:#f6f5fb; --hero3:#e9e2fd;
+    --maxw:940px;
+  }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+    --bg:#141121; --surface:#1f1b30; --ink:#f0eef8; --muted:#a8a3bf; --line:#302a46;
+    --brand:#a594ff; --brand-ink:#b8aaff; --lav:#272042; --lav2:#221c39;
+    --pink:#e790a6; --pinkbg:#36202e; --pinkbd:#562c41;
+    --hero1:#241d3c; --hero2:#141121; --hero3:#1c1631;
+    color-scheme:dark;
+  }}
+  :root[data-theme="dark"]{
+    --bg:#141121; --surface:#1f1b30; --ink:#f0eef8; --muted:#a8a3bf; --line:#302a46;
+    --brand:#a594ff; --brand-ink:#b8aaff; --lav:#272042; --lav2:#221c39;
+    --pink:#e790a6; --pinkbg:#36202e; --pinkbd:#562c41;
+    --hero1:#241d3c; --hero2:#141121; --hero3:#1c1631;
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--bg);color:var(--ink);margin:0;
+       font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;line-height:1.5;
+       -webkit-font-smoothing:antialiased}
+  h1,h2,h3{font-family:"Space Grotesk",Inter,-apple-system,sans-serif;text-wrap:balance;margin:0}
+  .wrap{max-width:var(--maxw);margin:0 auto;
+        padding-left:max(18px,env(safe-area-inset-left,0px));
+        padding-right:max(18px,env(safe-area-inset-right,0px))}
+  .hero{background:linear-gradient(165deg,var(--hero1),var(--hero2) 60%,var(--hero3));
+        padding-top:42px;padding-bottom:36px;text-align:center}
+  .logo{font-family:"Space Grotesk",sans-serif;font-weight:700;font-size:clamp(36px,10vw,54px);letter-spacing:-1.5px;color:var(--brand)}
+  .logo sup{font-size:.42em;top:-.9em;margin-left:1px}
+  .kick{font-size:clamp(15px,4.2vw,20px);font-weight:700;letter-spacing:4px;text-transform:uppercase;color:var(--brand-ink);margin-top:4px}
+  .lede{font-size:clamp(15px,4vw,19px);color:var(--muted);margin:14px auto 0;max-width:30em}
+  .herofoot{margin-top:16px;font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--brand);opacity:.8}
+  section{padding-block:30px}
+  .eyebrow{font-size:13px;font-weight:800;letter-spacing:1.4px;text-transform:uppercase;color:var(--brand);margin-bottom:6px}
+  .h2{font-size:clamp(24px,5.6vw,32px);font-weight:700;margin-bottom:6px}
+  .sectintro{color:var(--muted);font-size:16px;max-width:40em;margin-bottom:18px}
+  .cards3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .ccard{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:22px 18px;text-align:center}
+  .cic{width:64px;height:64px;border-radius:50%;background:var(--lav);display:flex;align-items:center;justify-content:center;margin:0 auto 12px}
+  .cic svg{width:32px;height:32px;color:var(--brand)}
+  .cn{font-size:21px;font-weight:700;margin-bottom:6px}
+  .cd{font-size:15px;color:var(--muted);line-height:1.45}
+  .flowline{text-align:center;margin-top:18px;font-size:16px;font-weight:600;color:var(--muted)}
+  .flowline b{color:var(--brand)}
+  .cards2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .ocard{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:22px}
+  .ohead{display:flex;align-items:center;gap:11px;margin-bottom:12px}
+  .ohead .d{width:40px;height:40px;border-radius:11px;background:var(--lav);display:flex;align-items:center;justify-content:center;color:var(--brand)}
+  .ohead .d svg{width:21px;height:21px}
+  .ohead .nm{font-size:18px;font-weight:700;font-family:"Space Grotesk",sans-serif}
+  .olist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+  .olist li{display:flex;gap:11px;font-size:16px;color:var(--ink)}
+  .olist .n{width:26px;height:26px;border-radius:50%;background:var(--lav);color:var(--brand);font-size:14px;font-weight:800;display:flex;align-items:center;justify-content:center;flex:none}
+  .olist b{color:var(--brand-ink)}
+  .urlpill{display:inline-block;font-weight:800;color:var(--brand);background:var(--lav);border-radius:999px;padding:5px 13px;text-decoration:none}
+  .step{display:grid;grid-template-columns:258px 1fr;gap:28px;align-items:start;padding-block:22px;border-top:1px solid var(--line)}
+  .step:first-of-type{border-top:none}
+  .stepnum{display:inline-flex;align-items:center;gap:11px;margin-bottom:10px}
+  .stepnum .b{width:42px;height:42px;border-radius:12px;background:var(--brand);color:#fff;font-size:21px;font-weight:800;display:flex;align-items:center;justify-content:center;font-family:"Space Grotesk",sans-serif}
+  .stepnum .t{font-size:13px;font-weight:800;letter-spacing:1.2px;text-transform:uppercase;color:var(--brand)}
+  .steplede{font-size:18px;font-weight:600;margin-bottom:12px}
+  .slist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+  .slist li{display:flex;gap:12px;font-size:16px}
+  .slist .k{width:27px;height:27px;border-radius:50%;background:var(--lav);color:var(--brand);font-size:14px;font-weight:800;display:flex;align-items:center;justify-content:center;flex:none;margin-top:1px}
+  .slist b{color:var(--brand-ink)}
+  .tipbox{display:flex;gap:11px;background:var(--lav2);border:1px solid var(--line);border-radius:13px;padding:14px 16px;margin-top:14px;font-size:15px;color:var(--ink)}
+  .tipbox .s{color:var(--brand);flex:none}.tipbox .s svg{width:19px;height:19px}
+  .tipbox b{color:var(--brand-ink)}
+  .phonewrap{display:flex;justify-content:center}
+  .ph{width:258px;border-radius:34px 34px 0 0;background:#14111d;padding:9px 9px 0;box-shadow:0 14px 32px rgba(60,40,120,.2)}
+  .scr{width:100%;border-radius:26px 26px 0 0;overflow:hidden;background:#fff;position:relative;display:flex;flex-direction:column;color:#1a1726;padding-bottom:14px}
+  .hl{position:relative;z-index:3;box-shadow:0 0 0 3px #8574f0, 0 0 0 6px rgba(133,116,240,.18)}
+  .nub{position:absolute;top:14px;left:50%;transform:translateX(-50%);width:78px;height:6px;border-radius:4px;background:#2a2636;z-index:5}
+  .whead{padding:22px 14px 8px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #f0edf7}
+  .wlogo{font-size:16px;font-weight:900;color:#8574f0;letter-spacing:-.5px}.wlogo sup{font-size:9px}
+  .wdots{color:#b8b3c9;font-size:16px;font-weight:800}
+  .sbody{padding:11px;display:flex;flex-direction:column;gap:7px}
+  .srch{display:flex;align-items:center;gap:8px;background:#f4f2fa;border:1px solid #ece8f6;border-radius:11px;padding:10px 11px;color:#a7a3b4;font-size:13px}
+  .srch svg{width:15px;height:15px}
+  .songrow{display:flex;align-items:center;padding:9px;border:1px solid #f0edf7;border-radius:11px}
+  .songrow .tt{font-size:13px;font-weight:700;color:#1a1726}.songrow .ar{font-size:11px;color:#6b6880;margin-top:1px}
+  .navb{display:flex;justify-content:space-around;align-items:center;padding:8px 4px 4px;border-top:1px solid #f0edf7;margin-top:2px}
+  .nitem{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:8px;color:#aaa6bb;font-weight:600}
+  .nitem svg{width:17px;height:17px}.nitem.on{color:#8574f0}
+  .fab{width:30px;height:30px;border-radius:50%;background:#8574f0;color:#fff;display:flex;align-items:center;justify-content:center}.fab svg{width:16px;height:16px}
+  .shead{padding:22px 14px 8px;border-bottom:1px solid #f0edf7;display:flex;align-items:center;gap:8px}
+  .back{color:#b8b3c9}.back svg{width:16px;height:16px}
+  .shead .st{font-size:14px;font-weight:800;color:#1a1726}
+  .keyp{font-size:11px;font-weight:700;color:#8574f0;background:#efe9fe;border-radius:999px;padding:5px 10px}
+  .capp{font-size:11px;font-weight:700;color:#6b6880;background:#fff;border:1px solid #ddd6f5;border-radius:999px;padding:5px 10px}
+  .cl{color:#8574f0;font-weight:800;font-size:12px;font-family:ui-monospace,Menlo,monospace;margin-top:7px}
+  .ll{font-size:13px;color:#2a2636;margin-top:1px}
+  .sc{font-size:10px;font-weight:800;color:#9a95b4;letter-spacing:.5px;margin-top:9px}
+  .ctrlbar{display:flex;align-items:center;gap:7px;padding:10px 11px 2px;border-top:1px solid #f0edf7;margin-top:4px}
+  .seg{display:flex;border:1px solid #e4dff4;border-radius:9px;overflow:hidden}
+  .seg span{padding:6px 11px;font-size:12px;font-weight:700;color:#6b6880}.seg .a{background:#8574f0;color:#fff}
+  .az{display:flex;border:1px solid #e4dff4;border-radius:9px;overflow:hidden;margin-left:auto}
+  .az span{padding:6px 10px;font-weight:800;color:#4a4663}.az .s{font-size:12px}.az .l{font-size:14px;border-left:1px solid #e4dff4}
+  .navbar{display:flex;align-items:center;gap:6px;padding:10px 10px 2px;border-top:1px solid #f0edf7;margin-top:4px}
+  .nav{display:inline-flex;align-items:center;gap:3px;background:#efe9fe;color:#8574f0;border-radius:9px;padding:7px 10px;font-size:11px;font-weight:700}
+  .nav svg{width:11px;height:11px}
+  .secp{font-size:10px;font-weight:700;color:#8574f0;border:1px solid #ddd6f5;border-radius:999px;padding:4px 8px}
+  .cnt{font-size:11px;color:#6b6880;font-weight:600}.spc{flex:1}
+  .met{width:28px;height:28px;border-radius:50%;background:#f4f2fa;border:1px solid #ece8f6;display:flex;align-items:center;justify-content:center;color:#6b6880}.met svg{width:14px;height:14px}
+  .addbtn{display:inline-flex;align-items:center;gap:4px;background:#8574f0;color:#fff;border-radius:8px;padding:6px 9px;font-size:11px;font-weight:700}.addbtn svg{width:11px;height:11px}
+  .barhead{display:flex;align-items:center;justify-content:space-between;padding:4px 2px 8px}
+  .barhead .h{font-size:14px;font-weight:800;color:#1a1726}
+  .srow2{display:flex;align-items:center;gap:8px;padding:9px;border:1px solid #f0edf7;border-radius:11px}
+  .srow2 .mn{flex:1}.srow2 .tt{font-size:13px;font-weight:700;color:#1a1726}.srow2 .ar{font-size:10px;color:#6b6880}
+  .mi{width:20px;height:20px;border-radius:50%;background:#fbeef2;border:1.5px solid #f2d2dc;color:#d06a86;display:flex;align-items:center;justify-content:center}.mi svg{width:10px;height:10px}
+  .datep{font-size:10px;font-weight:700;color:#8574f0;background:#efe9fe;border-radius:999px;padding:4px 9px}
+  .thead2{padding:22px 14px 4px}
+  .tname{font-size:18px;font-weight:800;color:#1a1726;display:flex;align-items:center;gap:7px}
+  .leadp{font-size:10px;font-weight:700;color:#8574f0;background:#efe9fe;border-radius:999px;padding:4px 9px;margin-left:auto}
+  .tmem{font-size:12px;color:#6b6880;margin-top:2px}
+  .ttabs{display:flex;gap:7px;padding:10px 14px 4px}
+  .ttab{flex:1;text-align:center;padding:8px;border-radius:9px;font-size:12px;font-weight:700}
+  .ttab.on{background:#f1eefb;color:#8574f0}.ttab.off{color:#6b6880}
+  .mrow{display:flex;align-items:center;gap:9px;padding:8px 14px}
+  .av{width:30px;height:30px;border-radius:50%;background:#efe9fe;color:#8574f0;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center}
+  .mrow .nm{font-size:13px;font-weight:700;color:#1a1726}.mrow .rl{font-size:10px;color:#6b6880}
+  .report{background:var(--pinkbg);border-top:1px solid var(--pinkbd);border-bottom:1px solid var(--pinkbd)}
+  .rtop{text-align:center;margin-bottom:20px}
+  .reyebrow{color:var(--pink);font-weight:800;letter-spacing:1.3px;text-transform:uppercase;font-size:13px}
+  .rh{font-size:clamp(23px,5.6vw,30px);font-weight:700;margin-top:4px}
+  .rsub{color:var(--muted);font-size:16px;margin-top:8px;max-width:38em;margin-inline:auto}
+  .cta{display:flex;justify-content:center}
+  .reportbtn{display:inline-flex;align-items:center;gap:10px;background:var(--pink);color:#fff;text-decoration:none;
+             font-weight:800;font-size:19px;padding:16px 32px;border-radius:14px;box-shadow:0 8px 22px rgba(208,106,134,.3)}
+  .reportbtn svg{width:22px;height:22px}
+  .ctanote{text-align:center;color:var(--muted);font-size:13px;margin-top:10px}
+  footer{text-align:center;padding-block:28px;color:var(--muted);font-size:13px}
+  footer .fl{font-weight:800;color:var(--brand);font-size:16px;font-family:"Space Grotesk",sans-serif}
+  @media (max-width:640px){
+    .cards3{grid-template-columns:1fr;gap:11px}
+    .cards2{grid-template-columns:1fr}
+    .step{grid-template-columns:1fr;gap:16px;justify-items:stretch}
+    .phonewrap{order:-1}
+  }
+</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap">
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <div class="logo">Worship<sup>+</sup></div>
+    <div class="kick">Quick Start</div>
+    <p class="lede">Everything you need to lead worship from your phone — songs, setlists, and your team, in one place.</p>
+    <div class="herofoot">A 2-minute guide for new users</div>
+  </div>
+</header>
+<section>
+  <div class="wrap">
+    <div class="eyebrow">Worship+ in one picture</div>
+    <h2 class="h2">How it fits together</h2>
+    <div class="cards3">
+      <div class="ccard">
+        <div class="cic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg></div>
+        <div class="cn">Song</div>
+        <div class="cd">One chord chart. Key, capo, lyrics.</div>
+      </div>
+      <div class="ccard">
+        <div class="cic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg></div>
+        <div class="cn">Setlist</div>
+        <div class="cd">Songs for one service, in order, by date.</div>
+      </div>
+      <div class="ccard">
+        <div class="cic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+        <div class="cn">Team</div>
+        <div class="cd">Your group. Share with the people you invite.</div>
+      </div>
+    </div>
+    <div class="flowline">Songs go into a <b>Setlist</b> → shared with your <b>Team</b></div>
+  </div>
+</section>
+<section>
+  <div class="wrap">
+    <div class="eyebrow">Step 1</div>
+    <h2 class="h2">Get it on your phone</h2>
+    <p class="sectintro">Tap to open <a class="urlpill" href="https://worshipplus.vercel.app" target="_blank" rel="noopener">worshipplus.vercel.app ↗</a>, then add it to your home screen so it opens like a real app and works offline.</p>
+    <div class="cards2">
+      <div class="ocard">
+        <div class="ohead"><span class="d"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M11 18h2"/></svg></span><span class="nm">iPhone — Safari</span></div>
+        <ul class="olist">
+          <li><span class="n">1</span><span>Tap the <b>Share</b> button at the bottom.</span></li>
+          <li><span class="n">2</span><span>Scroll and tap <b>Add to Home Screen</b>.</span></li>
+          <li><span class="n">3</span><span>Tap <b>Add</b> — the icon is on your phone.</span></li>
+        </ul>
+      </div>
+      <div class="ocard">
+        <div class="ohead"><span class="d"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="3"/><path d="M11 18h2"/></svg></span><span class="nm">Android — Chrome</span></div>
+        <ul class="olist">
+          <li><span class="n">1</span><span>Tap the <b>⋮</b> menu, top-right.</span></li>
+          <li><span class="n">2</span><span>Tap <b>Install app</b>.</span></li>
+          <li><span class="n">3</span><span>Confirm — the icon appears on your phone.</span></li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+<section>
+  <div class="wrap">
+    <div class="eyebrow">The everyday steps</div>
+    <h2 class="h2">Using Worship+</h2>
+    <p class="sectintro">Six things you'll do most. The screens here are examples — your own songs will show once you're in.</p>
+    <div class="step">
+      <div class="phonewrap"><div class="ph"><div class="scr"><div class="nub"></div>
+        <div class="whead"><span class="wlogo">Worship<sup>+</sup></span><span class="wdots">⋯</span></div>
+        <div class="sbody">
+          <div class="srch hl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>Search songs…</div>
+          <div class="songrow"><div><div class="tt">10,000 Reasons</div><div class="ar">Matt Redman</div></div></div>
+          <div class="songrow"><div><div class="tt">What A Beautiful Name</div><div class="ar">Hillsong Worship</div></div></div>
+          <div class="songrow"><div><div class="tt">Goodness Of God</div><div class="ar">Bethel Music</div></div></div>
+          <div class="navb">
+            <span class="nitem on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>Songs</span>
+            <span class="nitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h5l2 2h11v9H3z"/></svg>Folders</span>
+            <span class="nitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>Setlists</span>
+            <span class="nitem"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>Teams</span>
+            <span class="fab"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span>
+          </div>
+        </div>
+      </div></div></div>
+      <div>
+        <div class="stepnum"><span class="b">2</span><span class="t">Find &amp; open a song</span></div>
+        <div class="steplede">Every song you add lives in your library.</div>
+        <ul class="slist">
+          <li><span class="k">1</span><span>Tap <b>Songs</b> in the bottom bar.</span></li>
+          <li><span class="k">2</span><span>Type a title in <b>Search</b> — the list filters as you type.</span></li>
+          <li><span class="k">3</span><span>Tap the song to open it.</span></li>
+        </ul>
+        <div class="tipbox"><span class="s"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.4H22l-6 4.3 2.3 7.3-6.3-4.6L5.7 21 8 14 2 9.6h7.6z"/></svg></span><span>No song yet? Tap the big <b>+</b> to add one — from the library, a photo of a chart, or paste it in.</span></div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="phonewrap"><div class="ph"><div class="scr"><div class="nub"></div>
+        <div class="shead"><span class="back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></span><span class="st">Goodness Of God</span><span class="keyp" style="margin-left:auto">Key G</span></div>
+        <div class="sbody" style="gap:0;padding:12px 14px 0">
+          <div class="sc" style="margin-top:0">VERSE 1</div>
+          <div class="cl">G&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;C</div><div class="ll">I love You, Lord</div>
+          <div class="cl">&nbsp;&nbsp;&nbsp;G&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;D</div><div class="ll">Oh, Your mercy never fails me</div>
+          <div class="sc">CHORUS</div>
+          <div class="cl">G&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;C</div><div class="ll">All my life You have been faithful</div>
+        </div>
+        <div class="ctrlbar"><div class="seg hl"><span class="a">Fit</span><span>Scroll</span></div><div class="az hl"><span class="s">A−</span><span class="l">A+</span></div></div>
+      </div></div></div>
+      <div>
+        <div class="stepnum"><span class="b">3</span><span class="t">Read it your way</span></div>
+        <div class="steplede">Make the chart comfortable to read.</div>
+        <ul class="slist">
+          <li><span class="k">A</span><span><b>Fit</b> puts a song on pages you swipe. <b>Scroll</b> is one long page.</span></li>
+          <li><span class="k">B</span><span>Tap <b>A−</b> / <b>A+</b> to size the words.</span></li>
+        </ul>
+        <div class="tipbox"><span class="s"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.4H22l-6 4.3 2.3 7.3-6.3-4.6L5.7 21 8 14 2 9.6h7.6z"/></svg></span><span>Set it <b>once</b> — every song remembers your size and layout, on every device.</span></div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="phonewrap"><div class="ph"><div class="scr"><div class="nub"></div>
+        <div class="shead"><span class="back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></span><span class="st">What A Beautiful Name</span></div>
+        <div style="display:flex;align-items:center;gap:7px;padding:11px 14px;border-bottom:1px solid #f0edf7">
+          <span class="keyp hl">Key D</span><span class="capp hl">Capo 3</span><span class="capp">Play B</span>
+          <span style="margin-left:auto;color:#b8b3c9"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg></span>
+        </div>
+        <div class="sbody" style="gap:0;padding:12px 14px 0">
+          <div class="sc" style="margin-top:0">VERSE 1</div>
+          <div class="cl">D&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;A</div><div class="ll">You were the Word at the beginning</div>
+          <div class="cl">Bm&nbsp;&nbsp;&nbsp;&nbsp;G</div><div class="ll">One with God the Lord Most High</div>
+        </div>
+      </div></div></div>
+      <div>
+        <div class="stepnum"><span class="b">4</span><span class="t">Change key &amp; capo</span></div>
+        <div class="steplede">Sing it in a key that suits your voice.</div>
+        <ul class="slist">
+          <li><span class="k">1</span><span>Tap <b>Key</b> to raise or lower the whole song.</span></li>
+          <li><span class="k">2</span><span>Using a <b>capo</b>? Tap <b>Capo</b> — it shows the shapes to play and where to clip.</span></li>
+        </ul>
+        <div class="tipbox"><span class="s"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.4H22l-6 4.3 2.3 7.3-6.3-4.6L5.7 21 8 14 2 9.6h7.6z"/></svg></span><span><b>Play B</b> means: with Capo 3 you finger easy shapes, and it still sounds in the song's key.</span></div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="phonewrap"><div class="ph"><div class="scr"><div class="nub"></div>
+        <div class="shead"><span class="back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></span><span class="st">Sunday 10am</span></div>
+        <div style="padding:10px 14px 2px"><span class="datep">30 Nov 2026</span></div>
+        <div class="sbody" style="gap:7px;padding:8px 14px 0">
+          <div class="barhead"><span class="h">Songs</span><span class="addbtn hl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add Songs</span></div>
+          <div class="srow2"><div class="mn"><div class="tt">Goodness Of God</div><div class="ar">Bethel Music</div></div><span class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M5 12h14"/></svg></span></div>
+          <div class="srow2"><div class="mn"><div class="tt">What A Beautiful Name</div><div class="ar">Hillsong</div></div><span class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M5 12h14"/></svg></span></div>
+          <div class="srow2"><div class="mn"><div class="tt">Build My Life</div><div class="ar">Pat Barrett</div></div><span class="mi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M5 12h14"/></svg></span></div>
+        </div>
+      </div></div></div>
+      <div>
+        <div class="stepnum"><span class="b">5</span><span class="t">Build a setlist</span></div>
+        <div class="steplede">The songs for one service, in the order you'll play them.</div>
+        <ul class="slist">
+          <li><span class="k">1</span><span>In the <b>Setlists</b> tab, make a new setlist and give it a <b>date</b>.</span></li>
+          <li><span class="k">2</span><span>Tap <b>+ Add Songs</b>, search, and tick the ones you want.</span></li>
+          <li><span class="k">3</span><span><b>Drag</b> to reorder. Tap <b>−</b> to remove one.</span></li>
+        </ul>
+        <div class="tipbox"><span class="s"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.4H22l-6 4.3 2.3 7.3-6.3-4.6L5.7 21 8 14 2 9.6h7.6z"/></svg></span><span>Removing a song shows an <b>Undo</b> — nothing disappears by accident.</span></div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="phonewrap"><div class="ph"><div class="scr"><div class="nub"></div>
+        <div class="sbody" style="gap:2px;padding:22px 16px 0">
+          <div class="sc" style="margin-top:0">CHORUS</div>
+          <div class="cl" style="font-size:13px">G&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;D</div><div class="ll" style="font-size:15px;font-weight:600">All my life You have been faithful</div>
+          <div class="cl" style="font-size:13px">Em&nbsp;&nbsp;&nbsp;C</div><div class="ll" style="font-size:15px;font-weight:600">All my life You have been so good</div>
+          <div class="cl" style="font-size:13px">G&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;D</div><div class="ll" style="font-size:15px;font-weight:600">With every breath that I am able</div>
+        </div>
+        <div class="navbar">
+          <span class="nav hl"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M18 15l-6-6-6 6"/></svg>Prev</span>
+          <span class="secp">Chorus</span><span class="cnt">2 / 4</span><span class="spc"></span>
+          <span class="met"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l6 16H6zM12 3v16"/></svg></span>
+          <span class="nav hl">Next<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span>
+        </div>
+      </div></div></div>
+      <div>
+        <div class="stepnum"><span class="b">6</span><span class="t">Perform</span></div>
+        <div class="steplede">Big, clean, hands-free — made for leading live.</div>
+        <ul class="slist">
+          <li><span class="k">1</span><span>Open a song and go <b>full-screen</b>.</span></li>
+          <li><span class="k">2</span><span><b>Swipe</b>, or tap <b>Prev / Next</b>, through the pages.</span></li>
+          <li><span class="k">3</span><span>Tap the <b>metronome</b> for tempo, or <b>Markup</b> to scribble notes.</span></li>
+        </ul>
+        <div class="tipbox"><span class="s"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.4H22l-6 4.3 2.3 7.3-6.3-4.6L5.7 21 8 14 2 9.6h7.6z"/></svg></span><span>Prev / Next <b>light up</b> when there's a page that way, and grey out at the start or end.</span></div>
+      </div>
+    </div>
+    <div class="step">
+      <div class="phonewrap"><div class="ph"><div class="scr"><div class="nub"></div>
+        <div class="thead2"><div class="tname">Sunday Band <span class="leadp">Leader</span></div><div class="tmem">5 members</div></div>
+        <div class="ttabs"><span class="ttab on">Members (5)</span><span class="ttab off hl">Shared Songs</span></div>
+        <div style="display:flex;padding:8px 14px 2px"><span class="addbtn hl" style="margin-left:auto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Add Member</span></div>
+        <div class="mrow"><span class="av">J</span><div><div class="nm">Joel Tan</div><div class="rl">Co-leader</div></div></div>
+        <div class="mrow"><span class="av">R</span><div><div class="nm">Rachel Lim</div><div class="rl">Member</div></div></div>
+        <div class="mrow"><span class="av">D</span><div><div class="nm">David Ong</div><div class="rl">Member</div></div></div>
+      </div></div></div>
+      <div>
+        <div class="stepnum"><span class="b">7</span><span class="t">Teams — share with your group</span></div>
+        <div class="steplede">Bring people in and keep everyone on the same charts.</div>
+        <ul class="slist">
+          <li><span class="k">1</span><span>Make a team, then tap <b>Add Member</b> to invite people.</span></li>
+          <li><span class="k">2</span><span>Put songs in <b>Shared Songs</b> for the whole team to use.</span></li>
+          <li><span class="k">3</span><span>Share a <b>setlist</b> — everyone sees the same order.</span></li>
+        </ul>
+        <div class="tipbox"><span class="s"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.4H22l-6 4.3 2.3 7.3-6.3-4.6L5.7 21 8 14 2 9.6h7.6z"/></svg></span><span>Only <b>leaders</b> can delete a shared setlist — so nobody removes it by mistake.</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+<section class="report" id="report">
+  <div class="wrap">
+    <div class="rtop">
+      <div class="reyebrow">You're a tester — this part matters</div>
+      <h2 class="rh">Found a glitch? Tell us</h2>
+      <p class="rsub">Spotted something off? Tap below — pick your device, add a screenshot, done.</p>
+    </div>
+    <div class="cta">
+      <a class="reportbtn" href="https://tally.so/r/o9GoKX" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+        Report a glitch
+      </a>
+    </div>
+    <p class="ctanote">Opens a short form — no sign-in needed.</p>
+  </div>
+</section>
+<footer>
+  <div class="wrap">
+    <div class="fl">Worship<sup>+</sup></div>
+    <div style="margin-top:6px">Thanks for helping us make it better.</div>
+  </div>
+</footer>
+</body>
+</html>
