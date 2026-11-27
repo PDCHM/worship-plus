@@ -226,7 +226,7 @@ const GROUPS: Group[] = [
     title: "Performance mode",
     rows: [
       { icon: ICON.autoScrollBoth, text: "Auto-scroll — read view: the ▶ / ❚❚ button (phones: ⋯ → Auto-scroll). Fullscreen: the chevrons button in the bottom bar." },
-      { icon: ICON.zoom, text: "Text size — read view: the + / − magnifier buttons (phones: ⋯ → Larger / Smaller text). Fullscreen: A− / A+ in the bottom bar." },
+      { icon: ICON.zoom, text: "Text size — read view: the + / − magnifier buttons (phones: ⋯ → Larger / Smaller text). Fullscreen: A− / A+ in the bottom bar — one size for every song, synced to your account." },
       { icon: chip("V1"), text: "Section chips — jump straight to a verse, chorus or bridge." },
       { icon: ICON.prevNext, text: "Previous / next song in the setlist (read view)." },
       { icon: ICON.sectionPrevNext, text: "Fullscreen Prev / Next — step through sections; at either end they move to the previous / next song." },
