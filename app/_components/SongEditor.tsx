@@ -59,6 +59,8 @@ import {
   type ChartFont,
   type Chord,
   type EditorPrefs,
+  type ColumnPref,
+  isColumnPref,
   type Line,
   type Section,
   type SectionStyle,
@@ -100,7 +102,10 @@ function fitBottomLimit(root: HTMLElement | null, presenting: boolean): number {
   const bar = presenting ? root?.querySelector<HTMLElement>("[data-present-bar]") : null;
   return bar ? bar.getBoundingClientRect().top - 8 : window.innerHeight - 16;
 }
-const FIT_AUTO_KEY = "wp-fit-auto-v1";
+// v2: A−/A+ used to switch Auto-fit OFF device-wide (and it stayed off for
+// every song). They now move the Fit minimum instead, so the stale v1 "false"
+// left by that trap is ignored — Auto-fit is on again unless turned off in ⚙.
+const FIT_AUTO_KEY = "wp-fit-auto-v2";
 // Presenter Prev / Next: active (lavender) vs dimmed (muted grey — nothing
 // before / after: first page with no previous song, last page with no next).
 const NAV_ACTIVE = "bg-[#efe9fe] dark:bg-[#2a2440] text-[#8574f0] dark:text-[#b3a3ff] hover:bg-[#e6defd] dark:hover:bg-[#332b4f]";
@@ -126,40 +131,18 @@ function markTipSeen(id: TipId) {
   }
 }
 
-// Per-song view preferences (column layout + font zoom) kept PER USER PER DEVICE
-// in localStorage, keyed by song id — so a member's font/column choice on a
-// shared/setlist song never changes it for the rest of the team, and it survives
-// navigating away and back (library or setlist). Not a song-record field for that
-// reason. Map shape: { [songId]: { viewMode, zoomOffset } }.
+// Retired: per-song font zoom (wp-song-view-v1). Text size is now ONE per-user
+// preference (prefs.fontOffset); the old per-song map is removed on first open.
 const SONG_VIEW_KEY = "wp-song-view-v1";
-type SongViewPrefs = { viewMode?: ViewMode; zoomOffset?: number };
-function readSongView(songId: string): SongViewPrefs {
-  try {
-    const all = JSON.parse(localStorage.getItem(SONG_VIEW_KEY) || "{}") as Record<string, SongViewPrefs>;
-    const p = all?.[songId];
-    return p && typeof p === "object" ? p : {};
-  } catch {
-    return {};
-  }
-}
-function writeSongView(songId: string, prefs: SongViewPrefs) {
-  try {
-    const all = JSON.parse(localStorage.getItem(SONG_VIEW_KEY) || "{}") as Record<string, SongViewPrefs>;
-    all[songId] = { ...(all[songId] || {}), ...prefs };
-    localStorage.setItem(SONG_VIEW_KEY, JSON.stringify(all));
-  } catch {
-    /* localStorage unavailable — prefs just won't persist */
-  }
-}
-// Chart column count is a DISPLAY preference, not song content: kept per user
-// per device in localStorage, separately for portrait and landscape, so rotating
-// the device applies the right layout on its own. "auto" picks the count that
-// fits the screen width; 1 / 2 / 3 is a manual override that sticks until the
-// reader goes back to Auto. Same value drives edit mode and present mode.
-type ColumnPref = "auto" | 1 | 2 | 3;
+// Chart column count is a DISPLAY preference, not song content: kept per USER
+// (prefs.columns, synced across devices), separately for portrait and
+// landscape, so rotating applies the right layout on its own. "auto" picks the
+// count that fits the screen per song; 1 / 2 / 3 is a pinned override that
+// sticks until the reader goes back to Auto. Same value drives edit mode and
+// present mode. wp-columns-v1 is the older per-DEVICE copy, read only as the
+// fallback until the account has a value.
 type Orientation = "portrait" | "landscape";
 const COLUMNS_KEY = "wp-columns-v1";
-const isColumnPref = (v: unknown): v is ColumnPref => v === "auto" || v === 1 || v === 2 || v === 3;
 function readColumnPrefs(): Record<Orientation, ColumnPref> {
   try {
     const raw = JSON.parse(localStorage.getItem(COLUMNS_KEY) || "{}") as Partial<Record<Orientation, unknown>>;
@@ -170,9 +153,6 @@ function readColumnPrefs(): Record<Orientation, ColumnPref> {
   } catch {
     return { portrait: "auto", landscape: "auto" };
   }
-}
-function writeColumnPrefs(prefs: Record<Orientation, ColumnPref>) {
-  try { localStorage.setItem(COLUMNS_KEY, JSON.stringify(prefs)); } catch { /* not persisted */ }
 }
 const viewModeFor = (cols: number): ViewMode => (cols >= 3 ? "split-3" : cols === 2 ? "split-2" : "standard");
 
@@ -281,6 +261,9 @@ type Props = {
   sectionStyles: SectionStyles;
   onSectionStylesChange: (s: SectionStyles) => void;
   onSectionStylesSave: (s: SectionStyles) => void | Promise<void>;
+  // Song-view display prefs (layout / text size / columns) — ONE per user for
+  // every song; the page applies them at once and saves them (batched).
+  onViewPrefsChange?: (patch: Partial<EditorPrefs>) => void;
   showToast: (msg: string) => void;
   // Shows "<message> — Undo"; calling `restore` puts the content back. Used so
   // a stray tap can never silently wipe a section.
@@ -1109,6 +1092,7 @@ export default function SongEditor({
   sectionStyles,
   onSectionStylesChange,
   onSectionStylesSave,
+  onViewPrefsChange,
   showToast,
   onUndoableDelete,
   bubbleAuthors,
@@ -1193,9 +1177,7 @@ export default function SongEditor({
     // stays Edit · Delete.
     full?: boolean;
   } | null>(null);
-  // Seeded from this song's saved view prefs (SongEditor is keyed by song id, so
-  // this runs per song). Defaults when none saved.
-  // The reader's stored column choice (persisted per song). On narrow screens a
+  // The reader's column choice (per user, per orientation). On narrow screens a
   // stored 3-column choice DISPLAYS as 2 columns (see `viewMode` below) — ~100px
   // columns break lyrics to 1–2 words per line on a phone — but the stored value
   // is kept, so the same song still opens in 3 columns on an iPad.
@@ -1203,13 +1185,11 @@ export default function SongEditor({
   // Column count — per-orientation display preference (see COLUMNS_KEY).
   const portraitScreen = useMediaQuery("(orientation: portrait)");
   const orientation: Orientation = portraitScreen ? "portrait" : "landscape";
-  const [columnPrefs, setColumnPrefs] = useState<Record<Orientation, ColumnPref>>(readColumnPrefs);
+  // Account value (synced) wins; the device's older copy is only the fallback.
+  const [deviceColumnPrefs] = useState<Record<Orientation, ColumnPref>>(readColumnPrefs);
+  const columnPrefs = sectionStyles.prefs.columns ?? deviceColumnPrefs;
   const columnPref = columnPrefs[orientation];
-  const setColumnPref = (p: ColumnPref) => setColumnPrefs((all) => {
-    const next = { ...all, [orientation]: p };
-    writeColumnPrefs(next);
-    return next;
-  });
+  const setColumnPref = (p: ColumnPref) => onViewPrefsChange?.({ columns: { ...columnPrefs, [orientation]: p } });
   // Auto's measured count for the scroll layout (fit-to-screen measures its own).
   const [autoCols, setAutoCols] = useState<1 | 2 | 3>(1);
   const maxColsForScreen = narrowScreen ? 2 : 3;
@@ -1280,11 +1260,12 @@ export default function SongEditor({
   const online = useOnlineStatus();
   const [autoScrolling, setAutoScrolling] = useState(false);
   const [scrollSpeed, setScrollSpeed] = useState(3);
-  const [zoomOffset, setZoomOffset] = useState(() => readSongView(song.id).zoomOffset ?? 0);
   // Opt-in performance layout: "scroll" (default — continuous scroll + autoscroll,
   // unchanged) vs "fit" (fit-to-screen multi-column). Only relevant in read-only
-  // performance mode; persisted per user in localStorage.
-  const [playLayout, setPlayLayout] = useState<"scroll" | "fit">("scroll");
+  // performance mode. ONE per-user preference (prefs.layout, synced); the
+  // device's older local value is only the fallback until the account has one.
+  const [deviceLayout, setDeviceLayout] = useState<"scroll" | "fit">("scroll");
+  const playLayout: "scroll" | "fit" = sectionStyles.prefs.layout ?? deviceLayout;
   // Paged Fit mode: the measured page layout (one object, set once per
   // measurement), the page being shown ({layout key, page} so a re-pagination
   // falls back to the layout's anchored startPage), and the Auto-fit toggle
@@ -1361,18 +1342,18 @@ export default function SongEditor({
     });
   };
 
-  // Load the saved performance layout choice (default "scroll" so the existing
-  // continuous-scroll experience is untouched until the user opts in).
+  // The device's older layout choice — fallback only (see playLayout). Also
+  // clears the retired per-song text-size map.
   useEffect(() => {
     try {
       const v = localStorage.getItem("wp-play-layout-v1");
-      if (v === "fit" || v === "scroll") setPlayLayout(v);
+      if (v === "fit" || v === "scroll") setDeviceLayout(v);
+      localStorage.removeItem(SONG_VIEW_KEY);
     } catch {}
   }, []);
 
   const changePlayLayout = (next: "scroll" | "fit") => {
-    setPlayLayout(next);
-    try { localStorage.setItem("wp-play-layout-v1", next); } catch {}
+    onViewPrefsChange?.({ layout: next });
   };
 
   const colors = isDark ? settings.sectionColorsDark : settings.sectionColorsLight;
@@ -1507,6 +1488,17 @@ export default function SongEditor({
   const lyricBase = LYRIC_FONT_SIZE_PX[prefs.lyricFontSize];
   const zoomMin = FONT_MIN_PX - lyricBase;
   const zoomMax = FONT_MAX_PX - lyricBase;
+  // Text size: ONE per-user offset (prefs.fontOffset — the A−/A+ steps), the
+  // same for every song. Scroll: lyric size + offset. Fit: the MINIMUM auto-fit
+  // may use = MIN_PAGE_FONT + offset (never below MIN_PAGE_FONT), so offset 0
+  // keeps today's auto-fit exactly.
+  const zoomOffset = Math.min(zoomMax, Math.max(zoomMin, prefs.fontOffset ?? 0));
+  const setZoomOffset = (z: number) => onViewPrefsChange?.({ fontOffset: Math.min(zoomMax, Math.max(zoomMin, z)) });
+  const fitStep = Math.max(0, zoomOffset);
+  const fitFloor = Math.min(FONT_MAX_PX, MIN_PAGE_FONT + fitStep);
+  // A−/A+ availability: Fit can't go under its floor; Scroll spans the px range.
+  const canSmaller = fitMode ? fitStep > 0 : zoomOffset > zoomMin;
+  const canLarger = fitMode ? fitFloor < FONT_MAX_PX : zoomOffset < zoomMax;
   // 🔗 References + ⋯ More — rendered on the Key · Capo · Tempo line (edit /
   // read view) and in the presenter header (that line is hidden while
   // presenting). Only one of the two places is ever mounted, so refsMenuRef
@@ -1623,33 +1615,19 @@ export default function SongEditor({
     setMarkupMode((m) => !m);
   };
 
-  // In paged Fit with Auto-fit on, a manual size change (A−/A+) switches
-  // Auto-fit off so the chosen size is what's shown (otherwise it'd do nothing).
+  // A−/A+ change the user's ONE text-size offset (every song). In Fit they move
+  // the auto-fit MINIMUM — Auto-fit stays on. A+ steps up from the size ON
+  // SCREEN (auto-fit may already sit above the minimum), so it always grows;
+  // A− lowers the minimum (disabled at MIN_PAGE_FONT).
   const adjustZoom = (dir: 1 | -1) => {
     if (fitMode) {
-      // Fit: step from the size ON SCREEN (A− always smaller, A+ always
-      // bigger) — leaving Auto-fit seeds the manual size from the auto size —
-      // and never below the Fit floor.
-      const current = fitAuto && fitLayout ? Math.round(fitLayout.font) : Math.max(MIN_PAGE_FONT, baseFontSize);
-      if (fitAuto) setFitAuto(false);
-      const target = Math.max(MIN_PAGE_FONT, current + dir * FONT_ZOOM_STEP);
-      setZoomOffset(Math.min(zoomMax, Math.max(zoomMin, target - lyricBase)));
+      const onScreen = fitLayout ? Math.round(fitLayout.font) : fitFloor;
+      const next = dir > 0 ? Math.max(fitStep, onScreen - MIN_PAGE_FONT) + FONT_ZOOM_STEP : fitStep - FONT_ZOOM_STEP;
+      setZoomOffset(Math.max(0, next));
       return;
     }
-    setZoomOffset((z) => Math.min(zoomMax, Math.max(zoomMin, z + dir * FONT_ZOOM_STEP)));
+    setZoomOffset(zoomOffset + dir * FONT_ZOOM_STEP);
   };
-
-  // Persist this song's column layout + font zoom whenever they change (and on
-  // mount, re-saving the loaded values is harmless). Keyed by song id, so opening
-  // it again — from the library or by navigating within a setlist — restores them.
-  // Deliberately NOT keyed on song.id: during a present-mode in-place song swap we
-  // preserve the reader's current layout for visual continuity, but must not write
-  // it into the NEXT song's stored prefs (that would mutate a song you only passed
-  // through). Genuine layout changes still write to the current song.id.
-  useEffect(() => {
-    writeSongView(song.id, { zoomOffset });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [zoomOffset]);
 
   const baseFontSize = Math.min(FONT_MAX_PX, Math.max(FONT_MIN_PX, lyricBase + zoomOffset));
   // Ceiling for the fluid clamp() (the --lyric-font-size CSS var). The split-3
@@ -1896,16 +1874,18 @@ export default function SongEditor({
   //      A section that doesn't fit breaks only at a LINE boundary; its
   //      continuation carries a "LABEL (cont.)" header. A section starts in a
   //      new column if its header + first line don't fit.
-  // Auto-fit ON: FEWEST PAGES first — the page count at the MIN_PAGE_FONT
-  // floor (with Columns: Auto, the column count that gives the fewest) — then
-  // the largest font up to the compact FIT_AUTO_MAX_FONT that keeps that count.
-  // Text is never grown to fill a page and never shrinks below the floor.
-  // Auto-fit OFF: the reader's own size (A−/A+, ≥ MIN_PAGE_FONT), paginated as-is.
+  // The floor is the user's minimum, fitFloor = MIN_PAGE_FONT + their A−/A+
+  // steps (one value for every song; 0 steps = MIN_PAGE_FONT).
+  // Auto-fit ON: FEWEST PAGES first — the page count at the floor (with
+  // Columns: Auto, the column count that gives the fewest) — then the largest
+  // font up to max(floor, FIT_AUTO_MAX_FONT) that keeps that count. Text is
+  // never grown to fill a page and never shrinks below the floor.
+  // Auto-fit OFF (⚙ switch): exactly the floor size, paginated as-is.
   // Columns follow the column setting (Auto = the width-based count).
   const fitCols = Math.max(1, columnPref === "auto" ? autoCols : Math.min(columnPref, maxColsForScreen));
   const fitContentKey = useMemo(() => JSON.stringify(song.sections), [song.sections]);
   const fitBaseKey = fitMode
-    ? [fitCols, fitAuto ? "auto" : `px${baseFontSize}`, lineHeight, lyricFontFamily, showChords ? 1 : 0, resizeTick, presenting ? 1 : 0, fitContentKey].join("|")
+    ? [fitCols, fitAuto ? `auto${fitFloor}` : `px${fitFloor}`, lineHeight, lyricFontFamily, showChords ? 1 : 0, resizeTick, presenting ? 1 : 0, fitContentKey].join("|")
     : "";
   const fitShrink = fitShrinkState.base === fitBaseKey ? fitShrinkState.n : 0;
   const fitKey = fitMode ? `${fitShrink}|${fitBaseKey}` : "";
@@ -1996,7 +1976,9 @@ export default function SongEditor({
       return pages.length ? pages : [[]];
     };
 
-    let font = Math.max(MIN_PAGE_FONT, baseFontSize);
+    // The user's minimum (MIN_PAGE_FONT + their A−/A+ steps). Auto-fit OFF:
+    // exactly that size. ON: fewest pages at that size or larger.
+    let font = fitFloor;
     if (fitAuto) {
       const pageCount = (px: number) => Math.ceil(pack(measure(px)).length / n);
       // Columns on Auto: use the column space to pack the song down — try every
@@ -2008,20 +1990,20 @@ export default function SongEditor({
         for (let c = 1; c <= Math.min(3, maxColsForScreen); c++) {
           if (c > 1 && colWidthFor(c) < FIT_MIN_COL_W) break;
           setCols(c);
-          const pc = pageCount(MIN_PAGE_FONT);
+          const pc = pageCount(fitFloor);
           if (pc < best.pages) best = { cols: c, pages: pc };
         }
         setCols(best.cols);
       }
-      const target = pageCount(MIN_PAGE_FONT);
-      let lo = MIN_PAGE_FONT;
-      let hi = Math.max(MIN_PAGE_FONT, FIT_AUTO_MAX_FONT);
+      const target = pageCount(fitFloor);
+      let lo = fitFloor;
+      let hi = Math.max(fitFloor, FIT_AUTO_MAX_FONT);
       if (pageCount(hi) <= target) lo = hi;
       else for (let i = 0; i < 9; i++) {
         const mid = (lo + hi) / 2;
         if (pageCount(mid) <= target) lo = mid; else hi = mid;
       }
-      font = Math.max(MIN_PAGE_FONT, Math.floor(lo * 2) / 2);
+      font = Math.max(fitFloor, Math.floor(lo * 2) / 2);
     }
     const pages = pagesOf(pack(measure(font)));
     inner.style.width = "";
@@ -4021,12 +4003,12 @@ export default function SongEditor({
                 {/* Text size (A− / A+) — the presenter's text-size control. */}
                 <div className="tap-vert shrink-0 flex items-center h-8 rounded-[10px] overflow-hidden border border-[#e7e2f7] dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300">
                   <button type="button" onClick={() => { adjustZoom(-1); revealControls(); }}
-                    disabled={zoomOffset <= zoomMin} aria-label="Smaller text" title="Smaller text"
+                    disabled={!canSmaller} aria-label="Smaller text" title="Smaller text"
                     className="h-full px-2 sm:px-2.5 flex items-center hover:bg-[#f6f3ff] dark:hover:bg-slate-800 disabled:opacity-40 disabled:hover:bg-transparent">
                     <span className="text-xs font-semibold">A</span><span className="text-xs">−</span>
                   </button>
                   <button type="button" onClick={() => { adjustZoom(1); revealControls(); }}
-                    disabled={zoomOffset >= zoomMax} aria-label="Larger text" title="Larger text"
+                    disabled={!canLarger} aria-label="Larger text" title="Larger text"
                     className="h-full px-2 sm:px-2.5 flex items-center border-l border-[#e7e2f7] dark:border-slate-700 hover:bg-[#f6f3ff] dark:hover:bg-slate-800 disabled:opacity-40 disabled:hover:bg-transparent">
                     <span className="text-[15px] font-semibold leading-none">A</span><span className="text-xs">+</span>
                   </button>
@@ -5380,11 +5362,11 @@ export default function SongEditor({
             is the text-size control there (pinch still zooms the view). */}
         {!presenting && (
           <>
-        <button type="button" onClick={() => adjustZoom(1)} title="Larger text" disabled={zoomOffset >= zoomMax}
+        <button type="button" onClick={() => adjustZoom(1)} title="Larger text" disabled={!canLarger}
           className="w-11 h-11 rounded-full shadow-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 enabled:hover:bg-[#f3f0ff] dark:enabled:hover:bg-slate-700 disabled:opacity-40 flex items-center justify-center transition-colors">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </button>
-        <button type="button" onClick={() => adjustZoom(-1)} title="Smaller text" disabled={zoomOffset <= zoomMin}
+        <button type="button" onClick={() => adjustZoom(-1)} title="Smaller text" disabled={!canSmaller}
           className="w-11 h-11 rounded-full shadow-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 enabled:hover:bg-[#f3f0ff] dark:enabled:hover:bg-slate-700 disabled:opacity-40 flex items-center justify-center transition-colors">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         </button>
@@ -5442,9 +5424,9 @@ export default function SongEditor({
         <QuickActionsPanel
           song={song}
           settings={settings}
-          zoomOffset={zoomOffset}
-          zoomMin={zoomMin}
-          zoomMax={zoomMax}
+          zoomOffset={fitMode ? fitStep : zoomOffset}
+          zoomMin={fitMode ? 0 : zoomMin}
+          zoomMax={fitMode ? FONT_MAX_PX - MIN_PAGE_FONT : zoomMax}
           effectiveFontSize={fitMode ? Math.round(fitFont) : lyricCeiling}
           chartFont={prefs.chartFont}
           onChartFontChange={handleChartFontChange}
@@ -5456,7 +5438,9 @@ export default function SongEditor({
           onTranspose={handleTranspose}
           onCapoChange={handleCapoChange}
           onSettingsChange={onSettingsChange}
-          onZoomChange={(z) => { if (fitMode && fitAuto) setFitAuto(false); setZoomOffset(z); }}
+          // Fit: the ⚙ stepper drives the same minimum as A−/A+ (Auto-fit stays
+          // on); Reset → 0 steps. Scroll: absolute offset as before.
+          onZoomChange={(z) => { if (!fitMode) setZoomOffset(z); else if (z === 0) setZoomOffset(0); else adjustZoom(z > fitStep ? 1 : -1); }}
           fitAuto={fitAuto}
           onFitAutoChange={setFitAuto}
           columns={columnPref}

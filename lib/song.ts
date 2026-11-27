@@ -659,7 +659,20 @@ export type EditorPrefs = {
   // Which diagram set the chord strip shows. Guitar and piano only for now.
   chordDiagramInstrument: "guitar" | "piano";
   lineSpacing: "compact" | "normal" | "relaxed";
+  // Song-view display preferences — ONE value per user for every song, synced
+  // with the rest of these prefs (profiles.section_styles). Optional: unset
+  // means "not chosen on the account yet" (the song view falls back to the
+  // device's older local value, then the default).
+  // layout: read-view Scroll vs paged Fit.
+  layout?: "fit" | "scroll";
+  // fontOffset: the A−/A+ steps in px. Scroll: lyric size + offset. Fit: the
+  // minimum auto-fit may use = 14px + offset (offset 0 = today's auto-fit).
+  fontOffset?: number;
+  // columns: Auto (adapts per song/screen) or a pinned 1/2/3, per orientation.
+  columns?: { portrait: ColumnPref; landscape: ColumnPref };
 };
+export type ColumnPref = "auto" | 1 | 2 | 3;
+export const isColumnPref = (v: unknown): v is ColumnPref => v === "auto" || v === 1 || v === 2 || v === 3;
 
 export type SectionStyles = {
   styles: Record<string, SectionStyle>;
@@ -778,6 +791,10 @@ function parsePrefs(v: unknown): EditorPrefs {
   if (typeof s.showChordDiagrams === "boolean") out.showChordDiagrams = s.showChordDiagrams;
   if (s.chordDiagramInstrument === "guitar" || s.chordDiagramInstrument === "piano") out.chordDiagramInstrument = s.chordDiagramInstrument;
   if (s.lineSpacing === "compact" || s.lineSpacing === "normal" || s.lineSpacing === "relaxed") out.lineSpacing = s.lineSpacing;
+  if (s.layout === "fit" || s.layout === "scroll") out.layout = s.layout;
+  if (typeof s.fontOffset === "number" && Number.isFinite(s.fontOffset)) out.fontOffset = Math.max(-40, Math.min(40, Math.round(s.fontOffset)));
+  const c = s.columns as Partial<Record<"portrait" | "landscape", unknown>> | undefined;
+  if (c && typeof c === "object") out.columns = { portrait: isColumnPref(c.portrait) ? c.portrait : "auto", landscape: isColumnPref(c.landscape) ? c.landscape : "auto" };
   return out;
 }
 

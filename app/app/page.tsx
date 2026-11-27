@@ -69,6 +69,7 @@ import {
   type Section,
   type SbpFolder,
   type SectionStyles,
+  type EditorPrefs,
   type Settings,
   type Song,
 } from "@/lib/song";
@@ -1417,6 +1418,37 @@ export default function Home() {
     if (!online || !user) return;
     void cacheSetMeta("sectionStyles", sectionStyles);
   }, [sectionStyles, online, user]);
+
+  // Song-view display prefs (layout / text size / columns): ONE per user, for
+  // every song. Applied at once (state + both device caches, so the next open is
+  // instant and works offline), then saved to the account in one batched,
+  // silent write ~1s after the last change (A+ A+ A+ → one write). Offline: kept
+  // pending and written when the connection returns.
+  const sectionStylesRef = useRef(sectionStyles);
+  useEffect(() => { sectionStylesRef.current = sectionStyles; }, [sectionStyles]);
+  const viewPrefsTimer = useRef<number | null>(null);
+  const viewPrefsPending = useRef(false);
+  const flushViewPrefs = async () => {
+    viewPrefsTimer.current = null;
+    if (!user || !navigator.onLine) return; // stays pending
+    viewPrefsPending.current = false;
+    const { error } = await supabase.from("profiles").update({ section_styles: sectionStylesRef.current }).eq("id", user.id);
+    if (error) { logErr("save view prefs", error); viewPrefsPending.current = true; }
+  };
+  const updateViewPrefs = (patch: Partial<EditorPrefs>) => {
+    sectionStylesTouched.current = true;
+    const next: SectionStyles = { ...sectionStylesRef.current, prefs: { ...sectionStylesRef.current.prefs, ...patch } };
+    sectionStylesRef.current = next;
+    setSectionStyles(next);
+    void cacheSetMeta("sectionStyles", next);
+    viewPrefsPending.current = true;
+    if (viewPrefsTimer.current) window.clearTimeout(viewPrefsTimer.current);
+    viewPrefsTimer.current = window.setTimeout(() => { void flushViewPrefs(); }, 1000);
+  };
+  useEffect(() => {
+    if (online && viewPrefsPending.current && !viewPrefsTimer.current) void flushViewPrefs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [online]);
 
   // Keep songsRef current without making it a dep of the cache loop (so the loop
   // isn't torn down/restarted on every setSongs — favorite, open, etc.).
@@ -3673,6 +3705,7 @@ export default function Home() {
               bubbleAuthors={bubbleAuthors}
               sectionStyles={sectionStyles}
               onSectionStylesChange={(next) => { sectionStylesTouched.current = true; setSectionStyles(next); }}
+              onViewPrefsChange={updateViewPrefs}
               onSectionStylesSave={async (next) => {
                 if (!user) return;
                 if (!guardOnline()) return;
