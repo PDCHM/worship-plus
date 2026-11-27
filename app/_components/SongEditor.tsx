@@ -101,6 +101,10 @@ function fitBottomLimit(root: HTMLElement | null, presenting: boolean): number {
   return bar ? bar.getBoundingClientRect().top - 8 : window.innerHeight - 16;
 }
 const FIT_AUTO_KEY = "wp-fit-auto-v1";
+// Presenter Prev / Next: active (lavender) vs dimmed (muted grey — nothing
+// before / after: first page with no previous song, last page with no next).
+const NAV_ACTIVE = "bg-[#efe9fe] dark:bg-[#2a2440] text-[#8574f0] dark:text-[#b3a3ff] hover:bg-[#e6defd] dark:hover:bg-[#332b4f]";
+const NAV_DIM = "bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-500 cursor-default";
 type Complexity = "simple" | "standard" | "complex";
 
 // Show-once new-user coachmarks. Each tip id is tracked in localStorage so it
@@ -2244,6 +2248,12 @@ export default function SongEditor({
     if (atTop && allowCross && setlistContext?.onPrev) { setlistContext.onPrev(); return; }
     el.scrollBy({ top: -Math.round(el.clientHeight * 0.85), behavior: "smooth" });
   };
+  // Fit: does Prev / Next lead anywhere? Mirrors goPrev/goNext exactly — another
+  // page, else (opened from a setlist) the adjacent song; setlistContext only
+  // carries onPrev/onNext when that song exists. Drives the dimmed look of the
+  // presenter Prev/Next at the very ends. (Scroll mode: always active.)
+  const navHasNext = !fitPaged || fitPage < fitPageCount - 1 || !!setlistContext?.onNext;
+  const navHasPrev = !fitPaged || fitPage > 0 || !!setlistContext?.onPrev;
   // Direct song change (pedal Left/Right). Inside a setlist: jump to the
   // adjacent song wherever we are in this one. A standalone song has no
   // neighbours, so the same pedal pages through it instead of doing nothing.
@@ -3970,7 +3980,8 @@ export default function SongEditor({
               className="fixed z-[2] mx-auto max-w-[560px] max-[700px]:[--gear-room:2.6rem] flex items-center gap-1 sm:gap-1.5 px-1 py-1 rounded-[14px] bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-[#e7e2f7] dark:border-slate-700 shadow-lg shadow-violet-900/10 dark:shadow-black/40"
               style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.6rem)", left: "calc(env(safe-area-inset-left, 0px) + 0.6rem)", right: "calc(env(safe-area-inset-right, 0px) + 0.6rem + var(--gear-room, 0px))" }}>
               <button type="button" onClick={() => { goPrev(); revealControls(); }} aria-label="Previous section"
-                className="shrink-0 flex items-center gap-0.5 h-8 pl-1 pr-2 sm:pl-1.5 sm:pr-2.5 rounded-[10px] bg-[#efe9fe] dark:bg-[#2a2440] text-[#8574f0] dark:text-[#b3a3ff] text-[13px] font-medium hover:bg-[#e6defd] dark:hover:bg-[#332b4f] transition-colors">
+                aria-disabled={!navHasPrev || undefined} data-nav-dim={!navHasPrev || undefined}
+                className={"shrink-0 flex items-center gap-0.5 h-8 pl-1 pr-2 sm:pl-1.5 sm:pr-2.5 rounded-[10px] text-[13px] font-medium transition-colors " + (navHasPrev ? NAV_ACTIVE : NAV_DIM)}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
                 Prev
               </button>
@@ -4022,7 +4033,8 @@ export default function SongEditor({
                 </div>
               </div>
               <button type="button" onClick={() => { goNext(); revealControls(); }} aria-label="Next section"
-                className="shrink-0 flex items-center gap-0.5 h-8 pl-2 pr-1 sm:pl-2.5 sm:pr-1.5 rounded-[10px] bg-[#efe9fe] dark:bg-[#2a2440] text-[#8574f0] dark:text-[#b3a3ff] text-[13px] font-medium hover:bg-[#e6defd] dark:hover:bg-[#332b4f] transition-colors">
+                aria-disabled={!navHasNext || undefined} data-nav-dim={!navHasNext || undefined}
+                className={"shrink-0 flex items-center gap-0.5 h-8 pl-2 pr-1 sm:pl-2.5 sm:pr-1.5 rounded-[10px] text-[13px] font-medium transition-colors " + (navHasNext ? NAV_ACTIVE : NAV_DIM)}>
                 Next
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
               </button>
