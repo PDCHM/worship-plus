@@ -17,9 +17,8 @@ export type KeyboardViewport = { top: number; height: number };
 
 // Shrinks smaller than this are browser chrome (toolbars collapsing), not a keyboard.
 const KEYBOARD_MIN_PX = 120;
-// Card height that still leaves ~2 list rows under the sheet's header, search
-// and Done bar (~160px together).
-const SHEET_MIN_PX = 290;
+// Gap kept between the top of the visible area and the card while the keyboard is up.
+const SHEET_TOP_MARGIN_PX = 8;
 
 export function useKeyboardViewport(): KeyboardViewport | null {
   const [vp, setVp] = useState<KeyboardViewport | null>(null);
@@ -51,10 +50,9 @@ export function useKeyboardViewport(): KeyboardViewport | null {
 }
 
 // Styles for a bottom-anchored sheet's backdrop + card while the keyboard is up:
-// the backdrop covers only the visible area, the card is capped at 80% of it —
-// except on very small visible areas (small phones: ~260px above the keys),
-// where 80% would leave the list no room under the title/search/Done chrome:
-// there the card may grow to SHEET_MIN_PX, never closer than 8px to the top.
+// the backdrop covers only the visible area, and the card may use all of it
+// but an 8px top margin (inside the backdrop's padding on tablets) — as many
+// list rows as fit above the keys.
 // Keyboard closed → empty styles (the sheet's own classes apply unchanged).
 export function keyboardSheetStyles(kb: KeyboardViewport | null): {
   overlay: CSSProperties;
@@ -63,6 +61,8 @@ export function keyboardSheetStyles(kb: KeyboardViewport | null): {
   if (!kb) return { overlay: {}, card: {} };
   return {
     overlay: { top: kb.top, height: kb.height, bottom: "auto" },
-    card: { maxHeight: Math.min(kb.height - 8, Math.max(Math.round(kb.height * 0.8), SHEET_MIN_PX)) },
+    // % of the backdrop's own height (it has an explicit px height here), so a
+    // tablet backdrop's padding is respected too; phones have none.
+    card: { maxHeight: `calc(100% - ${SHEET_TOP_MARGIN_PX}px)` },
   };
 }
