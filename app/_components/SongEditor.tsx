@@ -85,6 +85,8 @@ type FitLayout = {
   height: number;         // card (viewport) height
   pageH: number;          // usable column height
   startPage: number;      // page to show first (keeps the reader's place on re-pagination)
+  docTop: number;         // card top in SCROLL-INDEPENDENT coordinates at measure time
+  bottomLimit: number;    // page bottom limit (viewport px) at measure time
 };
 // Auto-fit never shrinks below this; past it, Fit adds pages instead.
 const MIN_PAGE_FONT = 14;
@@ -106,6 +108,11 @@ function fitBottomLimit(root: HTMLElement | null, presenting: boolean): number {
 // every song). They now move the Fit minimum instead, so the stale v1 "false"
 // left by that trap is ignored — Auto-fit is on again unless turned off in ⚙.
 const FIT_AUTO_KEY = "wp-fit-auto-v2";
+// How far the song view is scrolled: the window in the regular view, the
+// presenter's own scroller while presenting.
+function fitScrollOffset(root: HTMLElement | null, presenting: boolean): number {
+  return presenting ? (root?.scrollTop ?? 0) : window.scrollY;
+}
 // Presenter Prev / Next: active (lavender) vs dimmed (muted grey — nothing
 // before / after: first page with no previous song, last page with no next).
 const NAV_ACTIVE = "bg-[#efe9fe] dark:bg-[#2a2440] text-[#8574f0] dark:text-[#b3a3ff] hover:bg-[#e6defd] dark:hover:bg-[#332b4f]";
@@ -1890,7 +1897,19 @@ export default function SongEditor({
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => setResizeTick((t) => t + 1));
     };
-    window.addEventListener("resize", onResize);
+    // Window resize: ignore the small height-only changes mobile browsers make
+    // when their toolbar collapses / reappears during a scroll or swipe (iOS
+    // Safari, Chrome). Re-paginating then re-cut the pages mid-swipe — the
+    // page number jumped as if two pages had turned. Width changes, rotation
+    // and big height changes still re-measure.
+    let lastWinW = window.innerWidth, lastWinH = window.innerHeight;
+    const onWindowResize = () => {
+      const w = window.innerWidth, h = window.innerHeight;
+      const toolbarOnly = w === lastWinW && Math.abs(h - lastWinH) < 120;
+      lastWinW = w; lastWinH = h;
+      if (!toolbarOnly) onResize();
+    };
+    window.addEventListener("resize", onWindowResize);
     window.addEventListener("orientationchange", onResize);
     // …and whenever the chart card's own WIDTH changes without a window resize.
     // Opening a song on a landscape tablet measured while the app's side menu
@@ -1911,7 +1930,7 @@ export default function SongEditor({
     return () => {
       cancelAnimationFrame(raf);
       ro?.disconnect();
-      window.removeEventListener("resize", onResize);
+      window.removeEventListener("resize", onWindowResize);
       window.removeEventListener("orientationchange", onResize);
     };
   }, [fitMode]);
@@ -1959,7 +1978,8 @@ export default function SongEditor({
     if (!wrap || !inner) return;
 
     const top = wrap.getBoundingClientRect().top;
-    const avail = Math.max(140, Math.round(fitBottomLimit(rootRef.current, presenting) - top));
+    const bottomLimit = fitBottomLimit(rootRef.current, presenting);
+    const avail = Math.max(140, Math.round(bottomLimit - top));
     wrap.style.height = `${avail}px`;
     const ws = getComputedStyle(wrap);
     const padY = parseFloat(ws.paddingTop) + parseFloat(ws.paddingBottom);
@@ -2069,7 +2089,7 @@ export default function SongEditor({
       const hit = pages.findIndex((pg) => pg.some((blk) => blk.sectionIndex === anchor.s && anchor.line >= blk.lineStart && anchor.line < blk.lineStart + Math.max(1, blk.lines.length)));
       if (hit >= 0) startPage = hit;
     }
-    setFitLayout({ key: fitKey, pages, font, cols: n, height: avail, pageH, startPage });
+    setFitLayout({ key: fitKey, pages, font, cols: n, height: avail, pageH, startPage, docTop: top + fitScrollOffset(rootRef.current, presenting), bottomLimit });
     // fitKey captures every input that changes the layout.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fitMeasuring, fitKey]);
@@ -2081,12 +2101,19 @@ export default function SongEditor({
     const inner = sectionsRef.current;
     const wrap = fitWrapRef.current;
     if (!inner || !wrap) return;
-    // The page viewport must still match the space below the card's top: things
-    // above it can settle AFTER the measure (the present header sizes itself a
-    // frame later; toolbars wrap) — then the card would run past the bottom of
-    // the screen. Re-paginate if it's off by more than a few px.
-    const expected = Math.max(140, Math.round(fitBottomLimit(rootRef.current, presenting) - wrap.getBoundingClientRect().top));
-    if (Math.abs(expected - fitLayout!.height) > 4) {
+    // Things above the card can settle AFTER the measure (the present header
+    // sizes itself a frame later; toolbars wrap), moving the card down the
+    // document, or the bottom limit can change (presenter bar) — then
+    // re-paginate. Compared in SCROLL-INDEPENDENT coordinates: merely scrolling
+    // the window used to look like a moved card, so the next page turn
+    // re-paginated around the reader's place and the page number jumped.
+    const docTop = wrap.getBoundingClientRect().top + fitScrollOffset(rootRef.current, presenting);
+    const moved = Math.abs(docTop - fitLayout!.docTop) > 4;
+    // (Regular view: the bottom limit is just the window height — real height
+    // changes come through the resize listener, which ignores mobile toolbar
+    // show/hide; so only the presenter's bottom bar is checked here.)
+    const bottomChanged = presenting && Math.abs(fitBottomLimit(rootRef.current, presenting) - fitLayout!.bottomLimit) > 4;
+    if (moved || bottomChanged) {
       const raf = requestAnimationFrame(() => setResizeTick((t) => t + 1));
       return () => cancelAnimationFrame(raf);
     }
