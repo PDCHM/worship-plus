@@ -836,7 +836,9 @@ export const CHORD_FONT_SIZE_PX: Record<EditorPrefs["chordFontSize"], number> = 
 // rendered size IS the user's chosen px, so one +/- press is the same visible
 // change on every screen (a phone, a Samsung tablet, a laptop all step 2px).
 export const FONT_ZOOM_STEP = 2;
-export const FONT_MIN_PX = 12;
+// Hard floor for the A−/A+ text size (both views). Default sizes are unchanged;
+// going this small is always the reader's choice.
+export const FONT_MIN_PX = 10;
 export const FONT_MAX_PX = 40;
 
 // Editor & print-preview chart typography. The user's chosen size (the

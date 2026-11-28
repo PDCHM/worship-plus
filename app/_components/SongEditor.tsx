@@ -88,7 +88,9 @@ type FitLayout = {
   docTop: number;         // card top in SCROLL-INDEPENDENT coordinates at measure time
   bottomLimit: number;    // page bottom limit (viewport px) at measure time
 };
-// Auto-fit never shrinks below this; past it, Fit adds pages instead.
+// Fit's DEFAULT minimum (A−/A+ at 0 steps): auto-fit never shrinks below this
+// on its own; past it, Fit adds pages instead. A reader can lower it with A−,
+// down to the hard floor FONT_MIN_PX (10px).
 const MIN_PAGE_FONT = 14;
 // Room reserved at the bottom of the card for the "Page x / n" indicator.
 const FIT_INDICATOR_H = 26;
@@ -97,6 +99,9 @@ const FIT_INDICATOR_H = 26;
 // (empty space at a page's bottom is fine). A+ is how a reader goes bigger.
 // FIT_MIN_COL_W: the narrowest column the Columns: Auto search will use.
 const FIT_AUTO_MAX_FONT = 16;
+// "Fit whole song to one page" may use narrower columns than Auto's
+// FIT_MIN_COL_W to get the song onto one page.
+const ONE_PAGE_MIN_COL_W = 160;
 const FIT_MIN_COL_W = 240;
 // Bottom edge of the Fit page: the viewport bottom, or — presenting — just
 // above the always-visible presenter bottom bar.
@@ -317,12 +322,22 @@ function ChordInput({
   onCancel: () => void;
 }) {
   const done = useRef(false);
+  // Caret at the END, nothing selected: selected text made Android show its
+  // Cut / Copy / Select-all toolbar over the chart every time a chord opened.
+  // On touch the browser's follow-up mouse events from the opening tap land on
+  // the new field and move the caret to the tap point — so for a moment after
+  // opening, put it back at the end.
+  const openedAt = useRef(0);
+  const caretToEnd = (el: HTMLInputElement) => { const n = el.value.length; try { el.setSelectionRange(n, n); } catch { /* not a text input */ } };
+  const afterOpeningTap = (el: HTMLInputElement) => { if (performance.now() - openedAt.current < 800) caretToEnd(el); };
   return (
     <input
       autoFocus
       defaultValue={defaultValue}
       size={Math.max(3, defaultValue.length + 1)}
-      onFocus={(e) => e.target.select()}
+      onFocus={(e) => { openedAt.current = performance.now(); caretToEnd(e.target); }}
+      onMouseUp={(e) => afterOpeningTap(e.currentTarget)}
+      onClick={(e) => afterOpeningTap(e.currentTarget)}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           done.current = true;
@@ -1350,7 +1365,12 @@ export default function SongEditor({
   // performance mode. ONE per-user preference (prefs.layout, synced); the
   // device's older local value is only the fallback until the account has one.
   const [deviceLayout, setDeviceLayout] = useState<"scroll" | "fit">("scroll");
-  const playLayout: "scroll" | "fit" = sectionStyles.prefs.layout ?? deviceLayout;
+  // "Fit whole song to one page" (⋯ menu): a ONE-OFF for this song view — it
+  // shows Fit, sized so the whole song is one page, without touching the saved
+  // per-user size or layout. Ends on any size / layout / column change, or on
+  // leaving the song.
+  const [onePage, setOnePage] = useState(false);
+  const playLayout: "scroll" | "fit" = onePage ? "fit" : (sectionStyles.prefs.layout ?? deviceLayout);
   // Paged Fit mode: the measured page layout (one object, set once per
   // measurement), the page being shown ({layout key, page} so a re-pagination
   // falls back to the layout's anchored startPage), and the Auto-fit toggle
@@ -1438,6 +1458,7 @@ export default function SongEditor({
   }, []);
 
   const changePlayLayout = (next: "scroll" | "fit") => {
+    setOnePage(false);
     onViewPrefsChange?.({ layout: next });
   };
 
@@ -1579,10 +1600,12 @@ export default function SongEditor({
   // keeps today's auto-fit exactly.
   const zoomOffset = Math.min(zoomMax, Math.max(zoomMin, prefs.fontOffset ?? 0));
   const setZoomOffset = (z: number) => onViewPrefsChange?.({ fontOffset: Math.min(zoomMax, Math.max(zoomMin, z)) });
-  const fitStep = Math.max(0, zoomOffset);
-  const fitFloor = Math.min(FONT_MAX_PX, MIN_PAGE_FONT + fitStep);
-  // A−/A+ availability: Fit can't go under its floor; Scroll spans the px range.
-  const canSmaller = fitMode ? fitStep > 0 : zoomOffset > zoomMin;
+  // Fit steps relative to MIN_PAGE_FONT (0 = the default 14px minimum); A− may
+  // take it down to the hard 10px floor (FONT_MIN_PX).
+  const fitStep = Math.max(FONT_MIN_PX - MIN_PAGE_FONT, zoomOffset);
+  const fitFloor = Math.max(FONT_MIN_PX, Math.min(FONT_MAX_PX, MIN_PAGE_FONT + fitStep));
+  // A−/A+ availability: Fit stops at the 10px floor; Scroll spans the px range.
+  const canSmaller = fitMode ? fitFloor > FONT_MIN_PX : zoomOffset > zoomMin;
   const canLarger = fitMode ? fitFloor < FONT_MAX_PX : zoomOffset < zoomMax;
   // 🔗 References + ⋯ More — rendered on the Key · Capo · Tempo line (edit /
   // read view) and in the presenter header (that line is hidden while
@@ -1703,12 +1726,14 @@ export default function SongEditor({
   // A−/A+ change the user's ONE text-size offset (every song). In Fit they move
   // the auto-fit MINIMUM — Auto-fit stays on. A+ steps up from the size ON
   // SCREEN (auto-fit may already sit above the minimum), so it always grows;
-  // A− lowers the minimum (disabled at MIN_PAGE_FONT).
+  // A− lowers the minimum, down to the 10px floor (then disabled).
+  // Any size change ends a one-off "Fit whole song to one page".
   const adjustZoom = (dir: 1 | -1) => {
+    setOnePage(false);
     if (fitMode) {
       const onScreen = fitLayout ? Math.round(fitLayout.font) : fitFloor;
       const next = dir > 0 ? Math.max(fitStep, onScreen - MIN_PAGE_FONT) + FONT_ZOOM_STEP : fitStep - FONT_ZOOM_STEP;
-      setZoomOffset(Math.max(0, next));
+      setZoomOffset(Math.max(FONT_MIN_PX - MIN_PAGE_FONT, next));
       return;
     }
     setZoomOffset(zoomOffset + dir * FONT_ZOOM_STEP);
@@ -1982,7 +2007,7 @@ export default function SongEditor({
   const fitCols = Math.max(1, columnPref === "auto" ? autoCols : Math.min(columnPref, maxColsForScreen));
   const fitContentKey = useMemo(() => JSON.stringify(song.sections), [song.sections]);
   const fitBaseKey = fitMode
-    ? [fitCols, fitAuto ? `auto${fitFloor}` : `px${fitFloor}`, lineHeight, lyricFontFamily, showChords ? 1 : 0, resizeTick, presenting ? 1 : 0, fitContentKey].join("|")
+    ? [fitCols, onePage ? "one" : fitAuto ? `auto${fitFloor}` : `px${fitFloor}`, lineHeight, lyricFontFamily, showChords ? 1 : 0, resizeTick, presenting ? 1 : 0, fitContentKey].join("|")
     : "";
   const fitShrink = fitShrinkState.base === fitBaseKey ? fitShrinkState.n : 0;
   const fitKey = fitMode ? `${fitShrink}|${fitBaseKey}` : "";
@@ -2077,8 +2102,35 @@ export default function SongEditor({
     // The user's minimum (MIN_PAGE_FONT + their A−/A+ steps). Auto-fit OFF:
     // exactly that size. ON: fewest pages at that size or larger.
     let font = fitFloor;
-    if (fitAuto) {
-      const pageCount = (px: number) => Math.ceil(pack(measure(px)).length / n);
+    const pageCount = (px: number) => Math.ceil(pack(measure(px)).length / n);
+    if (onePage) {
+      // One-off "Fit whole song to one page": try 1…3 columns (2 on phones) and
+      // keep the LARGEST size (≤ the normal Fit cap, ≥ the 10px hard floor) at
+      // which the whole song is one page. If even 10px can't, the column count
+      // with the fewest pages at 10px — never below 10px.
+      const maxC = Math.min(3, maxColsForScreen);
+      const cap = Math.max(FIT_AUTO_MAX_FONT, fitFloor);
+      let best = { cols: n, font: FONT_MIN_PX, pages: Infinity, fits: false };
+      for (let c = 1; c <= maxC; c++) {
+        if (c > 1 && colWidthFor(c) < ONE_PAGE_MIN_COL_W) break;
+        setCols(c);
+        const atFloor = pageCount(FONT_MIN_PX);
+        if (atFloor > 1) {
+          if (!best.fits && atFloor < best.pages) best = { cols: c, font: FONT_MIN_PX, pages: atFloor, fits: false };
+          continue;
+        }
+        let lo = FONT_MIN_PX, hi = cap;
+        if (pageCount(hi) <= 1) lo = hi;
+        else for (let i = 0; i < 9; i++) {
+          const mid = (lo + hi) / 2;
+          if (pageCount(mid) <= 1) lo = mid; else hi = mid;
+        }
+        const f = Math.max(FONT_MIN_PX, Math.floor(lo * 2) / 2);
+        if (!best.fits || f > best.font) best = { cols: c, font: f, pages: 1, fits: true };
+      }
+      setCols(best.cols);
+      font = best.font;
+    } else if (fitAuto) {
       // Columns on Auto: use the column space to pack the song down — try every
       // count that keeps columns readable (≥ FIT_MIN_COL_W), keep the one with
       // the fewest pages at the floor font (tie → the one that allows the
@@ -2166,6 +2218,7 @@ export default function SongEditor({
     setEditingSection(null);
     setEditingTitle(false);
     setContextMenu(null);
+    setOnePage(false);
     setColumnPref(mode === "auto" ? "auto" : mode === "split-3" ? 3 : mode === "split-2" ? 2 : 1);
   };
 
@@ -5614,7 +5667,7 @@ export default function SongEditor({
           song={song}
           settings={settings}
           zoomOffset={fitMode ? fitStep : zoomOffset}
-          zoomMin={fitMode ? 0 : zoomMin}
+          zoomMin={fitMode ? FONT_MIN_PX - MIN_PAGE_FONT : zoomMin}
           zoomMax={fitMode ? FONT_MAX_PX - MIN_PAGE_FONT : zoomMax}
           effectiveFontSize={fitMode ? Math.round(fitFont) : lyricCeiling}
           chartFont={prefs.chartFont}
@@ -5629,7 +5682,7 @@ export default function SongEditor({
           onSettingsChange={onSettingsChange}
           // Fit: the ⚙ stepper drives the same minimum as A−/A+ (Auto-fit stays
           // on); Reset → 0 steps. Scroll: absolute offset as before.
-          onZoomChange={(z) => { if (!fitMode) setZoomOffset(z); else if (z === 0) setZoomOffset(0); else adjustZoom(z > fitStep ? 1 : -1); }}
+          onZoomChange={(z) => { setOnePage(false); if (!fitMode) setZoomOffset(z); else if (z === 0) setZoomOffset(0); else adjustZoom(z > fitStep ? 1 : -1); }}
           fitAuto={fitAuto}
           onFitAutoChange={setFitAuto}
           columns={columnPref}
@@ -5696,6 +5749,7 @@ export default function SongEditor({
                 { label: autoScrolling ? "Pause auto-scroll" : "Auto-scroll", onClick: () => setAutoScrolling((o) => !o), icon: autoScrolling ? <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> : <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg> },
                 { label: "Larger text", onClick: () => adjustZoom(1), icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> },
                 { label: "Smaller text", onClick: () => adjustZoom(-1), icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="11" cy="11" r="7"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> },
+                ...(readOnly ? [{ label: onePage ? "Back to normal size" : "Fit whole song to one page", onClick: () => setOnePage((v) => !v), icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" y1="10" x2="21" y2="3"/><line x1="3" y1="21" x2="10" y2="14"/></svg> }] : []),
                 { label: "Quick actions", onClick: () => setQuickActionsOpen(true), icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg> },
               ] as const).map((item) => (
                 <button
