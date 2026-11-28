@@ -3178,8 +3178,9 @@ export default function SongEditor({
     setContextMenu({
       chordId,
       full,
-      x: Math.max(8, Math.min((r?.left ?? 0) - 4, window.innerWidth - 160)),
-      y: Math.max(8, Math.min((r?.bottom ?? 0) + 6, window.innerHeight - (full ? 132 : 96))),
+      // Whole pixels, so row edges never straddle a half pixel.
+      x: Math.round(Math.max(8, Math.min((r?.left ?? 0) - 4, window.innerWidth - 160))),
+      y: Math.round(Math.max(8, Math.min((r?.bottom ?? 0) + 6, window.innerHeight - (full ? 164 : 120)))), // 44px rows + divider
     });
   };
   const openChordFromTap = (chordId: string, _pointerType: string, at: number) => {
@@ -4909,7 +4910,7 @@ export default function SongEditor({
                                   chordId: ch.id,
                                   full: true,
                                   x: Math.min(e.clientX, window.innerWidth - 160),
-                                  y: Math.min(e.clientY, window.innerHeight - 132),
+                                  y: Math.min(e.clientY, window.innerHeight - 164),
                                 });
                               }
                         }
