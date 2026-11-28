@@ -1097,21 +1097,40 @@ function isSwipeExcluded(target: EventTarget | null, root: HTMLElement): boolean
 // Follow one pointer at the WINDOW (capture phase, so a parent that stops
 // propagation can't hide the end of the gesture) and call onTurn once: as soon
 // as the move is a clear horizontal swipe, or on release for a fast flick.
+// Single finger only: the moment a second finger lands the swipe is dropped and
+// the gesture belongs to the browser (native pinch-zoom).
+// Claiming: where touch-action lets the browser pan sideways (WebKit, see
+// .wp-swipe-zone), a SINGLE-finger move that is clearly horizontal has its
+// touchmoves preventDefault()-ed — decided on the first ~8px, before the browser
+// commits to a pan — so it can't be taken over mid-swipe. Vertical moves and
+// any multi-touch move are never prevented.
 // Returns a cleanup that removes the listeners.
+const SWIPE_CLAIM_PX = 8;
 function trackPageSwipe(down: PointerEvent, onTurn: (forward: boolean) => void, activePointers: Set<number>): () => void {
   const id = down.pointerId, x0 = down.clientX, y0 = down.clientY, t0 = performance.now();
   let done = false;
+  let aborted = false;            // second finger → pinch; stop tracking, never prevent
+  let claim: boolean | null = null; // null = undecided; true = horizontal swipe (prevent); false = vertical (leave)
   const horizontal = (dx: number, dy: number) => Math.abs(dx) > Math.abs(dy) * SWIPE_H_BIAS;
   const onMove = (ev: PointerEvent) => {
-    if (ev.pointerId !== id || done) return;
-    if (activePointers.size > 1) { done = true; return; } // a second finger joined: pinch
+    if (ev.pointerId !== id || done || aborted) return;
+    if (activePointers.size > 1) { aborted = true; return; }
     const dx = ev.clientX - x0, dy = ev.clientY - y0;
     if (Math.abs(dx) >= SWIPE_MIN_PX && horizontal(dx, dy)) { done = true; onTurn(dx < 0); }
+  };
+  const onTouchMove = (ev: TouchEvent) => {
+    if (ev.touches.length > 1) { aborted = true; claim = false; return; } // pinch: browser's
+    if (aborted || claim === false) return;
+    const t = ev.touches[0];
+    if (!t) return;
+    const dx = t.clientX - x0, dy = t.clientY - y0;
+    if (claim === null && Math.max(Math.abs(dx), Math.abs(dy)) >= SWIPE_CLAIM_PX) claim = horizontal(dx, dy);
+    if (claim && ev.cancelable) ev.preventDefault();
   };
   const onEnd = (ev: PointerEvent) => {
     if (ev.pointerId !== id) return;
     cleanup();
-    if (done || ev.type === "pointercancel") return;
+    if (done || aborted || ev.type === "pointercancel") return;
     const dx = ev.clientX - x0, dy = ev.clientY - y0;
     const speed = Math.abs(dx) / Math.max(1, performance.now() - t0);
     if (Math.abs(dx) >= FLICK_MIN_PX && speed >= FLICK_MIN_PX_PER_MS && horizontal(dx, dy)) onTurn(dx < 0);
@@ -1120,10 +1139,13 @@ function trackPageSwipe(down: PointerEvent, onTurn: (forward: boolean) => void, 
     window.removeEventListener("pointermove", onMove, true);
     window.removeEventListener("pointerup", onEnd, true);
     window.removeEventListener("pointercancel", onEnd, true);
+    window.removeEventListener("touchmove", onTouchMove, true);
   }
   window.addEventListener("pointermove", onMove, true);
   window.addEventListener("pointerup", onEnd, true);
   window.addEventListener("pointercancel", onEnd, true);
+  // Non-passive: the only listener that may preventDefault (single-finger horizontal).
+  window.addEventListener("touchmove", onTouchMove, { capture: true, passive: false });
   return cleanup;
 }
 
@@ -2347,6 +2369,10 @@ export default function SongEditor({
     fitSwipeCleanupRef.current = null;
     if (fitPointersRef.current.size > 1) return; // second finger → pinch, not a swipe
     if (e.clientX < SWIPE_EDGE_PX || e.clientX > window.innerWidth - SWIPE_EDGE_PX) return;
+    // Pinch-zoomed in (e.g. magnifying for a TV/projector): a one-finger drag
+    // moves around the magnified page — the browser's, not a page turn. Use
+    // Prev/Next or a pedal while zoomed.
+    if ((window.visualViewport?.scale ?? 1) > 1.01) return;
     if (isSwipeExcluded(e.target, e.currentTarget as HTMLElement)) return;
     fitSwipeCleanupRef.current = trackPageSwipe(e.nativeEvent, (forward) => turnFitPageRef.current(forward), fitPointersRef.current);
   };

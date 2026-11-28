@@ -135,16 +135,19 @@ html.wp-launch .wp-splash { background: #020617; }
   }
 }
 
-/* Swipe zone (Fit pages, presenter): vertical drags scroll natively, horizontal
-   drags are left to the page-turn swipe (read from Pointer Events in JS).
-   Two declarations on purpose — the standard CSS fallback chain: engines that
-   understand "pan-y pinch-zoom" (Blink) keep pinch-zoom; engines that don't
-   (WebKit: every iPad/iPhone browser) drop that line and use "pan-y". A lone
-   "pan-y pinch-zoom" was invalid in WebKit, so it fell back to "auto" and the
-   browser could claim a sideways drag mid-swipe (cancelling it) — the iPad
-   flakiness. */
+/* Swipe zone (Fit pages, presenter): vertical drags scroll natively, two-finger
+   pinch-zooms natively (Pete magnifies when casting to a TV/projector), and a
+   single-finger horizontal drag is the page-turn swipe, claimed in JS.
+   Two declarations on purpose — the standard CSS fallback chain:
+   • Blink understands "pan-y pinch-zoom" and uses it: pinch kept, horizontal
+     drags never claimed by the browser (unchanged on Android).
+   • WebKit (every iPad/iPhone browser) doesn't support "pinch-zoom", drops that
+     line and uses "manipulation" — panning + pinch-zoom allowed. The page-turn
+     swipe then stops the browser panning sideways by preventDefault()-ing the
+     touchmoves of a SINGLE-finger horizontal swipe only (trackPageSwipe).
+     Two-finger gestures are never prevented. */
 .wp-swipe-zone {
-  touch-action: pan-y;
+  touch-action: manipulation;
   touch-action: pan-y pinch-zoom;
 }
 
