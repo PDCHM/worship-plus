@@ -1067,6 +1067,59 @@ function chordColumnsForUnit(chords: Chord[], wordStart: number, labelLen: (ch: 
   });
 }
 
+// ── Fit page swipe (module helpers; see onFitPointerDown) ─────────────────────
+const SWIPE_EDGE_PX = 24;      // OS back/forward edge gestures
+const SWIPE_MIN_PX = 50;       // sideways travel that turns the page during the move
+const FLICK_MIN_PX = 30;       // a quick flick may be shorter…
+const FLICK_MIN_PX_PER_MS = 0.35; // …if it's at least this fast at release
+const SWIPE_H_BIAS = 1.5;      // must be clearly more horizontal than vertical
+// Controls, the presenter bar and sideways-scrollable strips (section chips)
+// keep their own gestures.
+function isSwipeExcluded(target: EventTarget | null, root: HTMLElement): boolean {
+  const start = target instanceof Element ? target : null;
+  if (!start) return false;
+  if (start.closest("button, a[href], input, textarea, select, [contenteditable='true'], [data-present-bar], [data-no-swipe]")) return true;
+  let el: Element | null = start;
+  while (el && el !== root) {
+    const ox = getComputedStyle(el).overflowX;
+    if ((ox === "auto" || ox === "scroll") && el.scrollWidth > el.clientWidth + 1) return true;
+    el = el.parentElement;
+  }
+  return false;
+}
+// Follow one pointer at the WINDOW (capture phase, so a parent that stops
+// propagation can't hide the end of the gesture) and call onTurn once: as soon
+// as the move is a clear horizontal swipe, or on release for a fast flick.
+// Returns a cleanup that removes the listeners.
+function trackPageSwipe(down: PointerEvent, onTurn: (forward: boolean) => void, activePointers: Set<number>): () => void {
+  const id = down.pointerId, x0 = down.clientX, y0 = down.clientY, t0 = performance.now();
+  let done = false;
+  const horizontal = (dx: number, dy: number) => Math.abs(dx) > Math.abs(dy) * SWIPE_H_BIAS;
+  const onMove = (ev: PointerEvent) => {
+    if (ev.pointerId !== id || done) return;
+    if (activePointers.size > 1) { done = true; return; } // a second finger joined: pinch
+    const dx = ev.clientX - x0, dy = ev.clientY - y0;
+    if (Math.abs(dx) >= SWIPE_MIN_PX && horizontal(dx, dy)) { done = true; onTurn(dx < 0); }
+  };
+  const onEnd = (ev: PointerEvent) => {
+    if (ev.pointerId !== id) return;
+    cleanup();
+    if (done || ev.type === "pointercancel") return;
+    const dx = ev.clientX - x0, dy = ev.clientY - y0;
+    const speed = Math.abs(dx) / Math.max(1, performance.now() - t0);
+    if (Math.abs(dx) >= FLICK_MIN_PX && speed >= FLICK_MIN_PX_PER_MS && horizontal(dx, dy)) onTurn(dx < 0);
+  };
+  function cleanup() {
+    window.removeEventListener("pointermove", onMove, true);
+    window.removeEventListener("pointerup", onEnd, true);
+    window.removeEventListener("pointercancel", onEnd, true);
+  }
+  window.addEventListener("pointermove", onMove, true);
+  window.addEventListener("pointerup", onEnd, true);
+  window.addEventListener("pointercancel", onEnd, true);
+  return cleanup;
+}
+
 export default function SongEditor({
   song,
   onChange,
@@ -2052,36 +2105,6 @@ export default function SongEditor({
     if (first) fitAnchorRef.current = { s: first.sectionIndex, line: first.lineStart };
     setFitPageState({ key: fitLayout!.key, page: p });
   };
-  // Swipe (Fit mode): only in the chart body, never within 24px of the screen
-  // edges (OS back gesture), never with 2+ fingers (pinch-zoom), and only a
-  // clearly horizontal move (≥ 60px and well beyond the vertical movement).
-  const fitSwipeRef = useRef<{ id: number; x: number; y: number } | null>(null);
-  const fitPointersRef = useRef<Set<number>>(new Set());
-  const onFitPointerDown = (e: React.PointerEvent) => {
-    if (!fitPaged) return;
-    fitPointersRef.current.add(e.pointerId);
-    const edge = 24;
-    if (fitPointersRef.current.size > 1 || e.clientX < edge || e.clientX > window.innerWidth - edge) { fitSwipeRef.current = null; return; }
-    fitSwipeRef.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
-  };
-  const onFitPointerEnd = (e: React.PointerEvent) => {
-    fitPointersRef.current.delete(e.pointerId);
-    const st = fitSwipeRef.current;
-    if (!st || st.id !== e.pointerId) return;
-    fitSwipeRef.current = null;
-    if (e.type === "pointercancel") return;
-    const dx = e.clientX - st.x, dy = e.clientY - st.y;
-    if (Math.abs(dx) >= 60 && Math.abs(dx) > Math.abs(dy) * 1.6) {
-      e.stopPropagation();
-      if (presenting) {
-        // Pages first; past the first/last page, cross setlist songs (as before).
-        if (dx < 0) goNext(); else goPrev();
-      } else if (dx < 0) {
-        if (fitPage < fitPageCount - 1) showFitPage(fitPage + 1); else setlistContext?.onNext?.();
-      } else if (fitPage > 0) showFitPage(fitPage - 1); else setlistContext?.onPrev?.();
-    }
-  };
-
   // Column control (edit toolbar, present header, Quick Actions): Auto or a
   // manual 1/2/3, saved for the CURRENT orientation only. Display-only — it
   // never touches the song. A manual count outranks fit-to-screen's auto-pick.
@@ -2259,6 +2282,55 @@ export default function SongEditor({
   goPrevRef.current = goPrev;
   goNextSongRef.current = goNextSong;
   goPrevSongRef.current = goPrevSong;
+
+  // Swipe (Fit mode) — same on every touch engine (iOS WebKit, Android Blink):
+  // standard Pointer Events only.
+  //  • Zone: the WHOLE song view (pointerdown on the root), so a swipe over the
+  //    empty part of a sparse page — or the margin around the card — counts.
+  //    Not from controls (buttons, inputs, the presenter bar), not from a
+  //    sideways-scrollable strip (the section chips), not within 24px of the
+  //    screen edges (OS back gesture), never with 2+ fingers (pinch-zoom).
+  //  • The move is followed at the WINDOW in the capture phase, so the swipe is
+  //    still seen if the finger ends over the presenter bar (which stops
+  //    propagation) or outside the page.
+  //  • Decided DURING the move: the page turns as soon as the finger has gone
+  //    ≥ 50px sideways and clearly more sideways than vertical (1.5×) — so a
+  //    later pointercancel (browser claiming the gesture) can't swallow it. A
+  //    quick flick that ends earlier still counts on release: ≥ 30px at
+  //    ≥ 0.35 px/ms, same 1.5× horizontal bias.
+  // touch-action (see .wp-swipe-zone in globals.css) keeps vertical scrolling
+  // native and stops the browser claiming horizontal drags.
+  const fitPointersRef = useRef<Set<number>>(new Set());
+  const fitSwipeCleanupRef = useRef<(() => void) | null>(null);
+  const turnFitPage = (forward: boolean) => {
+    if (presenting) {
+      // Pages first; past the first/last page, cross setlist songs (as before).
+      if (forward) goNext(); else goPrev();
+    } else if (forward) {
+      if (fitPage < fitPageCount - 1) showFitPage(fitPage + 1); else setlistContext?.onNext?.();
+    } else if (fitPage > 0) showFitPage(fitPage - 1); else setlistContext?.onPrev?.();
+  };
+  const turnFitPageRef = useRef(turnFitPage);
+  useEffect(() => { turnFitPageRef.current = turnFitPage; });
+  useEffect(() => () => fitSwipeCleanupRef.current?.(), []);
+  const onFitPointerDown = (e: React.PointerEvent) => {
+    if (!fitPaged || e.pointerType === "mouse") return;
+    fitPointersRef.current.add(e.pointerId);
+    fitSwipeCleanupRef.current?.();
+    fitSwipeCleanupRef.current = null;
+    if (fitPointersRef.current.size > 1) return; // second finger → pinch, not a swipe
+    if (e.clientX < SWIPE_EDGE_PX || e.clientX > window.innerWidth - SWIPE_EDGE_PX) return;
+    if (isSwipeExcluded(e.target, e.currentTarget as HTMLElement)) return;
+    fitSwipeCleanupRef.current = trackPageSwipe(e.nativeEvent, (forward) => turnFitPageRef.current(forward), fitPointersRef.current);
+  };
+  // Lifting any finger that wasn't the tracked one (e.g. after a pinch).
+  useEffect(() => {
+    const drop = (ev: PointerEvent) => { fitPointersRef.current.delete(ev.pointerId); };
+    window.addEventListener("pointerup", drop, true);
+    window.addEventListener("pointercancel", drop, true);
+    return () => { window.removeEventListener("pointerup", drop, true); window.removeEventListener("pointercancel", drop, true); };
+  }, []);
+
 
   // Slim controls: reveal + auto-hide after 3s; tapping the chart toggles them.
   const revealControls = () => {
@@ -3745,13 +3817,13 @@ export default function SongEditor({
         // layout, where the card owns the scrolling and this root has nothing to
         // move) chains out to the page, and iPadOS reads that as its own
         // dismiss-fullscreen gesture — a scroll turning into an exit.
-        ? "fixed inset-0 z-[9999] w-full overflow-y-auto overscroll-y-contain bg-white dark:bg-slate-950 focus:outline-none"
+        ? "wp-swipe-zone fixed inset-0 z-[9999] w-full overflow-y-auto overscroll-y-contain bg-white dark:bg-slate-950 focus:outline-none"
         : ("relative w-full mx-auto px-4 sm:px-6 py-6 md:py-8 transition-[max-width] duration-200 " +
           // Read-only performance/view mode goes full-bleed (fills the width freed
           // by the auto-collapsed nav — important on tablet), capped at 1600px so
           // lines don't stretch absurdly on very wide desktop monitors. Edit mode
           // keeps the narrower, comfortable editing width.
-          (readOnly ? "max-w-[1600px]" : "max-w-5xl"))}
+          (readOnly ? "max-w-[1600px]" : "max-w-5xl") + (fitMode ? " wp-swipe-zone" : ""))}
       style={presenting
         ? {
             "--lyric-font-size": `${lyricCeiling}px`,
@@ -3765,12 +3837,8 @@ export default function SongEditor({
             paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 4rem)",
             paddingLeft: "calc(env(safe-area-inset-left, 0px) + 0.75rem)",
             paddingRight: "calc(env(safe-area-inset-right, 0px) + 0.75rem)",
-            // Declare vertical dragging as THIS element's scroll, so the engine
-            // stops offering it to the OS as a system gesture. pinch-zoom is kept
-            // (musicians zoom a chart); horizontal panning is not — there's nothing
-            // to pan sideways, and a horizontal drag is the prev/next-song swipe,
-            // which is read in JS from the touch coordinates.
-            touchAction: "pan-y pinch-zoom",
+            // touch-action: see .wp-swipe-zone (className) — vertical drags are
+            // this element's scroll, horizontal drags are the page/song swipe.
           } as React.CSSProperties
         : {
             "--lyric-font-size": `${lyricCeiling}px`,
@@ -3781,7 +3849,7 @@ export default function SongEditor({
       onTouchStart={onSwipeStart}
       onTouchEnd={onSwipeEnd}
       onTouchCancel={() => { swipeStartRef.current = null; }}
-      onPointerDown={onPresentPointerDown}
+      onPointerDown={(e) => { onPresentPointerDown(e); onFitPointerDown(e); }}
       onPointerUp={onPresentPointerUp}
       onPointerCancel={onPresentPointerCancel}
     >
@@ -4470,7 +4538,7 @@ export default function SongEditor({
         // the x-axis contained so horizontal scroll of wide charts doesn't bounce.
         // Fit in the regular view (sm+): slimmer top/bottom padding — every px
         // goes to the page height (the "Page x / n" pill sits in the reserved strip).
-        className={"rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-x-auto overscroll-x-none print:border-0 print:shadow-none print:p-0 " + (presenting ? (fitMode ? "p-2.5 sm:p-3" : "p-3 sm:p-4") : fitMode ? "p-4 sm:px-6 sm:pt-3 sm:pb-2 md:px-8" : "p-4 sm:p-6 md:p-8")}
+        className={"rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm overflow-x-auto overscroll-x-none print:border-0 print:shadow-none print:p-0 " + (presenting ? (fitMode ? "p-2.5 sm:p-3" : "p-3 sm:p-4") : fitMode ? "p-4 sm:px-6 sm:pt-3 sm:pb-2 md:px-8" : "p-4 sm:p-6 md:p-8") + (fitMode ? " wp-swipe-zone" : "")}
         // Fit mode turns this card into the scroll viewport: fixed height with
         // vertical overflow, so the song scrolls inside it only when it can't be
         // shrunk to fit. Scroll mode keeps the card's natural auto height.
@@ -4483,10 +4551,7 @@ export default function SongEditor({
         // Paged Fit: a fixed page viewport (no internal scroll); touch-action
         // keeps vertical page scroll + pinch-zoom native while horizontal moves
         // come to the swipe handlers below.
-        style={fitMode ? { height: fitHeight ?? undefined, overflow: "hidden", overscrollBehavior: "contain", position: "relative", touchAction: "pan-y pinch-zoom" } : undefined}
-        onPointerDown={fitMode ? onFitPointerDown : undefined}
-        onPointerUp={fitMode ? onFitPointerEnd : undefined}
-        onPointerCancel={fitMode ? onFitPointerEnd : undefined}
+        style={fitMode ? { height: fitHeight ?? undefined, overflow: "hidden", overscrollBehavior: "contain", position: "relative" } : undefined}
       >
         {fitPaged && fitPageCount > 1 && !presenting && (
           <div aria-live="polite" data-fit-page

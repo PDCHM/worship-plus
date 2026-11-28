@@ -135,6 +135,19 @@ html.wp-launch .wp-splash { background: #020617; }
   }
 }
 
+/* Swipe zone (Fit pages, presenter): vertical drags scroll natively, horizontal
+   drags are left to the page-turn swipe (read from Pointer Events in JS).
+   Two declarations on purpose — the standard CSS fallback chain: engines that
+   understand "pan-y pinch-zoom" (Blink) keep pinch-zoom; engines that don't
+   (WebKit: every iPad/iPhone browser) drop that line and use "pan-y". A lone
+   "pan-y pinch-zoom" was invalid in WebKit, so it fell back to "auto" and the
+   browser could claim a sideways drag mid-swipe (cancelling it) — the iPad
+   flakiness. */
+.wp-swipe-zone {
+  touch-action: pan-y;
+  touch-action: pan-y pinch-zoom;
+}
+
 /* Segmented control group: rounds the first/last segment instead of clipping
    with overflow:hidden, so each segment's enlarged touch area isn't cut off. */
 .seg-group > :first-child { border-top-left-radius: 7px; border-bottom-left-radius: 7px; }
