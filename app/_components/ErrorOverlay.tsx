@@ -10,14 +10,19 @@ import { useEffect, useState, useSyncExternalStore } from "react";
    screen: message, source:line:col, stack, plus the browser and build — with
    Copy and ✕ (dismiss).
 
-   Tap probe (opt-in): open any page with ?debug=1 (remembered on the device;
-   ?debug=0 turns it off) to also show, after every tap, which element the tap
-   actually landed on — that exposes an invisible layer swallowing taps. */
+   Tap probe (DEVELOPMENT BUILDS ONLY): open any page with ?debug=1 (remembered
+   on the device; ?debug=0 turns it off) to also show, after every tap, which
+   element the tap actually landed on — that exposes an invisible layer
+   swallowing taps. Never in production: a device that once opened ?debug=1
+   kept showing the black tap bar to real users, so the probe is compiled out
+   of production builds (TAP_PROBE below) regardless of that stored flag. */
 
 export type RecordedError = { t: number; kind: "error" | "rejection"; message: string; source?: string; stack?: string };
 type WpWindow = Window & { __wpErr?: RecordedError[] };
 
 const EVT = "wp-error";
+// Off in every production build (Vercel); only `next dev` gets the tap probe.
+const TAP_PROBE = process.env.NODE_ENV !== "production";
 const subscribe = (cb: () => void) => { window.addEventListener(EVT, cb); return () => window.removeEventListener(EVT, cb); };
 const getCount = () => ((window as WpWindow).__wpErr?.length ?? 0);
 
@@ -51,7 +56,7 @@ export default function ErrorOverlay() {
   const count = useSyncExternalStore(subscribe, getCount, () => 0);
   const [dismissedAt, setDismissedAt] = useState(0); // hide errors recorded up to this count
   const [copied, setCopied] = useState(false);
-  const debug = useSyncExternalStore(subscribe, () => { try { return localStorage.getItem("wp-debug") === "1"; } catch { return false; } }, () => false);
+  const debug = useSyncExternalStore(subscribe, () => { if (!TAP_PROBE) return false; try { return localStorage.getItem("wp-debug") === "1"; } catch { return false; } }, () => false);
   const [lastTap, setLastTap] = useState<string | null>(null);
 
   useEffect(() => {
