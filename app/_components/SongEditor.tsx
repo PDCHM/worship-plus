@@ -5,7 +5,7 @@ import { SELECTED } from "@/lib/selectedStyle";
 import { backdropDismiss } from "@/lib/backdropDismiss";
 import { FEATURE_AI_CHORDS } from "@/lib/flags";
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { useOnlineStatus } from "@/lib/offline/useOnlineStatus";
 import Coachmark from "@/app/_components/Coachmark";
 import ConfirmDialog from "@/app/_components/ConfirmDialog";
@@ -107,6 +107,9 @@ function fitBottomLimit(root: HTMLElement | null, presenting: boolean): number {
 // v2: A−/A+ used to switch Auto-fit OFF device-wide (and it stayed off for
 // every song). They now move the Fit minimum instead, so the stale v1 "false"
 // left by that trap is ignored — Auto-fit is on again unless turned off in ⚙.
+// Chord long-press menu row: ≥ 44px tall on touch screens so no touch area has
+// to grow past (and overlap) its row.
+const CHORD_MENU_ROW = "w-full text-left px-3 py-1.5 [@media(pointer:coarse)]:min-h-[44px] text-sm flex items-center gap-2";
 const FIT_AUTO_KEY = "wp-fit-auto-v2";
 // How far the song view is scrolled: the window in the regular view, the
 // presenter's own scroller while presenting.
@@ -3163,10 +3166,11 @@ export default function SongEditor({
       document.addEventListener("pointercancel", finishDrag);
     };
 
-  // A chord press that ended as a TAP (no drag). Touch/pen → the chord's
-  // Edit / Delete menu (what desktop gets from right-click); choosing Edit there
-  // is a real tap on a button, which reliably raises the iOS keyboard. Mouse →
-  // the inline chord editor (what a click was meant to do).
+  // A chord press that ended as a TAP (no drag) → the inline chord EDITOR, on
+  // every pointer type. (Touch used to get a small Edit / Delete menu here; its
+  // "Delete" sat right under "Edit" and its enlarged touch area covered Edit's
+  // bottom edge, so a slightly low tap deleted the chord.) Delete now lives only
+  // in the long-press / right-click menu, and every chord delete can be undone.
   const openChordMenu = (chordId: string, full: boolean, at: number) => {
     const el = document.querySelector<HTMLElement>(`[data-chord-id="${chordId}"]`);
     const r = el?.getBoundingClientRect();
@@ -3178,14 +3182,15 @@ export default function SongEditor({
       y: Math.max(8, Math.min((r?.bottom ?? 0) + 6, window.innerHeight - (full ? 132 : 96))),
     });
   };
-  const openChordFromTap = (chordId: string, pointerType: string, at: number) => {
+  const openChordFromTap = (chordId: string, _pointerType: string, at: number) => {
     tapHandledAtRef.current = at;
-    if (pointerType === "mouse") {
+    // flushSync: mount the editor (and its autoFocus) synchronously inside the
+    // tap's own event, so touch browsers raise the on-screen keyboard.
+    flushSync(() => {
+      setContextMenu(null);
       setAddingChord(null);
       setEditingChord(chordId);
-      return;
-    }
-    openChordMenu(chordId, false, at);
+    });
   };
   // Long-press (touch/pen) on a chord → the full menu (Edit · Delete · Duplicate).
   const LONG_PRESS_MS = 450;
@@ -3328,7 +3333,14 @@ export default function SongEditor({
 
   const handleChordDragStart = webkitTouch ? handleChordDragStartWebKit : handleChordDragStartBlink;
 
+  // Every chord delete (long-press menu, or clearing the name in the editor) can
+  // be undone from the toast.
   const deleteChord = (chordId: string) => {
+    let removed: { lineId: string; chord: Chord } | null = null;
+    for (const sec of song.sections) for (const l of sec.lines) {
+      const c = l.chords.find((x) => x.id === chordId);
+      if (c) removed = { lineId: l.id, chord: c };
+    }
     update((s) => ({
       ...s,
       sections: s.sections.map((sec) => ({
@@ -3340,6 +3352,14 @@ export default function SongEditor({
       })),
     }));
     setEditingChord((cur) => (cur === chordId ? null : cur));
+    if (!removed) return;
+    const { lineId, chord } = removed;
+    const restore = () =>
+      update((s) => mapLine(s, lineId, (line) =>
+        line.chords.some((c) => c.id === chord.id) ? line : { ...line, chords: sortChords([...line.chords, chord]) }));
+    const label = `Chord ${displayChord(chord.chord) || chord.chord} deleted`;
+    if (onUndoableDelete) onUndoableDelete(label, restore);
+    else showToast(label);
   };
 
   const commitChord = (lineId: string, chordId: string, value: string) => {
@@ -4869,6 +4889,9 @@ export default function SongEditor({
                                 }
                                 // Already opened by the pointer handler for this tap.
                                 if (e.timeStamp - tapHandledAtRef.current < 700) return;
+                                // …or the finger-lift of a LONG-PRESS that just opened the
+                                // chord menu (some browsers still send a click then).
+                                if (e.timeStamp - menuOpenedAtRef.current < 1500) return;
                                 setAddingChord(null);
                                 setEditingChord(ch.id);
                               }
@@ -5436,21 +5459,27 @@ export default function SongEditor({
       </div>
 
       {contextMenu && !readOnly && (
+        // Long-press / right-click chord menu. Safe on touch: rows are ≥ 44px
+        // tall on coarse pointers, and .tap-vert keeps each row's touch area to
+        // its own row (vertical-only growth, which a 44px row doesn't need) —
+        // no row can take another's taps. Delete is last, set apart by a
+        // divider, in soft pink; it can be undone from the toast.
         <div
           ref={contextMenuRef}
           role="menu"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onMouseDown={(e) => e.stopPropagation()}
           onContextMenu={(e) => e.preventDefault()}
-          className="fixed z-50 min-w-[150px] py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/20"
+          className="tap-vert fixed z-50 min-w-[160px] py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl shadow-slate-900/20"
         >
           <button
             type="button"
+            role="menuitem"
             onClick={() => {
               setEditingChord(contextMenu.chordId);
               setContextMenu(null);
             }}
-            className="w-full text-left px-3 py-1.5 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-2"
+            className={CHORD_MENU_ROW + " text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 20h9" />
@@ -5458,13 +5487,33 @@ export default function SongEditor({
             </svg>
             Edit
           </button>
+          {contextMenu.full && (
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                const line = song.sections.flatMap((sec) => sec.lines).find((l) => l.chords.some((c) => c.id === contextMenu.chordId));
+                if (line) duplicateChord(line.id, contextMenu.chordId);
+                setContextMenu(null);
+              }}
+              className={CHORD_MENU_ROW + " text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700"}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" />
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+              </svg>
+              Duplicate
+            </button>
+          )}
+          <div role="separator" className="my-1.5 border-t border-slate-200 dark:border-slate-700" />
           <button
             type="button"
+            role="menuitem"
             onClick={() => {
               deleteChord(contextMenu.chordId);
               setContextMenu(null);
             }}
-            className="w-full text-left px-3 py-1.5 text-sm hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-700 dark:text-rose-400 flex items-center gap-2"
+            className={CHORD_MENU_ROW + " text-[#d06a86] dark:text-rose-300 hover:bg-[#fbeef2] dark:hover:bg-rose-950/40"}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="3 6 5 6 21 6" />
@@ -5474,23 +5523,6 @@ export default function SongEditor({
             </svg>
             Delete
           </button>
-          {contextMenu.full && (
-            <button
-              type="button"
-              onClick={() => {
-                const line = song.sections.flatMap((sec) => sec.lines).find((l) => l.chords.some((c) => c.id === contextMenu.chordId));
-                if (line) duplicateChord(line.id, contextMenu.chordId);
-                setContextMenu(null);
-              }}
-              className="w-full text-left px-3 py-1.5 text-sm hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center gap-2"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="9" y="9" width="13" height="13" rx="2" />
-                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
-              </svg>
-              Duplicate
-            </button>
-          )}
         </div>
       )}
 
