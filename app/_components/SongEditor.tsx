@@ -4241,7 +4241,11 @@ export default function SongEditor({
             {capoPickerOpen && !presenting && renderCapoPicker()}
           </div>
           </span>
-          {(song.bpm != null || !readOnly || tempoPanelOpen) && (
+          {/* Tempo shows on EVERY song, read view included — "🕒 Tempo" when the
+              song has none — so the tempo/metronome panel is always one tap away.
+              (A reader who can't edit the song changes only their own metronome;
+              changeBpm saves for editors only.) */}
+          {(
             <span className="flex items-center gap-2">
               <span className="text-slate-300 dark:text-slate-600">·</span>
               <div className="relative">
@@ -4249,10 +4253,12 @@ export default function SongEditor({
                   title="Tempo & metronome"
                   aria-label={song.bpm != null ? `Tempo ${song.bpm} BPM` : "Tempo"}
                   // Capo songs: same size as the capo pill, regular weight, and
-                  // icon-only at ≤360px so the line never wraps. No-capo songs: as before.
+                  // icon-only below 375px — wider than that the full "128 BPM"
+                  // still fits before 🔗 (at 361–374px it used to slide under it).
+                  // No-capo songs: as before.
                   className={"inline-flex items-center gap-1 text-[#6350ef] dark:text-[#b3a3ff] hover:bg-[#f3f0ff] dark:hover:bg-[#2a2440]/50 px-1.5 py-0.5 rounded-md transition-colors whitespace-nowrap " + (hasCapo ? "text-xs font-normal" : "font-semibold")}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 13.8"/></svg>
-                  <span className={hasCapo ? "max-[361px]:hidden" : undefined}>{song.bpm != null ? `${song.bpm} BPM` : "Tempo"}</span>
+                  <span className={hasCapo ? "max-[375px]:hidden" : undefined}>{song.bpm != null ? `${song.bpm} BPM` : "Tempo"}</span>
                 </button>
                 {tempoPanelOpen && !presenting && renderTempoPanel()}
               </div>
