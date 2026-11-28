@@ -2959,7 +2959,9 @@ export default function SongEditor({
         let bestEl: HTMLElement | null = null;
         let bestDist = Infinity;
         for (const el of units) {
-          const r = el.getBoundingClientRect();
+          // Measure the word itself (not the unit box, which may be widened to
+          // make room for its chords) so landing is unchanged.
+          const r = (el.querySelector<HTMLElement>("[data-word-text]") ?? el).getBoundingClientRect();
           const cx = r.left + r.width / 2;
           const cy = r.top + r.height / 2;
           // Weight vertical distance so it prefers words on the same row.
@@ -3146,7 +3148,9 @@ export default function SongEditor({
         let bestEl: HTMLElement | null = null;
         let bestDist = Infinity;
         for (const el of units) {
-          const r = el.getBoundingClientRect();
+          // Measure the word itself (not the unit box, which may be widened to
+          // make room for its chords) so landing is unchanged.
+          const r = (el.querySelector<HTMLElement>("[data-word-text]") ?? el).getBoundingClientRect();
           const cx = r.left + r.width / 2;
           const cy = r.top + r.height / 2;
           // Weight vertical distance so it prefers words on the same row.
@@ -4915,10 +4919,17 @@ export default function SongEditor({
                                         className={"relative block leading-none" + (readOnly || !u.tappable ? "" : " cursor-pointer")}
                                         style={{ minHeight: lineChordSlot, width: "100%" }}
                                       >
+                                        {/* Positioning box exactly as wide as the WORD (an invisible
+                                            copy of it sets the width), so "offset ÷ word length" keeps
+                                            measuring against the word even though the slot itself is
+                                            widened below to make room for the chords. Pointer-
+                                            transparent so a tap on the empty slot still adds a chord. */}
+                                        <span className="absolute left-0 bottom-0 pointer-events-none" data-chord-anchor>
+                                        <span aria-hidden="true" className="block h-0 overflow-hidden invisible whitespace-pre">{u.text}</span>
                                         {u.chords.map((ch, idx) => (
                                           <span
                                             key={ch.id}
-                                            className="absolute bottom-0 whitespace-nowrap"
+                                            className="absolute bottom-0 whitespace-nowrap pointer-events-auto"
                                             style={{ left: `${(((chordCols ? chordCols[idx] : ch.offset ?? 0)) / Math.max(1, u.text.length)) * 100}%` }}
                                           >
                                             {editingChord === ch.id && !readOnly ? (
@@ -4935,7 +4946,7 @@ export default function SongEditor({
                                         ))}
                                         {addingHere && (
                                           <span
-                                            className="absolute bottom-0 whitespace-nowrap"
+                                            className="absolute bottom-0 whitespace-nowrap pointer-events-auto"
                                             style={{ left: `${((addingChord?.offset ?? 0) / Math.max(1, u.text.length)) * 100}%` }}
                                           >
                                             <ChordInput
@@ -4945,6 +4956,27 @@ export default function SongEditor({
                                             />
                                           </span>
                                         )}
+                                        </span>
+                                        {/* Room for the chords: an invisible, zero-height copy of
+                                            "the word up to each chord + the chord name". It widens
+                                            the word's box to cover every chord, so a chord wider
+                                            than its word pushes the next word right (no chord-on-
+                                            chord overlap) and a chord at the end of a row wraps
+                                            WITH its word instead of hanging past the column edge.
+                                            Same characters as the lyric, so it holds for CJK as
+                                            well as monospace; positions are unchanged. */}
+                                        {u.chords.map((ch, idx) => {
+                                          const col = chordCols ? chordCols[idx] : ch.offset ?? 0;
+                                          const prefix = col <= u.text.length ? u.text.slice(0, col) : u.text + "\u00a0".repeat(col - u.text.length);
+                                          return (
+                                            <span key={`room-${ch.id}`} aria-hidden="true" data-chord-room
+                                              className="block h-0 overflow-hidden invisible whitespace-pre pointer-events-none select-none">
+                                              {prefix}
+                                              <span className="font-bold px-0.5" style={{ fontSize: chordFontSize, fontFamily: lyricFontFamily }}>{displayChord(ch.chord)}</span>
+                                            </span>
+                                          );
+                                        })}
+
                                       </span>
                                     ) : (
                                       // Chord-only line: each chord is its own
